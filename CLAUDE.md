@@ -18,7 +18,7 @@ KILN is an AI invoicing tool for solo and very small trades businesses: plumbers
 
 ## Current stage (Oct 2026)
 
-- Idea and pitch stage. No code yet.
+- First app build done (Oct 19): every screen works with example data in `mobile/`. No sign-in or saving yet; Supabase is next.
 - Y Combinator one-page pitch drafted.
 - Customer discovery in progress: interviews with local trades businesses.
 - Pages, features, and build order outlined in `docs/app-outline.md`. That file has the full screen list.
@@ -54,18 +54,19 @@ KILN is an AI invoicing tool for solo and very small trades businesses: plumbers
 | Customer web pages | Customer | View estimate or invoice, sign, pay. No app or account; secure link only. |
 | Contractor web dashboard | Owner | Later phase. Same Expo codebase exported to web, for desk work. |
 
-**Look and feel:** big buttons for gloves and dirty hands, high contrast for sunlight, dark mode, plain and simple design.
+**Look and feel:** same family as Rossen's LightHouse and Bloom apps: light gray ground, white cards with big rounded corners, black text, heavy uppercase titles, one strong color card. Tuned for trades: buttons at least 48–56 px tall for gloves, high contrast for sunlight, dark mode. Main color is "kiln orange" `#F0844C` with black text on it. Headings and money use **Archivo** (ExtraBold/Bold); body text uses the phone's own font. All tokens live in `mobile/src/theme/tokens.ts`.
 
 **Launch:** test with 5–10 interviewees through Apple's and Google's test programs before a public release.
 
 ## Tech stack
 
-- **App:** Expo (React Native) + TypeScript (strict), Expo Router. One codebase for iOS, Android, and web.
+- **App:** Expo SDK 58 (React Native) + TypeScript (strict), Expo Router, in `mobile/`. One codebase for iOS, Android, and web. Read `mobile/AGENTS.md` and the versioned Expo docs before touching an Expo API. Add packages with `npx expo install`.
 - **Backend:** Supabase: Postgres, Auth, Storage, Row Level Security, Edge Functions.
 - **Sign-in:** email and password, Sign in with Apple, Sign in with Google. Face ID or fingerprint to open the app after that.
 - **AI:** Claude API for reading receipts (vision), drafting estimates, invoices, change orders, and job summaries, and finding voice commands. Called only from the server (Edge Functions), never from the app directly.
 - **Speech-to-text:** not decided yet. Must handle English, Spanish, and notes that mix both.
-- **Languages:** all app text kept in translation files (English and Spanish). No hard-coded strings in screens.
+- **Languages:** all app text kept in translation files (`mobile/src/i18n/en.ts` and `es.ts`, using `i18n-js` + `expo-localization`). TypeScript checks that both files have the same keys. No hard-coded strings in screens.
+- **Tests:** money math tests run on Node's built-in test runner (`npm test` in `mobile/`), no test library needed.
 - **Payments:** Stripe. Exact setup (e.g. Connect) not decided yet.
 - **E-signature:** built in-house for the first version (signature capture + audit trail). Revisit a provider later.
 - **Sending:** texts go from the owner's own phone (KILN opens the text app with the message and link filled in). Emails are sent by KILN.
