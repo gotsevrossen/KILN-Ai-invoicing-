@@ -5,7 +5,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SignaturePad } from '@/components/signature-pad';
 import { Button, Card, Checkbox, Field, Hair, Icon, LineRow, PhotoTile, Row, Screen, T } from '@/components/ui';
-import * as sample from '@/data/sample';
 import { changeOrderById, changeOrderTotal, customerOf, jobById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang, useTFor } from '@/i18n';
@@ -27,6 +26,7 @@ export default function ChangeOrderSign() {
 
   const [name, setName] = useState(customer.name);
   const [hasInk, setHasInk] = useState(false);
+  const [drawing, setDrawing] = useState(false);
   const [padKey, setPadKey] = useState(0);
   const [agreed, setAgreed] = useState(false);
   const signed = state.signed[co.id];
@@ -64,9 +64,9 @@ export default function ChangeOrderSign() {
           </View>
         </Screen>
       ) : (
-        <Screen noTopInset>
+        <Screen noTopInset scrollEnabled={!drawing}>
           <View style={{ gap: 4 }}>
-            <T v="small" muted>{sample.business.name}</T>
+            <T v="small" muted>{state.profile.businessName}</T>
             <T v="title">{tc('changeOrder.title', { n: co.number })}</T>
             <T v="small" muted>{job.title} · {job.address}</T>
           </View>
@@ -96,7 +96,7 @@ export default function ChangeOrderSign() {
                 <T v="label" style={{ textDecorationLine: 'underline' }}>{tc('changeOrder.clear')}</T>
               </Pressable>
             </Row>
-            <SignaturePad key={padKey} placeholder={tc('changeOrder.signHere')} label={tc('changeOrder.signFinger')} onInk={() => setHasInk(true)} />
+            <SignaturePad key={padKey} placeholder={tc('changeOrder.signHere')} label={tc('changeOrder.signFinger')} onInk={() => setHasInk(true)} onDrawing={setDrawing} />
           </View>
 
           <Checkbox label={tc('changeOrder.approve', { amount: newTotal })} value={agreed} onChange={setAgreed} />
@@ -104,7 +104,7 @@ export default function ChangeOrderSign() {
           <Button label={tc('changeOrder.signApprove')} big disabled={!ready} onPress={() => actions.sign(co.id, name.trim())} />
           {!ready ? <T v="small" muted style={{ textAlign: 'center' }}>{tc('changeOrder.needAll')}</T> : null}
           <Hair />
-          <T v="small" muted>{tc('changeOrder.privacy', { business: sample.business.name })}</T>
+          <T v="small" muted>{tc('changeOrder.privacy', { business: state.profile.businessName })}</T>
         </Screen>
       )}
     </View>

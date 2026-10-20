@@ -4,7 +4,7 @@ import { View } from 'react-native';
 
 import { Button, Card, Icon, IconButton, ListRow, Notice, Pill, Row, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { changeOrderTotal, homeSummary, invoiceTotals, jobById, receiptById, unsortedItems } from '@/data/selectors';
+import { changeOrderTotal, homeSummary, invoiceTotals, jobById, unsortedItems } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -19,27 +19,30 @@ export default function Home() {
   const [reminded, setReminded] = useState(false);
 
   const summary = homeSummary(state);
-  const receipt = receiptById('hd-4471');
-  const unsorted = unsortedItems(state, receipt);
-  const invoice = sample.invoices[0];
-  const invoiceOpen = !state.sentInvoices.includes(invoice.id);
-  const co = sample.changeOrders[0];
-  const coOpen = !state.signed[co.id];
+  // each card shows only when there's something for it (a new account has none of these)
+  const receipt = sample.receipts.find((r) => unsortedItems(state, r).length > 0);
+  const unsorted = receipt ? unsortedItems(state, receipt) : [];
+  const invoice = sample.invoices.find((i) => !state.sentInvoices.includes(i.id));
+  const co = sample.changeOrders.find((c) => !state.signed[c.id]);
   const overdueJobs = sample.jobs.filter((j) => j.baseStatus === 'overdue');
-  const nothing = unsorted.length === 0 && !invoiceOpen && !coOpen && overdueJobs.length === 0;
+  const pendingUploads = state.mode === 'example' ? sample.business.pendingUploads : 0;
+  const nothing = !receipt && !invoice && !co && overdueJobs.length === 0;
 
   return (
-    <Screen tabs>
-      <Row style={{ justifyContent: 'space-between' }}>
-        <Row gap={10}>
-          <View style={{ width: 16, height: 16, borderRadius: 5, backgroundColor: p.accent }} />
-          <T style={{ fontFamily: font.black, fontSize: 26, letterSpacing: 4 }}>KILN</T>
+    <Screen
+      tabs
+      header={
+        <Row style={{ justifyContent: 'space-between' }}>
+          <Row gap={10}>
+            <View style={{ width: 16, height: 16, borderRadius: 5, backgroundColor: p.accent }} />
+            <T style={{ fontFamily: font.black, fontSize: 26, letterSpacing: 4 }}>KILN</T>
+          </Row>
+          <Row>
+            {pendingUploads ? <Pill label={t('home.upload', { count: pendingUploads })} tone="plain" /> : null}
+            <IconButton icon="settings" label={t('home.settings')} onPress={() => router.push('/settings')} />
+          </Row>
         </Row>
-        <Row>
-          <Pill label={t('home.upload', { count: sample.business.pendingUploads })} tone="plain" />
-          <IconButton icon="settings" label={t('home.settings')} onPress={() => router.push('/settings')} />
-        </Row>
-      </Row>
+      }>
 
       <Card tone="accent" style={{ padding: 22, gap: 6, borderRadius: radius.lg }}>
         <T v="eyebrow" color={p.onAccent}>{t('home.owedToYou')}</T>
@@ -58,9 +61,10 @@ export default function Home() {
         <T v="title" style={{ fontSize: 28, lineHeight: 30 }} accessibilityRole="header">{t('home.needsYou')}</T>
       </Row>
 
+      {state.syncError ? <Notice text={t('auth.syncFailed', { reason: state.syncError })} tone="danger" icon="alert-circle" /> : null}
       {nothing ? <Notice text={t('home.allClear')} /> : null}
 
-      {unsorted.length > 0 ? (
+      {receipt ? (
         <Card onPress={() => router.push(`/receipt/${receipt.id}`)} label={t('home.sortReceipt', { count: unsorted.length })} style={{ paddingVertical: 10 }}>
           <ListRow
             icon="file-text"
@@ -72,7 +76,7 @@ export default function Home() {
         </Card>
       ) : null}
 
-      {invoiceOpen ? (
+      {invoice ? (
         <Card onPress={() => router.push(`/invoice/${invoice.id}`)} label={t('home.invoiceReady')} style={{ paddingVertical: 10 }}>
           <ListRow
             icon="file"
@@ -84,7 +88,7 @@ export default function Home() {
         </Card>
       ) : null}
 
-      {coOpen ? (
+      {co ? (
         <Card onPress={() => router.push(`/job/${co.jobId}`)} label={t('home.waitingSignature')} style={{ paddingVertical: 10 }}>
           <ListRow
             icon="edit-3"

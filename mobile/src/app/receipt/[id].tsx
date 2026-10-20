@@ -2,10 +2,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { NewJobForm } from '@/components/new-job';
 import { Sheet } from '@/components/sheet';
-import { Button, Card, Checkbox, Field, Hair, PageHeader, Pill, Row, Screen, SwitchRow, T, type Tone } from '@/components/ui';
+import { Button, ButtonRow, Card, Checkbox, Field, Hair, PageHeader, Pill, Row, Screen, SwitchRow, T, type Tone } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, jobById, receiptById } from '@/data/selectors';
+import { customerOf, itemCostWithTax, jobById, receiptById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import type { ReceiptItem } from '@/data/types';
 import { useLang } from '@/i18n';
@@ -27,6 +28,7 @@ export default function SortReceipt() {
   const [splitJobs, setSplitJobs] = useState<string[]>([]);
   const [fixOpen, setFixOpen] = useState(false);
   const [fixText, setFixText] = useState('');
+  const [newOpen, setNewOpen] = useState(false);
 
   const nameOf = (item: ReceiptItem) => state.fixedNames[item.id] ?? item.name;
   const isFlagged = (item: ReceiptItem) => !!item.flagged && !state.fixedNames[item.id];
@@ -47,13 +49,15 @@ export default function SortReceipt() {
   };
 
   return (
-    <Screen>
-      <PageHeader
-        title={`${receipt.store} #${receipt.number}`}
-        sub={`${receipt.date === sample.TODAY ? t('common.today') : f.date(receipt.date)} · ${f.money(total)}`}
-        back={() => router.back()}
-        right={<Pill label={`${done}/${receipt.items.length}`} tone="inverse" />}
-      />
+    <Screen
+      header={
+        <PageHeader
+          title={`${receipt.store} #${receipt.number}`}
+          sub={`${receipt.date === sample.TODAY ? t('common.today') : f.date(receipt.date)} · ${f.money(total)}`}
+          back={() => router.back()}
+          right={<Pill label={`${done}/${receipt.items.length}`} tone="inverse" />}
+        />
+      }>
 
       {current ? (
         <Card style={{ gap: 14, padding: 20 }}>
@@ -63,7 +67,10 @@ export default function SortReceipt() {
               <T v="h2" style={{ flex: 1 }}>
                 {nameOf(current)} <T v="h2" muted>{current.qtyLabel}</T>
               </T>
-              <T v="money" style={{ fontSize: 21 }}>{f.money(current.costCents)}</T>
+              <View style={{ alignItems: 'flex-end' }}>
+                <T v="money" style={{ fontSize: 21 }}>{f.money(itemCostWithTax(current))}</T>
+                {itemCostWithTax(current) !== current.costCents ? <T v="small" muted>{t('receipt.inclTax', { amount: f.money(itemCostWithTax(current) - current.costCents) })}</T> : null}
+              </View>
             </Row>
           </View>
           <Hair />
@@ -97,16 +104,16 @@ export default function SortReceipt() {
               </Pressable>
             );
           })}
-          <Button label={t('common.newJob')} icon="plus" variant="outline" />
-          <Row gap={8}>
+          <Button label={t('common.newJob')} icon="plus" variant="outline" onPress={() => setNewOpen(true)} />
+          <ButtonRow>
             <Button label={t('receipt.split')} variant="soft" flex onPress={() => setSplitOpen(true)} />
             <Button label={t('receipt.personal')} variant="soft" flex onPress={() => actions.assign(current.id, { type: 'personal' })} />
             <Button label={t('receipt.overhead')} variant="soft" flex onPress={() => actions.assign(current.id, { type: 'overhead' })} />
-          </Row>
+          </ButtonRow>
           <SwitchRow
             label={t('receipt.markup', {
-              pct: f.pct(sample.business.markupBps),
-              amount: f.money(state.markupOff[current.id] ? current.costCents : applyMarkup(current.costCents, sample.business.markupBps)),
+              pct: f.pct(state.settings.markupBps),
+              amount: f.money(state.markupOff[current.id] ? itemCostWithTax(current) : applyMarkup(itemCostWithTax(current), state.settings.markupBps)),
             })}
             value={!state.markupOff[current.id]}
             onChange={() => actions.toggleMarkup(current.id)}
@@ -135,7 +142,7 @@ export default function SortReceipt() {
             <Row key={item.id} gap={10} style={{ minHeight: 52, borderTopWidth: 1, borderTopColor: p.line, paddingVertical: 6 }}>
               <T v="small" muted style={{ width: 16, fontFamily: font.semi }}>{item.line}</T>
               <T v="body" style={{ flex: 1 }} numberOfLines={2}>{nameOf(item)}</T>
-              <T v="money" style={{ fontFamily: font.medium, fontSize: 15 }}>{f.money(item.costCents)}</T>
+              <T v="money" style={{ fontFamily: font.medium, fontSize: 15 }}>{f.money(itemCostWithTax(item))}</T>
               <View style={{ width: 96, alignItems: 'flex-end' }}>
                 <Pill label={s.label} tone={s.tone} />
               </View>
@@ -154,7 +161,7 @@ export default function SortReceipt() {
         <T v="body" muted>{t('receipt.splitHelp')}</T>
         {activeJobs.map((job) => {
           const on = splitJobs.includes(job.id);
-          const shares = current && splitJobs.length > 0 ? splitByWeights(current.costCents, splitJobs.map(() => 1)) : [];
+          const shares = current && splitJobs.length > 0 ? splitByWeights(itemCostWithTax(current), splitJobs.map(() => 1)) : [];
           const share = on ? shares[splitJobs.indexOf(job.id)] : undefined;
           return (
             <Row key={job.id} style={{ justifyContent: 'space-between' }}>
@@ -173,6 +180,16 @@ export default function SortReceipt() {
             actions.assign(current.id, { type: 'jobs', jobIds: splitJobs });
             setSplitJobs([]);
             setSplitOpen(false);
+          }}
+        />
+      </Sheet>
+
+      <Sheet open={newOpen} onClose={() => setNewOpen(false)} title={t('newJob.title')}>
+        <NewJobForm
+          onCreated={(id) => {
+            // the item being sorted goes straight onto the new job
+            if (current) actions.assign(current.id, { type: 'jobs', jobIds: [id] });
+            setNewOpen(false);
           }}
         />
       </Sheet>

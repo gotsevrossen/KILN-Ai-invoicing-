@@ -82,13 +82,16 @@ export type Assignment =
   | { type: 'personal' }
   | { type: 'overhead' };
 
-export type Unit = 'sq_ft' | 'board' | 'linear_ft' | 'hour' | 'flat';
+export type Unit = 'sq_ft' | 'board' | 'linear_ft' | 'hour' | 'flat' | 'each' | 'cu_yd';
 
 export interface PriceItem {
   id: string;
   name: string;
   unit: Unit;
-  unitCents: Cents;
+  /** Null until the owner types a price. */
+  unitCents: Cents | null;
+  /** The database row id, once saved to the server. */
+  dbId?: string;
 }
 
 export interface DocLine {
@@ -98,6 +101,27 @@ export interface DocLine {
   qtyHundredths: number;
   unitCents: Cents;
   unit?: Unit;
+}
+
+/** A line on an estimate draft. unitCents is null until the owner sets a price. */
+export interface EstimateLine {
+  id: string;
+  priceItemId?: string;
+  description: string;
+  unit: Unit;
+  qtyHundredths: number;
+  unitCents: Cents | null;
+  /** Heard in a voice note but not in the price list. */
+  fromVoice?: boolean;
+}
+
+export interface EstimateDraft {
+  lines: EstimateLine[];
+  depositOn: boolean;
+  depositBps: number;
+  sent: boolean;
+  /** The customer signed it (by link or on the owner's phone). */
+  signed: boolean;
 }
 
 export interface Suggestion {
@@ -113,11 +137,12 @@ export interface Invoice {
   jobId: string;
   laborDescription: string;
   fees: DocLine[];
-  /** Receipt items the AI put on the draft. */
-  materialItemIds: string[];
+  /** Receipt items the AI put on the draft. Left out = every receipt item sorted to this job. */
+  materialItemIds?: string[];
   suggestion?: Suggestion;
   summary: string;
-  sources: { photos: number; voice: number; receipts: number };
+  /** What KILN built it from. Left out = counted from the job. */
+  sources?: { photos: number; voice: number; receipts: number };
 }
 
 export interface ChangeOrder {

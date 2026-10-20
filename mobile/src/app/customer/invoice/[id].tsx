@@ -3,9 +3,9 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { CustomerPage } from '@/components/customer-page';
-import { Button, Card, Hair, LineRow, Notice, PhotoTile, Row, T } from '@/components/ui';
+import { Button, ButtonRow, Card, Hair, LineRow, Notice, PhotoTile, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, invoiceById, invoiceLines, invoiceTotals, jobById } from '@/data/selectors';
+import { customerOf, invoiceById, invoiceLines, invoiceTotals, jobById, taxScope } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useTFor } from '@/i18n';
 import { addDays, formatters } from '@/lib/format';
@@ -29,6 +29,8 @@ export default function CustomerInvoice() {
   const itemized = (state.materialsMode[invoice.id] ?? 'items') === 'items';
   const shown = itemized ? lines : lines.filter((l) => l.kind !== 'material');
   const pay = () => setPayTapped(true);
+  const scope = taxScope(state);
+  const taxKey = scope === 'all' ? 'customer.taxAll' : scope === 'labor' ? 'customer.taxLabor' : scope === 'materials' ? 'customer.taxMaterials' : null;
 
   return (
     <CustomerPage who={customer.firstName} tc={tc} expires={fc.date(addDays(sample.TODAY, 45))}>
@@ -40,7 +42,7 @@ export default function CustomerInvoice() {
         </View>
         <View style={{ gap: 2, alignItems: 'flex-end' }}>
           <T v="small" muted>{tc('customer.sent', { date: fc.date(sample.TODAY) })}</T>
-          <T v="label">{tc('customer.due', { date: fc.date(addDays(sample.TODAY, sample.business.dueDays)) })}</T>
+          <T v="label">{tc('customer.due', { date: fc.date(addDays(sample.TODAY, state.settings.dueDays)) })}</T>
         </View>
       </Row>
 
@@ -48,10 +50,10 @@ export default function CustomerInvoice() {
         <T v="eyebrow" color={p.onAccent}>{tc('customer.amountDue')}</T>
         <T v="moneyBig" color={p.onAccent}>{fc.money(totals.due)}</T>
         <Button label={tc('customer.wallet')} variant="dark" big onPress={pay} />
-        <Row gap={8}>
+        <ButtonRow>
           <Button label={tc('customer.card')} variant="soft" flex style={{ backgroundColor: p.card }} onPress={pay} />
           <Button label={tc('customer.bank')} variant="soft" flex style={{ backgroundColor: p.card }} onPress={pay} />
-        </Row>
+        </ButtonRow>
         <Pressable onPress={pay} accessibilityRole="button" style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center' }}>
           <T v="label" color={p.onAccent} style={{ textDecorationLine: 'underline' }}>{tc('customer.payPart')}</T>
         </Pressable>
@@ -71,7 +73,7 @@ export default function CustomerInvoice() {
         {!itemized ? <LineRow label={tc('invoice.materials')} value={fc.money(totals.materials)} /> : null}
         <Hair style={{ marginVertical: 6 }} />
         <LineRow label={tc('customer.subtotal')} value={fc.money(totals.subtotal)} />
-        <LineRow label={tc('customer.taxMaterials', { pct: fc.pct(sample.business.tax.rateBps) })} value={fc.money(totals.tax)} />
+        {taxKey ? <LineRow label={tc(taxKey, { pct: fc.pct(state.settings.tax.rateBps) })} value={fc.money(totals.tax)} /> : null}
         <Hair style={{ marginVertical: 6, backgroundColor: p.ink, height: 2 }} />
         <LineRow label={tc('customer.total')} value={fc.money(totals.total)} strong />
       </Card>

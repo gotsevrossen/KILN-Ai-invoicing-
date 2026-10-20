@@ -40,6 +40,12 @@ KILN is an AI invoicing tool for solo and very small trades businesses: plumbers
 8. **English and Spanish** from the start: app screens, voice notes, AI drafts, and customer pages. The owner's language and each customer's language are set separately. Customer documents use the customer's language.
 9. **Exports.** Invoice and estimate PDFs, spreadsheet download, and a one-way sync of invoices and payments to QuickBooks.
 
+**Job flow:** every job moves through Create → Estimate (can be skipped for small or hourly jobs) → Work (photos, receipts, notes, hours) → Invoice (built on "Job done" from the signed estimate, signed change orders, hours, and sorted receipts) → Paid. The job screen shows this as a progress bar and always offers one big next-step button.
+
+**Trades and setup:** first-run setup asks the business name, language, which trades they do (pick all that apply: plumbing, electrical, HVAC, drywall, painting, flooring, handyman, carpentry/decks, lawn care, landscaping), and how they usually charge. Job types, estimate questions, and the starter price list come from the trades (`mobile/src/data/trades.ts`). Starter items have **no prices**; the owner types their own.
+
+**Receipt tax:** when receipt items are sorted to jobs, each item's cost includes its share of the receipt's tax (split by price, to the cent). Markup applies to that cost, so invoices don't add sales tax on materials by default (owner can turn it on in Settings).
+
 **Labor:** set per job, either flat price or hourly. Hourly jobs use hours the owner types in by hand (no timer).
 
 **Pricing details:** materials shown itemized or as one total (owner picks per invoice); markup is built into prices and never shown as its own line. Card fee for customers is an on/off setting. Due date is a default the owner can change per invoice, with an optional late fee. Saved terms and warranty are added to every estimate and invoice. 2–3 invoice templates plus logo and color.
@@ -60,8 +66,8 @@ KILN is an AI invoicing tool for solo and very small trades businesses: plumbers
 
 ## Tech stack
 
-- **App:** Expo SDK 58 (React Native) + TypeScript (strict), Expo Router, in `mobile/`. One codebase for iOS, Android, and web. Read `mobile/AGENTS.md` and the versioned Expo docs before touching an Expo API. Add packages with `npx expo install`.
-- **Backend:** Supabase: Postgres, Auth, Storage, Row Level Security, Edge Functions.
+- **App:** Expo SDK 57 (React Native) + TypeScript (strict), Expo Router, in `mobile/`. On SDK 57, not 58, so the App Store's Expo Go can open it; upgrade to 58 once Expo Go supports it (expected early Nov 2026) with `npx expo install expo@~58 --fix`. One codebase for iOS, Android, and web. Read `mobile/AGENTS.md` and the versioned Expo docs before touching an Expo API. Add packages with `npx expo install`.
+- **Backend:** Supabase: Postgres, Auth, Storage, Row Level Security, Edge Functions. For pre-release it runs **locally in Docker** on Rossen's computer (`npx supabase start` in the repo root; project id `kiln`, because the folder name ends in "-" which breaks Docker hostnames). Schema in `supabase/migrations/`; permission tests in `supabase/tests/database/` (`npx supabase test db`). The app reads the server address from `mobile/.env.local` (git-ignored; template in `.env.example`); with no address it runs in example mode. Server secrets go in `supabase/.env` (git-ignored), never in the app. Phones reach the local server through a Cloudflare Tunnel.
 - **Sign-in:** email and password, Sign in with Apple, Sign in with Google. Face ID or fingerprint to open the app after that.
 - **AI:** Claude API for reading receipts (vision), drafting estimates, invoices, change orders, and job summaries, and finding voice commands. Called only from the server (Edge Functions), never from the app directly.
 - **Speech-to-text:** not decided yet. Must handle English, Spanish, and notes that mix both.

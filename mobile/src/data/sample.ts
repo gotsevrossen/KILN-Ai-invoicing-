@@ -3,6 +3,8 @@ import type {
   ChangeOrder,
   Customer,
   CustomerEstimate,
+  EstimateDraft,
+  EstimateLine,
   Invoice,
   Job,
   PriceItem,
@@ -20,7 +22,7 @@ export const business: Business = {
   name: 'Rivera Home Repair',
   phone: '(555) 014-2290',
   markupBps: 2000,
-  tax: { rateBps: 700, labor: false, materials: true },
+  tax: { rateBps: 700, labor: false, materials: false },
   dueDays: 15,
   depositBps: 3000,
   pendingUploads: 3,
@@ -29,6 +31,7 @@ export const business: Business = {
 export const customers: Customer[] = [
   { id: 'linda', name: 'Linda Park', firstName: 'Linda', phone: '(555) 010-4412', lang: 'en' },
   { id: 'tom', name: 'Tom Walsh', firstName: 'Tom', phone: '(555) 010-8810', lang: 'en' },
+  { id: 'kevin', name: 'Kevin Lee', firstName: 'Kevin', phone: '(555) 010-5252', lang: 'en' },
   { id: 'maria', name: 'María Gómez', firstName: 'María', phone: '(555) 010-1515', lang: 'es' },
   { id: 'maple', name: 'Maple Court Apartments', firstName: 'Maple Court', phone: '(555) 010-1200', lang: 'en' },
   { id: 'ana', name: 'Ana Ortega', firstName: 'Ana', phone: '(555) 010-0909', lang: 'es' },
@@ -53,6 +56,15 @@ export const jobs: Job[] = [
     title: 'Walsh deck repair',
     customerId: 'tom',
     address: '88 Ridge Rd',
+    pricing: 'flat',
+    group: 'active',
+    baseStatus: 'live',
+  },
+  {
+    id: 'lee',
+    title: 'Lee porch steps',
+    customerId: 'kevin',
+    address: '52 Cedar St',
     pricing: 'flat',
     group: 'active',
     baseStatus: 'live',
@@ -137,6 +149,16 @@ export const timeline: TimelineItem[] = [
     length: '0:42',
     transcript: 'Old shutoff valve under the sink was seized, so I replaced it. New faucet and supply lines are in. No leaks.',
   },
+  {
+    kind: 'voice',
+    id: 'v3',
+    jobId: 'lee',
+    date: TODAY,
+    time: '9:10 AM',
+    length: '0:38',
+    transcript: 'Rebuild the front porch steps, three steps, about four feet wide. Probably a full day. Haul away the old wood.',
+  },
+  { kind: 'photos', id: 'p3', jobId: 'lee', date: TODAY, time: '9:12 AM', tags: ['before', 'before'] },
   { kind: 'photos', id: 'p2', jobId: 'walsh', date: '2026-10-18', time: '10:05 AM', tags: ['before', 'before', 'during', 'during'] },
   {
     kind: 'voice',
@@ -230,5 +252,20 @@ export const customerEstimates: CustomerEstimate[] = [
   },
 ];
 
-/** Starting inputs for the Walsh deck estimate builder. */
-export const walshEstimateInputs = { deckSqFt: 240, boards: 18, railingFt: 32 };
+/** Walsh deck: estimate already signed. */
+const walshEstimateLines: EstimateLine[] = [
+  { id: 'w1', priceItemId: 'deck-board', description: 'Replace deck boards', unit: 'board', qtyHundredths: 1800, unitCents: 2400 },
+  { id: 'w2', priceItemId: 'railing', description: 'Repair railing', unit: 'linear_ft', qtyHundredths: 3200, unitCents: 1800 },
+  { id: 'w3', priceItemId: 'wash-seal', description: 'Wash and seal deck', unit: 'sq_ft', qtyHundredths: 24000, unitCents: 110 },
+];
+
+/** Lee porch steps: draft not sent yet. The haul-away came from a voice note and has no price. */
+const leeEstimateLines: EstimateLine[] = [
+  { id: 'l1', priceItemId: 'labor', description: 'Rebuild porch steps', unit: 'hour', qtyHundredths: 800, unitCents: 8500 },
+  { id: 'l2', description: 'Haul away old wood', unit: 'flat', qtyHundredths: 100, unitCents: null, fromVoice: true },
+];
+
+export const initialEstimates: Record<string, EstimateDraft> = {
+  walsh: { lines: walshEstimateLines, depositOn: true, depositBps: 3000, sent: true, signed: true },
+  lee: { lines: leeEstimateLines, depositOn: true, depositBps: 3000, sent: false, signed: false },
+};

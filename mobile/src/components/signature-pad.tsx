@@ -19,20 +19,36 @@ function toPath(points: Point[]): string {
 
 /**
  * Finger signature. Calls onInk() when the signer starts drawing.
- * To clear it, the parent changes its `key` so a fresh pad mounts.
+ * onDrawing(true/false) tells the screen to stop scrolling while a finger is down,
+ * otherwise the page moves under the finger. To clear it, the parent changes its `key`.
  */
-export function SignaturePad({ placeholder, label, onInk }: { placeholder: string; label: string; onInk: () => void }) {
+export function SignaturePad({
+  placeholder,
+  label,
+  onInk,
+  onDrawing,
+}: {
+  placeholder: string;
+  label: string;
+  onInk: () => void;
+  onDrawing: (drawing: boolean) => void;
+}) {
   const p = usePalette();
   const [width, setWidth] = useState(0);
   const [strokes, setStrokes] = useState<Point[][]>([]);
 
   const [responder] = useState(() =>
     PanResponder.create({
+      // claim the touch before the scrolling page can
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: (e) => {
         const { locationX: x, locationY: y } = e.nativeEvent;
+        onDrawing(true);
         setStrokes((all) => [...all, [{ x, y }]]);
         onInk();
       },
@@ -40,6 +56,8 @@ export function SignaturePad({ placeholder, label, onInk }: { placeholder: strin
         const { locationX: x, locationY: y } = e.nativeEvent;
         setStrokes((all) => (all.length === 0 ? all : [...all.slice(0, -1), [...all[all.length - 1], { x, y }]]));
       },
+      onPanResponderRelease: () => onDrawing(false),
+      onPanResponderTerminate: () => onDrawing(false),
     }),
   );
 
@@ -48,6 +66,10 @@ export function SignaturePad({ placeholder, label, onInk }: { placeholder: strin
       accessible
       accessibilityLabel={label}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      // touch down turns scrolling off right away, before the page starts to move
+      onTouchStart={() => onDrawing(true)}
+      onTouchEnd={() => onDrawing(false)}
+      onTouchCancel={() => onDrawing(false)}
       style={{ height: HEIGHT, borderRadius: radius.sm, backgroundColor: p.card, borderWidth: 1.5, borderStyle: 'dashed', borderColor: p.ink, overflow: 'hidden' }}
       {...responder.panHandlers}>
       {strokes.length === 0 ? (

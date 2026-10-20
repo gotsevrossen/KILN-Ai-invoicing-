@@ -1,0 +1,12 @@
+# Supabase
+.branches
+.temp
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
+
+# server secrets (Claude, Stripe, Deepgram, OpenAI, Resend): never commit
+.env
+functions/.env

@@ -2,9 +2,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { Button, Card, Checkbox, Field, Hair, Icon, IconButton, LineRow, Notice, PageHeader, PhotoTile, Pill, Row, Screen, Segmented, SwitchRow, T } from '@/components/ui';
+import { Button, ButtonRow, Card, Checkbox, Field, Hair, Icon, IconButton, LineRow, Notice, PageHeader, PhotoTile, Pill, Row, Screen, Segmented, SwitchRow, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, hoursFor, invoiceById, invoiceLines, invoiceTotals, jobById, receiptItemById, billedPrice, suggestionOpen } from '@/data/selectors';
+import { customerOf, hoursFor, invoiceById, invoiceLines, invoiceTotals, jobById, receiptItemById, billedPrice, suggestionOpen, taxScope, invoiceSources } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { addDays, useFormat } from '@/lib/format';
@@ -22,6 +22,8 @@ export default function InvoiceDraft() {
   const job = jobById(invoice.jobId);
   const customer = customerOf(job);
   const sent = state.sentInvoices.includes(invoice.id);
+  const paid = state.paidInvoices.includes(invoice.id);
+  const sources = invoiceSources(state, invoice);
 
   const [summary, setSummary] = useState(invoice.summary);
   const [showLocation, setShowLocation] = useState(false);
@@ -36,15 +38,31 @@ export default function InvoiceDraft() {
   const suggestion = invoice.suggestion;
   const showSuggestion = suggestion && suggestionOpen(state, invoice);
   const suggestionPrice = suggestion ? billedPrice(state, receiptItemById(suggestion.receiptItemId), job.id) : 0;
-  const dueDate = addDays(sample.TODAY, sample.business.dueDays);
+  const dueDays = state.settings.dueDays;
+  const dueDate = addDays(sample.TODAY, dueDays);
+  const scope = taxScope(state);
+  const taxKey = scope === 'all' ? 'invoice.taxAll' : scope === 'labor' ? 'invoice.taxLabor' : scope === 'materials' ? 'invoice.taxMaterials' : null;
 
   return (
     <Screen
+      header={
+        <PageHeader
+          title={t('invoice.title')}
+          sub={`${job.title} · #${invoice.number}`}
+          back={() => router.back()}
+          right={<Pill label={paid ? t('flow.paid') : sent ? t('invoice.sentPill') : t('invoice.notSent')} tone={paid ? 'accent' : sent ? 'inverse' : 'outline'} />}
+        />
+      }
       footer={
-        sent ? (
+        paid ? (
+          <Notice text={t('flow.paidDone')} icon="check-circle" tone="accent" />
+        ) : sent ? (
           <>
             <Notice text={t('invoice.sentDone', { name: customer.firstName })} icon="send" />
-            <Button label={t('invoice.seeAsCustomer', { name: customer.firstName })} variant="outline" icon="eye" onPress={() => router.push(`/customer/invoice/${invoice.id}`)} />
+            <ButtonRow gap={10}>
+              <Button label={t('invoice.seeAsCustomer', { name: customer.firstName })} variant="outline" icon="eye" flex onPress={() => router.push(`/customer/invoice/${invoice.id}`)} />
+              <Button label={t('flow.markPaid')} icon="dollar-sign" variant="dark" flex onPress={() => actions.markPaid(invoice.id)} />
+            </ButtonRow>
           </>
         ) : (
           <>
@@ -66,17 +84,11 @@ export default function InvoiceDraft() {
           </>
         )
       }>
-      <PageHeader
-        title={t('invoice.title')}
-        sub={`${job.title} · #${invoice.number}`}
-        back={() => router.back()}
-        right={<Pill label={sent ? t('invoice.sentPill') : t('invoice.notSent')} tone={sent ? 'inverse' : 'outline'} />}
-      />
       <T v="small" muted>
         {t('invoice.builtFrom', {
-          photos: invoice.sources.photos,
-          voice: invoice.sources.voice,
-          receipts: invoice.sources.receipts,
+          photos: sources.photos,
+          voice: sources.voice,
+          receipts: sources.receipts,
           hours: f.qty(hoursFor(state, job.id)),
         })}
       </T>
@@ -89,10 +101,10 @@ export default function InvoiceDraft() {
           </Row>
           <T v="h3" color={p.onFlag}>{suggestion.title}</T>
           <T v="body" color={p.onFlag}>{t(suggestion.reasonKey)}</T>
-          <Row gap={8}>
+          <ButtonRow>
             <Button label={t('invoice.addIt', { amount: f.money(suggestionPrice) })} variant="dark" flex onPress={() => actions.acceptSuggestion(suggestion.id)} />
             <Button label={t('invoice.notBillable')} variant="outline" onPress={() => actions.dismissSuggestion(suggestion.id)} />
-          </Row>
+          </ButtonRow>
         </Card>
       ) : null}
 
@@ -124,10 +136,10 @@ export default function InvoiceDraft() {
         ) : (
           <LineRow label={t('invoice.materials')} value={f.money(totals.materials)} />
         )}
-        <T v="small" muted>{t('invoice.markupHidden', { pct: f.pct(sample.business.markupBps) })}</T>
+        <T v="small" muted>{t('invoice.markupHidden', { pct: f.pct(state.settings.markupBps) })}</T>
         <Hair style={{ marginVertical: 8 }} />
         <LineRow label={t('invoice.subtotal')} value={f.money(totals.subtotal)} />
-        <LineRow label={t('invoice.taxMaterials', { pct: f.pct(sample.business.tax.rateBps) })} value={f.money(totals.tax)} />
+        {taxKey ? <LineRow label={t(taxKey, { pct: f.pct(state.settings.tax.rateBps) })} value={f.money(totals.tax)} /> : null}
         <Row style={{ justifyContent: 'space-between', backgroundColor: p.inverse, borderRadius: radius.sm, padding: 16, marginTop: 8 }}>
           <T v="eyebrow" color={p.onInverse}>{t('invoice.total')}</T>
           <T v="money" color={p.onInverse} style={{ fontFamily: font.black, fontSize: 28 }}>{f.money(totals.total)}</T>
@@ -145,7 +157,7 @@ export default function InvoiceDraft() {
       </Card>
 
       <Card style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <T v="body">{t('invoice.dueIn', { days: sample.business.dueDays })}</T>
+        <T v="body">{dueDays === 0 ? t('invoice.dueOnReceipt') : t('invoice.dueIn', { days: dueDays })}</T>
         <T v="money">{f.date(dueDate)}</T>
       </Card>
     </Screen>

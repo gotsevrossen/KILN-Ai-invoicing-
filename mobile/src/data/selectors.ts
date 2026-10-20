@@ -1,8 +1,8 @@
 import { applyMarkup, documentTotals, percentOf, splitByWeights, type Cents, type Totals } from '@/lib/money';
 
 import * as sample from './sample';
-import type { State } from './store';
-import type { ChangeOrder, Customer, DocLine, Invoice, Job, Receipt, ReceiptItem } from './types';
+import { emptyDraft, type State } from './store';
+import type { ChangeOrder, Customer, DocLine, EstimateDraft, Invoice, Job, Receipt, ReceiptItem } from './types';
 
 // Read-only views over the example data plus what the owner changed this session.
 
@@ -44,12 +44,24 @@ export function hoursFor(state: State, jobId: string): number {
 }
 
 /** What this job pays for an item: its even share if the item was split across jobs. */
+/**
+ * What an item really cost: its price plus its share of the receipt's tax.
+ * The tax is split across the receipt's items by price, to the cent (the shares add
+ * back to the receipt's tax exactly). This is the cost that goes on jobs and gets markup.
+ */
+export function itemCostWithTax(item: ReceiptItem): Cents {
+  const receipt = sample.receipts.find((r) => r.items.some((i) => i.id === item.id));
+  if (!receipt || receipt.taxCents === 0) return item.costCents;
+  const shares = splitByWeights(receipt.taxCents, receipt.items.map((i) => i.costCents));
+  return item.costCents + shares[receipt.items.findIndex((i) => i.id === item.id)];
+}
+
 export function shareOf(state: State, item: ReceiptItem, jobId: string): Cents {
   const a = state.assignments[item.id];
   if (!a || a.type !== 'jobs') return 0;
   const index = a.jobIds.indexOf(jobId);
   if (index === -1) return 0;
-  return splitByWeights(item.costCents, a.jobIds.map(() => 1))[index];
+  return splitByWeights(itemCostWithTax(item), a.jobIds.map(() => 1))[index];
 }
 
 export function partsCost(state: State, jobId: string): Cents {
@@ -69,19 +81,30 @@ export function receiptsOnJob(state: State, jobId: string) {
 }
 
 export function billedPrice(state: State, item: ReceiptItem, jobId: string): Cents {
-  const share = shareOf(state, item, jobId) || item.costCents;
-  return state.markupOff[item.id] ? share : applyMarkup(share, sample.business.markupBps);
+  const share = shareOf(state, item, jobId) || itemCostWithTax(item);
+  return state.markupOff[item.id] ? share : applyMarkup(share, state.settings.markupBps);
 }
 
+/**
+ * An invoice's lines, built from the job right now: the signed estimate, signed
+ * change orders, logged hours (hourly jobs), fees, and receipt items with markup.
+ */
 export function invoiceLines(state: State, invoice: Invoice): DocLine[] {
   const job = jobById(invoice.jobId);
   const lines: DocLine[] = [];
+  const draft = state.estimates[job.id];
+  if (draft?.signed) lines.push(...estimateDocLines(draft).map((l) => ({ ...l, id: `est-${l.id}` })));
+  for (const co of changeOrdersForJob(job.id)) {
+    if (state.signed[co.id]) lines.push({ id: co.id, kind: 'labor', description: co.description, qtyHundredths: 100, unitCents: co.amountCents });
+  }
   const hours = hoursFor(state, job.id);
   if (job.pricing === 'hourly' && job.rateCents && hours > 0) {
     lines.push({ id: 'labor', kind: 'labor', description: invoice.laborDescription, qtyHundredths: hours, unitCents: job.rateCents, unit: 'hour' });
   }
   lines.push(...invoice.fees);
-  const materialIds = [...invoice.materialItemIds];
+  const materialIds = invoice.materialItemIds
+    ? [...invoice.materialItemIds]
+    : receiptsOnJob(state, job.id).flatMap((r) => r.items.map((i) => i.id));
   if (invoice.suggestion && state.acceptedSuggestions.includes(invoice.suggestion.id)) {
     materialIds.push(invoice.suggestion.receiptItemId);
   }
@@ -93,8 +116,21 @@ export function invoiceLines(state: State, invoice: Invoice): DocLine[] {
   return lines;
 }
 
+/** What KILN built the invoice from, for the "built from" line. */
+export function invoiceSources(state: State, invoice: Invoice) {
+  if (invoice.sources) return invoice.sources;
+  const jobId = invoice.jobId;
+  const photos =
+    sample.timeline.reduce((a, x) => (x.jobId === jobId && x.kind === 'photos' ? a + x.tags.length : a), 0) +
+    state.captures.filter((c) => c.jobId === jobId && c.kind === 'photo').length;
+  const voice =
+    sample.timeline.filter((x) => x.jobId === jobId && x.kind === 'voice').length +
+    state.captures.filter((c) => c.jobId === jobId && c.kind === 'voice').length;
+  return { photos, voice, receipts: receiptsOnJob(state, jobId).length };
+}
+
 export function invoiceTotals(state: State, invoice: Invoice): Totals {
-  return documentTotals(invoiceLines(state, invoice), sample.business.tax);
+  return documentTotals(invoiceLines(state, invoice), state.settings.tax);
 }
 
 export function suggestionOpen(state: State, invoice: Invoice): boolean {
@@ -106,24 +142,21 @@ export function changeOrderTotal(co: ChangeOrder): Cents {
   return co.baseCents + co.amountCents;
 }
 
-export function estimateLines(state: State, names: { boards: string; railing: string; wash: string; haul: string }): DocLine[] {
-  const price = (id: string) => sample.priceList.find((p) => p.id === id)!;
-  const e = state.estimate;
-  const lines: DocLine[] = [
-    { id: 'boards', kind: 'labor', description: names.boards, qtyHundredths: e.boards * 100, unitCents: price('deck-board').unitCents, unit: 'board' },
-    { id: 'railing', kind: 'labor', description: names.railing, qtyHundredths: e.railingFt * 100, unitCents: price('railing').unitCents, unit: 'linear_ft' },
-    { id: 'wash', kind: 'labor', description: names.wash, qtyHundredths: e.deckSqFt * 100, unitCents: price('wash-seal').unitCents, unit: 'sq_ft' },
-  ];
-  if (e.haulCents !== null) {
-    lines.push({ id: 'haul', kind: 'fee', description: names.haul, qtyHundredths: 100, unitCents: e.haulCents, unit: 'flat' });
-  }
-  return lines.filter((l) => l.qtyHundredths > 0);
+export function estimateDraft(state: State, jobId: string): EstimateDraft {
+  return state.estimates[jobId] ?? emptyDraft(state);
 }
 
-export function estimateTotals(state: State) {
-  const lines = estimateLines(state, { boards: '', railing: '', wash: '', haul: '' });
-  const totals = documentTotals(lines, { rateBps: 0, labor: false, materials: false });
-  return { ...totals, deposit: percentOf(totals.total, sample.business.depositBps) };
+/** Priced lines, ready for the money math. Lines still waiting for a price are left out. */
+export function estimateDocLines(draft: EstimateDraft): DocLine[] {
+  return draft.lines
+    .filter((l) => l.unitCents !== null && l.qtyHundredths > 0)
+    .map((l) => ({ id: l.id, kind: 'labor', description: l.description, qtyHundredths: l.qtyHundredths, unitCents: l.unitCents ?? 0, unit: l.unit }));
+}
+
+export function estimateTotals(state: State, jobId: string) {
+  const draft = estimateDraft(state, jobId);
+  const totals = documentTotals(estimateDocLines(draft), { rateBps: 0, labor: false, materials: false });
+  return { ...totals, deposit: draft.depositOn ? percentOf(totals.total, draft.depositBps) : 0 };
 }
 
 export type JobStatus =
@@ -135,14 +168,50 @@ export type JobStatus =
   | 'overdue'
   | 'repeat'
   | 'viewed'
-  | 'paid';
+  | 'paid'
+  | 'needsEstimate';
+
+/** The steps every job moves through. */
+export type Stage = 'estimate' | 'work' | 'invoice' | 'paid';
+export type StageDetail = 'estimateDraft' | 'estimateWaiting' | 'working' | 'invoiceDraft' | 'invoiceSent' | 'paid';
+
+export function jobStage(state: State, job: Job): { stage: Stage; detail: StageDetail } {
+  if (job.baseStatus === 'paid') return { stage: 'paid', detail: 'paid' };
+  const invoice = invoiceForJob(job.id);
+  if (invoice) {
+    if (state.paidInvoices.includes(invoice.id)) return { stage: 'paid', detail: 'paid' };
+    return { stage: 'invoice', detail: state.sentInvoices.includes(invoice.id) ? 'invoiceSent' : 'invoiceDraft' };
+  }
+  if (job.baseStatus === 'overdue' || job.baseStatus === 'viewed') return { stage: 'invoice', detail: 'invoiceSent' };
+  if (job.baseStatus === 'repeat') return { stage: 'work', detail: 'working' };
+  if (job.baseStatus === 'estimateSent') return { stage: 'estimate', detail: 'estimateWaiting' };
+  const draft = state.estimates[job.id];
+  if (draft?.signed || state.skippedEstimates.includes(job.id) || changeOrdersForJob(job.id).length > 0) {
+    return { stage: 'work', detail: 'working' };
+  }
+  return { stage: 'estimate', detail: draft?.sent ? 'estimateWaiting' : 'estimateDraft' };
+}
 
 export function jobStatus(state: State, job: Job): JobStatus {
   if (job.baseStatus !== 'live') return job.baseStatus;
   const invoice = invoiceForJob(job.id);
-  if (invoice) return state.sentInvoices.includes(invoice.id) ? 'sent' : 'invoiceReady';
-  const pending = changeOrdersForJob(job.id).some((co) => !state.signed[co.id]);
-  return pending ? 'needsSignature' : 'inProgress';
+  if (invoice) {
+    if (state.paidInvoices.includes(invoice.id)) return 'paid';
+    return state.sentInvoices.includes(invoice.id) ? 'sent' : 'invoiceReady';
+  }
+  if (changeOrdersForJob(job.id).some((co) => !state.signed[co.id])) return 'needsSignature';
+  const { detail } = jobStage(state, job);
+  if (detail === 'estimateDraft') return 'needsEstimate';
+  if (detail === 'estimateWaiting') return 'estimateSent';
+  return 'inProgress';
+}
+
+/** Which Jobs tab a job shows under, now. */
+export function jobGroup(state: State, job: Job): Job['group'] {
+  const { stage, detail } = jobStage(state, job);
+  if (stage === 'paid') return 'paid';
+  if (detail === 'invoiceSent') return 'done';
+  return job.group;
 }
 
 export function jobAmount(state: State, job: Job): Cents {
@@ -152,6 +221,7 @@ export function jobAmount(state: State, job: Job): Cents {
   if (cos.length) return cos.reduce((a, co) => a + (state.signed[co.id] ? co.amountCents : 0), cos[0].baseCents);
   const est = sample.customerEstimates.find((e) => e.jobId === job.id);
   if (est) return documentTotals(est.lines, { rateBps: 0, labor: false, materials: false }).total;
+  if (state.estimates[job.id]?.lines.length) return estimateTotals(state, job.id).total;
   return job.amountCents ?? 0;
 }
 
@@ -175,4 +245,12 @@ export function homeSummary(state: State) {
     if (status === 'paid') paidCents += amount;
   }
   return { owed, overdueCount, overdueCents, paidCents };
+}
+
+/** Which tax label to show: on everything, labor only, or materials only. Null when nothing is taxed. */
+export function taxScope(state: State): 'all' | 'labor' | 'materials' | null {
+  const { tax } = state.settings;
+  if (tax.rateBps === 0 || (!tax.labor && !tax.materials)) return null;
+  if (tax.labor && tax.materials) return 'all';
+  return tax.labor ? 'labor' : 'materials';
 }

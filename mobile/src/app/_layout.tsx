@@ -12,6 +12,7 @@ import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AuthProvider } from '@/data/auth';
 import { StoreProvider } from '@/data/store';
 import { LanguageProvider } from '@/i18n';
 import { dark, light } from '@/theme/tokens';
@@ -36,13 +37,19 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <LanguageProvider>
         <StoreProvider>
+          <AuthProvider>
           <ThemeProvider value={theme}>
             <StatusBar style="auto" />
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: p.ground } }}>
               <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="change-order/[id]" options={{ presentation: 'fullScreenModal' }} />
+              {/* signing screens: no swipe-back, or a left-to-right signature stroke leaves the screen */}
+              <Stack.Screen name="change-order/[id]" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
+              <Stack.Screen name="customer/estimate/[id]" options={{ gestureEnabled: false, fullScreenGestureEnabled: false }} />
+              <Stack.Screen name="setup" options={{ gestureEnabled: false }} />
+              <Stack.Screen name="sign-in" options={{ gestureEnabled: false }} />
             </Stack>
           </ThemeProvider>
+          </AuthProvider>
         </StoreProvider>
       </LanguageProvider>
     </SafeAreaProvider>

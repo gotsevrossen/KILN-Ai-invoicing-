@@ -6,7 +6,7 @@ import { CustomerPage } from '@/components/customer-page';
 import { SignaturePad } from '@/components/signature-pad';
 import { Button, Card, Checkbox, Field, Hair, LineRow, Notice, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, estimateLines, jobById } from '@/data/selectors';
+import { customerOf, estimateDocLines, estimateDraft, jobById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import type { DocLine } from '@/data/types';
 import { useTFor } from '@/i18n';
@@ -18,7 +18,7 @@ import { usePalette } from '@/theme/use-palette';
 /** Customer estimate page. `id` is a sent estimate (e-208) or a job whose draft is being previewed (walsh). */
 export default function CustomerEstimate() {
   const p = usePalette();
-  const { state } = useStore();
+  const { state, actions } = useStore();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const saved = sample.customerEstimates.find((e) => e.id === id);
@@ -27,22 +27,20 @@ export default function CustomerEstimate() {
   const tc = useTFor(customer.lang);
   const fc = formatters(customer.lang);
 
-  const draftNames = {
-    boards: sample.priceList.find((x) => x.id === 'deck-board')!.name,
-    railing: sample.priceList.find((x) => x.id === 'railing')!.name,
-    wash: sample.priceList.find((x) => x.id === 'wash-seal')!.name,
-    haul: tc('estimate.noPriceTitle'),
-  };
-  const lines: DocLine[] = saved ? saved.lines : estimateLines(state, draftNames);
+  // a sent estimate, or this job's draft (lines without a price yet are left off)
+  const draft = saved ? null : estimateDraft(state, job.id);
+  const lines: DocLine[] = saved ? saved.lines : estimateDocLines(draft!);
   // non-breaking hyphen keeps "E-208" on one line under the big title
   const number = (saved ? saved.number : 'E-209').replace('-', '‑');
   const goodUntil = saved ? saved.goodUntil : addDays(sample.TODAY, 14);
   const total = documentTotals(lines, { rateBps: 0, labor: false, materials: false }).total;
-  const askDeposit = saved ? true : state.estimate.depositOn;
-  const deposit = askDeposit ? percentOf(total, sample.business.depositBps) : 0;
+  const askDeposit = draft ? draft.depositOn : true;
+  const depositBps = draft ? draft.depositBps : sample.business.depositBps;
+  const deposit = askDeposit ? percentOf(total, depositBps) : 0;
 
   const [name, setName] = useState('');
   const [hasInk, setHasInk] = useState(false);
+  const [drawing, setDrawing] = useState(false);
   const [padKey, setPadKey] = useState(0);
   const [agreed, setAgreed] = useState(false);
   const [done, setDone] = useState(false);
@@ -50,7 +48,7 @@ export default function CustomerEstimate() {
   const unit = (l: DocLine) => (l.unit ? tc(`estimate.units.${l.unit}`) : '');
 
   return (
-    <CustomerPage who={customer.firstName} tc={tc} expires={fc.date(goodUntil)}>
+    <CustomerPage who={customer.firstName} tc={tc} expires={fc.date(goodUntil)} scrollEnabled={!drawing}>
       <View style={{ gap: 4 }}>
         <T v="title">{tc('customer.estimateNo', { n: number })}</T>
         <T v="small" muted>
@@ -74,7 +72,7 @@ export default function CustomerEstimate() {
       {askDeposit ? (
         <Card tone="inverse" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <View style={{ flex: 1, gap: 2 }}>
-            <T v="label" color={p.onInverse}>{tc('customer.depositTitle', { pct: fc.pct(sample.business.depositBps) })}</T>
+            <T v="label" color={p.onInverse}>{tc('customer.depositTitle', { pct: fc.pct(depositBps) })}</T>
             <T v="small" color={p.onInverseMuted}>{tc('customer.depositSub')}</T>
           </View>
           <T v="money" color={p.onInverse} style={{ fontFamily: font.black, fontSize: 24 }}>{fc.money(deposit)}</T>
@@ -93,14 +91,18 @@ export default function CustomerEstimate() {
                 <T v="label" style={{ textDecorationLine: 'underline' }}>{tc('changeOrder.clear')}</T>
               </Pressable>
             </Row>
-            <SignaturePad key={padKey} placeholder={tc('customer.signHere')} label={tc('customer.signFinger')} onInk={() => setHasInk(true)} />
+            <SignaturePad key={padKey} placeholder={tc('customer.signHere')} label={tc('customer.signFinger')} onInk={() => setHasInk(true)} onDrawing={setDrawing} />
           </View>
           <Checkbox
             label={tc('customer.accept', { total: fc.money(total), deposit: fc.money(deposit) })}
             value={agreed}
             onChange={setAgreed}
           />
-          <Button label={tc('customer.signPay')} big disabled={!ready} onPress={() => setDone(true)} style={{ borderRadius: radius.sm }} />
+          <Button label={tc('customer.signPay')} big disabled={!ready} onPress={() => {
+              // signing a draft moves the job on to the work step
+              if (!saved) actions.signEstimate(job.id);
+              setDone(true);
+            }} style={{ borderRadius: radius.sm }} />
           <Pressable onPress={() => router.back()} accessibilityRole="button" style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center' }}>
             <T v="label" style={{ textDecorationLine: 'underline' }}>{tc('customer.decline')}</T>
           </Pressable>

@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { JobPicker, Sheet } from '@/components/sheet';
-import { Button, Card, Field, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
-import { jobById } from '@/data/selectors';
+import { Button, ButtonRow, Card, Field, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
+import * as sample from '@/data/sample';
+import { jobById, unsortedItems } from '@/data/selectors';
 import { useStore, type CaptureKind } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -54,23 +55,31 @@ export default function Capture() {
     setNote('');
   };
 
-  const parkJob = jobById('park');
+  // example voice command: only in example mode (the Park job doesn't exist in a real account)
+  const parkJob = sample.jobs.find((j) => j.id === 'park');
+  // a receipt still waiting to be sorted; real receipt scanning (camera + AI) comes next
+  const receiptToSort = sample.receipts.find((r) => unsortedItems(state, r).length > 0) ?? sample.receipts[0];
+  const [receiptSoon, setReceiptSoon] = useState(false);
 
   return (
-    <Screen tabs>
-      <PageHeader title={t('capture.title')} sub={t('capture.sub')} />
+    <Screen
+      header={
+        <PageHeader title={t('capture.title')} sub={t('capture.sub')} />
+      } tabs>
 
       <Row gap={12}>
         <Tile icon="mic" label={t('capture.voice')} accent onPress={() => setMode('voice')} />
         <Tile icon="camera" label={t('capture.photo')} onPress={() => setMode('photo')} />
       </Row>
       <Row gap={12}>
-        <Tile icon="file-text" label={t('capture.receipt')} onPress={() => router.push('/receipt/hd-4471')} />
+        <Tile icon="file-text" label={t('capture.receipt')} onPress={() => (receiptToSort ? router.push(`/receipt/${receiptToSort.id}`) : setReceiptSoon(true))} />
         <Tile icon="edit-3" label={t('capture.note')} onPress={() => setNoteOpen(true)} />
       </Row>
 
       {saved ? <Notice text={t('common.savedTo', { job: saved })} /> : null}
+      {receiptSoon ? <Notice text={t('capture.receiptSoon')} icon="info" tone="soft" /> : null}
 
+      {parkJob ? (
       <Card tone="inverse" style={{ gap: 12, marginTop: 6 }}>
         <Row style={{ justifyContent: 'space-between' }}>
           <T v="eyebrow" color={p.onInverseMuted}>{t('capture.heard')}</T>
@@ -94,13 +103,14 @@ export default function Capture() {
                 </Row>
               ))}
             </View>
-            <Row gap={10}>
+            <ButtonRow gap={10}>
               <Button label={t('capture.addBoth')} icon="check" flex onPress={actions.confirmVoice} />
               <Button label={t('capture.edit')} variant="soft" />
-            </Row>
+            </ButtonRow>
           </>
         )}
       </Card>
+      ) : null}
 
       <JobPicker
         open={mode !== null}

@@ -73,12 +73,18 @@ export function Screen({
   footer,
   tabs,
   scroll = true,
+  scrollEnabled = true,
   noTopInset,
+  header,
 }: {
   children: ReactNode;
+  /** Pinned above the scrolling content (title, back button, progress). Stays put while scrolling. */
+  header?: ReactNode;
   footer?: ReactNode;
   tabs?: boolean;
   scroll?: boolean;
+  /** Turn off while the user draws (signature pad) so the page doesn't move under the finger. */
+  scrollEnabled?: boolean;
   /** Set when something above the screen (like a banner) already covers the status bar. */
   noTopInset?: boolean;
 }) {
@@ -87,8 +93,16 @@ export function Screen({
   const top: ('top' | 'bottom')[] = noTopInset ? [] : ['top'];
   return (
     <SafeAreaView edges={footer || tabs ? top : [...top, 'bottom']} style={{ flex: 1, backgroundColor: p.ground }}>
+      {header ? <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: 4, gap: 12, backgroundColor: p.ground }}>{header}</View> : null}
       {scroll ? (
-        <ScrollView contentContainerStyle={content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={content}
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={scrollEnabled}
+          // iOS: scrolls the focused text box above the keyboard
+          automaticallyAdjustKeyboardInsets
+          keyboardDismissMode="interactive">
+
           {children}
         </ScrollView>
       ) : (
@@ -112,6 +126,11 @@ export function Row({ children, gap = space.sm, style }: { children: ReactNode; 
   return <View style={[{ flexDirection: 'row', alignItems: 'center', gap }, style]}>{children}</View>;
 }
 
+/** A row of buttons that wraps: if the labels don't fit (often in Spanish), the last button moves to its own line. */
+export function ButtonRow({ children, gap = space.sm }: { children: ReactNode; gap?: number }) {
+  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap }}>{children}</View>;
+}
+
 /** Bloom/LightHouse page head: back + actions, big uppercase title, hairline, small line under. */
 export function PageHeader({
   title,
@@ -125,17 +144,28 @@ export function PageHeader({
   right?: ReactNode;
 }) {
   const { t } = useLang();
+  const heading = (
+    <T v="title" accessibilityRole="header" style={{ flexShrink: 1 }}>
+      {title}
+    </T>
+  );
   return (
     <View style={{ gap: 12, marginBottom: 4 }}>
-      {back || right ? (
-        <Row style={{ justifyContent: 'space-between' }}>
-          {back ? <IconButton icon="chevron-left" label={t('common.back')} onPress={back} /> : <View />}
-          <Row>{right}</Row>
+      {back ? (
+        <>
+          <Row style={{ justifyContent: 'space-between' }}>
+            <IconButton icon="chevron-left" label={t('common.back')} onPress={back} />
+            <Row>{right}</Row>
+          </Row>
+          {heading}
+        </>
+      ) : (
+        // no back button: actions sit on the title's line
+        <Row style={{ justifyContent: 'space-between' }} gap={12}>
+          {heading}
+          {right ? <Row>{right}</Row> : null}
         </Row>
-      ) : null}
-      <T v="title" accessibilityRole="header">
-        {title}
-      </T>
+      )}
       <Hair />
       {sub ? <T v="small" muted>{sub}</T> : null}
     </View>
@@ -204,6 +234,7 @@ export function Button({
   disabled,
   style,
   flex,
+  stacked,
 }: {
   label: string;
   onPress?: () => void;
@@ -212,7 +243,10 @@ export function Button({
   big?: boolean;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** Grow to fill the row. Put these in a wrapping Row (ButtonRow) so long labels move to a new line. */
   flex?: boolean;
+  /** Icon above a small label, for a row of equal tiles (e.g. job actions). */
+  stacked?: boolean;
 }) {
   const p = usePalette();
   const colors: Record<ButtonVariant, { bg: string; fg: string; border?: string }> = {
@@ -232,24 +266,39 @@ export function Button({
       accessibilityState={{ disabled }}
       style={({ pressed }) => [
         {
-          minHeight: big ? tap.big : tap.main,
-          paddingHorizontal: 18,
+          minHeight: stacked ? tap.big + 8 : big ? tap.big : tap.main,
+          paddingHorizontal: stacked ? 6 : 16,
+          paddingVertical: stacked ? 8 : 0,
           borderRadius: radius.sm,
           backgroundColor: c.bg,
           borderWidth: c.border ? 1.5 : 0,
           borderColor: c.border,
-          flexDirection: 'row',
+          flexDirection: stacked ? 'column' : 'row',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 8,
+          gap: stacked ? 4 : 8,
           opacity: disabled ? 0.4 : 1,
         },
-        flex && { flex: 1 },
+        // stacked tiles share the row equally; others grow from their own width and wrap when full
+        stacked ? { flex: 1 } : flex && { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' },
         style,
         pressed && styles.pressed,
       ]}>
-      {icon ? <Feather name={icon} size={big ? 22 : 19} color={c.fg} /> : null}
-      <Text style={{ fontFamily: font.bold, fontSize: big ? 19 : 17, color: c.fg }}>{label}</Text>
+      {icon ? <Feather name={icon} size={big || stacked ? 22 : 19} color={c.fg} /> : null}
+      {stacked ? (
+        // whole words wrap to a second line; never a single letter
+        <Text numberOfLines={2} style={{ fontFamily: font.semi, fontSize: 14, lineHeight: 17, textAlign: 'center', color: c.fg }}>
+          {label}
+        </Text>
+      ) : (
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.85}
+          style={{ fontFamily: font.bold, fontSize: big ? 19 : 17, color: c.fg, flexShrink: 1 }}>
+          {label}
+        </Text>
+      )}
     </Pressable>
   );
 }
@@ -301,6 +350,43 @@ export function Pill({ label, tone = 'soft' }: { label: string; tone?: Tone | 'o
         {label}
       </Text>
     </View>
+  );
+}
+
+/** A round choice button; black when selected. Use in a wrapping Row for pick-one options. */
+export function Chip({
+  label,
+  selected,
+  onPress,
+  onPage,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  /** Set when the chip sits on the gray page instead of inside a white card. */
+  onPage?: boolean;
+}) {
+  const p = usePalette();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={label}
+      style={({ pressed }) => [
+        {
+          minHeight: tap.min,
+          minWidth: 64,
+          paddingHorizontal: 18,
+          borderRadius: radius.pill,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: selected ? p.inverse : onPage ? p.card : p.ground,
+        },
+        pressed && styles.pressed,
+      ]}>
+      <Text style={{ fontFamily: font.semi, fontSize: 16, color: selected ? p.onInverse : p.ink }}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -412,12 +498,14 @@ export function Segmented<K extends string>({
 export function SwitchRow({ label, help, value, onChange }: { label: string; help?: string; value: boolean; onChange: (v: boolean) => void }) {
   const p = usePalette();
   return (
-    <Row style={{ minHeight: tap.min, justifyContent: 'space-between' }} gap={12}>
-      <View style={{ flex: 1, gap: 2 }}>
-        <T v="body">{label}</T>
+    <Row style={{ minHeight: tap.min, justifyContent: 'space-between', alignItems: 'center' }} gap={12}>
+      <View style={{ flex: 1, gap: 2, justifyContent: 'center' }}>
+        {/* no fixed line height, so the text's middle lines up with the switch's middle */}
+        <T v="label" style={{ fontSize: 16 }}>{label}</T>
         {help ? <T v="small" muted>{help}</T> : null}
       </View>
       <Switch
+        style={{ alignSelf: 'center' }}
         value={value}
         onValueChange={onChange}
         accessibilityLabel={label}

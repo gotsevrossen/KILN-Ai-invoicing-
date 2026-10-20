@@ -2,9 +2,11 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { NewJobForm } from '@/components/new-job';
+import { Sheet } from '@/components/sheet';
 import { Card, Field, Hair, IconButton, Notice, PageHeader, Pill, Row, Screen, Segmented, T, type Tone } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, hoursFor, jobAmount, jobStatus, type JobStatus } from '@/data/selectors';
+import { customerOf, hoursFor, jobAmount, jobGroup, jobStatus, type JobStatus } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import type { Job, JobGroup } from '@/data/types';
 import { useLang } from '@/i18n';
@@ -21,6 +23,7 @@ const statusTone: Record<JobStatus, Tone | 'outline'> = {
   repeat: 'soft',
   viewed: 'outline',
   paid: 'inverse',
+  needsEstimate: 'flag',
 };
 
 export default function Jobs() {
@@ -29,12 +32,14 @@ export default function Jobs() {
   const { state } = useStore();
   const [group, setGroup] = useState<JobGroup>('active');
   const [query, setQuery] = useState('');
+  const [newOpen, setNewOpen] = useState(false);
 
   const q = query.trim().toLowerCase();
   const matches = (job: Job) =>
     !q || [job.title, job.address, customerOf(job).name].some((s) => s.toLowerCase().includes(q));
-  const count = (g: JobGroup) => sample.jobs.filter((j) => j.group === g).length;
-  const list = sample.jobs.filter((j) => j.group === group && matches(j));
+  // jobs move between tabs as they go: invoice sent -> Done, paid -> Paid
+  const count = (g: JobGroup) => sample.jobs.filter((j) => jobGroup(state, j) === g).length;
+  const list = sample.jobs.filter((j) => jobGroup(state, j) === group && matches(j));
 
   const kindLine = (job: Job) => {
     if (job.repeatWeekday !== undefined) return t('jobs.repeatsEvery', { day: f.weekday(job.repeatWeekday) });
@@ -46,8 +51,10 @@ export default function Jobs() {
     status === 'overdue' ? t('home.overdueDays', { count: job.overdueDays ?? 0 }) : t(`jobs.status.${status}`);
 
   return (
-    <Screen tabs>
-      <PageHeader title={t('jobs.title')} right={<IconButton icon="plus" label={t('common.newJob')} tone="dark" />} />
+    <Screen
+      header={
+        <PageHeader title={t('jobs.title')} right={<IconButton icon="plus" label={t('common.newJob')} tone="dark" onPress={() => setNewOpen(true)} />} />
+      } tabs>
       <Field value={query} onChangeText={setQuery} placeholder={t('jobs.search')} accessibilityLabel={t('jobs.search')} returnKeyType="search" />
       <Segmented
         label={t('jobs.title')}
@@ -82,6 +89,15 @@ export default function Jobs() {
         );
       })}
       <View />
+      <Sheet open={newOpen} onClose={() => setNewOpen(false)} title={t('newJob.title')}>
+        <NewJobForm
+          onCreated={(id) => {
+            setNewOpen(false);
+            setGroup('active');
+            router.push(`/job/${id}`);
+          }}
+        />
+      </Sheet>
     </Screen>
   );
 }
