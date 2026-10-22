@@ -206,6 +206,12 @@ export function starterItemIds(trades: TradeId[]): string[] {
   return ids;
 }
 
+/** Starter items only the removed trade uses. Items a remaining trade still uses (trip fee, labor…) are kept. */
+export function itemsOnlyIn(removed: TradeId, remaining: TradeId[]): string[] {
+  const keep = new Set(starterItemIds(remaining));
+  return starterItemIds([removed]).filter((id) => !keep.has(id));
+}
+
 /** Hourly if most of the chosen trades usually charge by the hour. */
 export function suggestedPricing(trades: TradeId[]): 'hourly' | 'flat' {
   const hourly = trades.filter((id) => tradeById(id).pricing === 'hourly').length;

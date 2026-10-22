@@ -180,7 +180,10 @@ export function jobStage(state: State, job: Job): { stage: Stage; detail: StageD
   const invoice = invoiceForJob(job.id);
   if (invoice) {
     if (state.paidInvoices.includes(invoice.id)) return { stage: 'paid', detail: 'paid' };
-    return { stage: 'invoice', detail: state.sentInvoices.includes(invoice.id) ? 'invoiceSent' : 'invoiceDraft' };
+    const sent = state.sentInvoices.includes(invoice.id);
+    // taken back to work from an unsent draft; once sent, there's no going back
+    if (!sent && state.reopenedJobs.includes(job.id)) return { stage: 'work', detail: 'working' };
+    return { stage: 'invoice', detail: sent ? 'invoiceSent' : 'invoiceDraft' };
   }
   if (job.baseStatus === 'overdue' || job.baseStatus === 'viewed') return { stage: 'invoice', detail: 'invoiceSent' };
   if (job.baseStatus === 'repeat') return { stage: 'work', detail: 'working' };
@@ -197,7 +200,8 @@ export function jobStatus(state: State, job: Job): JobStatus {
   const invoice = invoiceForJob(job.id);
   if (invoice) {
     if (state.paidInvoices.includes(invoice.id)) return 'paid';
-    return state.sentInvoices.includes(invoice.id) ? 'sent' : 'invoiceReady';
+    if (state.sentInvoices.includes(invoice.id)) return 'sent';
+    if (!state.reopenedJobs.includes(job.id)) return 'invoiceReady';
   }
   if (changeOrdersForJob(job.id).some((co) => !state.signed[co.id])) return 'needsSignature';
   const { detail } = jobStage(state, job);

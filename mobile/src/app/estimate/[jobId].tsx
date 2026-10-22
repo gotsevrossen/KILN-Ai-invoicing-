@@ -15,6 +15,12 @@ import { lineTotal } from '@/lib/money';
 import { font, radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
+/** Job type id for "Custom": a job none of the trade's job types fit. */
+const CUSTOM = 'custom';
+
+/** Hourly jobs: trips the estimate counts. Fixed at 1 for now. */
+const ESTIMATED_TRIPS = 1;
+
 /** Quick deposit choices, in basis points (3000 = 30%). */
 const DEPOSIT_CHOICES = [1000, 2500, 3000, 5000];
 
@@ -125,7 +131,16 @@ export default function EstimateBuilder() {
   const [tradeId, setTradeId] = useState<TradeId>(trades.includes('carpentry') && job.id === 'walsh' ? 'carpentry' : trades[0]);
   const trade = tradeById(trades.includes(tradeId) ? tradeId : trades[0]);
   const [jobTypeId, setJobTypeId] = useState<string>(trade.jobTypes[0].id);
+  const isCustom = jobTypeId === CUSTOM;
   const jobType = trade.jobTypes.find((jt) => jt.id === jobTypeId) ?? trade.jobTypes[0];
+  // Custom job: the owner picks which price list items to give quantities for
+  const [customAsk, setCustomAsk] = useState<string[]>([]);
+  const [pickOpen, setPickOpen] = useState(false);
+  // hourly jobs: hours go in the hours box at the top, so labor isn't asked twice
+  const hourly = job.pricing === 'hourly';
+  const [hoursText, setHoursText] = useState('');
+  const asks = (isCustom ? customAsk : jobType.ask).filter((id) => !(hourly && id === 'labor'));
+  const extrasFor = isCustom ? [] : (jobType.extras ?? []);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState(firstVoice && firstVoice.kind === 'voice' ? firstVoice.transcript : '');
   const [built, setBuilt] = useState(false);
@@ -147,18 +162,36 @@ export default function EstimateBuilder() {
   /** The owner's price list item, or the starter item (no price yet) if they removed it. */
   const priceItem = (id: string): PriceItem =>
     state.priceList.find((x) => x.id === id) ?? { id, name: t(`items.${id}` as 'items.trip'), unit: ITEM_UNITS[id] ?? 'flat', unitCents: null };
+  const laborItem = priceItem('labor');
+  const tripItem = priceItem('trip');
+  // the job's own rate first, then the labor price on the price list
+  const hourlyRate = job.rateCents ?? laborItem.unitCents;
 
   // Example stand-in for the AI: quantities the owner typed become lines from their price list.
   // The real app also reads the description, voice notes, and photos.
   const build = () => {
-    for (const id of jobType.ask) {
+    // items this build already handled, so an extra (like the trip fee) isn't added twice
+    const handled = new Set<string>();
+    if (hourly) {
+      const hours = parseQty(hoursText);
+      if (hours !== null) {
+        const existing = draft.lines.find((l) => l.priceItemId === 'labor');
+        if (existing) actions.updateLine(job.id, existing.id, { qtyHundredths: hours, unitCents: hourlyRate });
+        else actions.addLines(job.id, [{ ...fromItem(laborItem, hours), unitCents: hourlyRate }]);
+        handled.add('labor');
+      }
+      if (!draft.lines.some((l) => l.priceItemId === 'trip')) actions.addLines(job.id, [fromItem(tripItem, ESTIMATED_TRIPS * 100)]);
+      handled.add('trip');
+    }
+    for (const id of asks) {
       const qty = parseQty(answers[id] ?? '');
       if (qty === null) continue;
       const existing = draft.lines.find((l) => l.priceItemId === id);
       if (existing) actions.updateLine(job.id, existing.id, { qtyHundredths: qty });
       else actions.addLines(job.id, [fromItem(priceItem(id), qty)]);
+      handled.add(id);
     }
-    const extras = (jobType.extras ?? []).filter((id) => !draft.lines.some((l) => l.priceItemId === id));
+    const extras = extrasFor.filter((id) => !handled.has(id) && !draft.lines.some((l) => l.priceItemId === id));
     actions.addLines(job.id, extras.map((id) => fromItem(priceItem(id))));
     setBuilt(true);
   };
@@ -191,6 +224,36 @@ export default function EstimateBuilder() {
       }>
 
       <T v="eyebrow">{t('estimate.details')}</T>
+      {hourly ? (
+        <Card style={{ gap: 0, paddingVertical: 6 }}>
+          <Row style={{ minHeight: 64, justifyContent: 'space-between' }} gap={10}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <T v="body">{t('estimate.hoursLabel')}</T>
+              <T v="small" muted>{hourlyRate !== null ? t('estimate.hoursAt', { rate: f.money(hourlyRate) }) : t('settings.needsPrice')}</T>
+            </View>
+            <TextInput
+              value={hoursText}
+              onChangeText={setHoursText}
+              keyboardType="decimal-pad"
+              accessibilityLabel={t('estimate.hoursLabel')}
+              placeholder="0"
+              placeholderTextColor={p.muted}
+              selectTextOnFocus
+              style={{ width: 86, minHeight: tap.min, borderRadius: radius.xs, backgroundColor: p.ground, textAlign: 'right', paddingHorizontal: 12, fontFamily: font.bold, fontSize: 18, color: p.ink }}
+            />
+            <T v="small" muted style={{ width: 64 }}>{unitLabel('hour')}</T>
+          </Row>
+          {/* trips are fixed for now; the estimate always counts this many */}
+          <Row style={{ minHeight: 64, borderTopWidth: 1, borderTopColor: p.line, justifyContent: 'space-between' }} gap={10}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <T v="body">{t('estimate.trips')}</T>
+              <T v="small" muted>{tripItem.unitCents !== null ? t('estimate.tripsAt', { price: f.money(tripItem.unitCents) }) : t('settings.needsPrice')}</T>
+            </View>
+            <T v="money" style={{ width: 86, textAlign: 'right', paddingHorizontal: 12, fontSize: 18 }}>{ESTIMATED_TRIPS}</T>
+            <View style={{ width: 64 }} />
+          </Row>
+        </Card>
+      ) : null}
       {trades.length > 1 ? (
         <Row gap={8} style={{ flexWrap: 'wrap' }}>
           {trades.map((id) => (
@@ -209,15 +272,20 @@ export default function EstimateBuilder() {
       ) : null}
       <Row gap={8} style={{ flexWrap: 'wrap' }}>
         {trade.jobTypes.map((jt) => (
-          <Chip key={jt.id} label={t(`jobTypes.${jt.id}` as 'jobTypes.leak')} selected={jt.id === jobType.id} onPress={() => setJobTypeId(jt.id)} onPage />
+          <Chip key={jt.id} label={t(`jobTypes.${jt.id}` as 'jobTypes.leak')} selected={!isCustom && jt.id === jobType.id} onPress={() => setJobTypeId(jt.id)} onPage />
         ))}
+        <Chip label={t('estimate.customType')} selected={isCustom} onPress={() => setJobTypeId(CUSTOM)} onPage />
       </Row>
-      {jobType.ask.length ? (
+      {isCustom ? <T v="small" muted>{t('estimate.customTypeHelp')}</T> : null}
+      {asks.length ? (
         <Card style={{ gap: 0, paddingVertical: 6 }}>
-          {jobType.ask.map((id, i) => {
+          {asks.map((id, i) => {
             const item = priceItem(id);
             return (
               <Row key={id} style={{ minHeight: 64, borderTopWidth: i ? 1 : 0, borderTopColor: p.line, justifyContent: 'space-between' }} gap={10}>
+                {isCustom ? (
+                  <IconButton icon="x" label={t('estimate.remove', { item: item.name })} onPress={() => setCustomAsk((ids) => ids.filter((x) => x !== id))} />
+                ) : null}
                 <T v="body" style={{ flex: 1 }}>{item.name}</T>
                 <TextInput
                   value={answers[id] ?? ''}
@@ -234,6 +302,9 @@ export default function EstimateBuilder() {
             );
           })}
         </Card>
+      ) : null}
+      {isCustom ? (
+        <Button label={t('estimate.pickItem')} icon="plus" variant="soft" style={{ backgroundColor: p.card }} onPress={() => setPickOpen(true)} />
       ) : null}
       <Field label={t('estimate.notesLabel')} value={notes} onChangeText={setNotes} placeholder={t('estimate.notesPlaceholder')} multiline style={{ minHeight: 96, paddingTop: 14, textAlignVertical: 'top', fontSize: 16 }} />
       {voice.length || photoCount ? (
@@ -329,6 +400,23 @@ export default function EstimateBuilder() {
             }}
           />
         ))}
+      </Sheet>
+
+      <Sheet open={pickOpen} onClose={() => setPickOpen(false)} title={t('estimate.pickItem')}>
+        {state.priceList
+          .filter((item) => !customAsk.includes(item.id) && !(hourly && item.id === 'labor'))
+          .map((item) => (
+            <ListRow
+              key={item.id}
+              icon="tag"
+              title={item.name}
+              sub={unitLabel(item.unit) || undefined}
+              onPress={() => {
+                setCustomAsk((ids) => [...ids, item.id]);
+                setPickOpen(false);
+              }}
+            />
+          ))}
       </Sheet>
 
       <Sheet open={customOpen} onClose={() => setCustomOpen(false)} title={t('estimate.customTitle')}>

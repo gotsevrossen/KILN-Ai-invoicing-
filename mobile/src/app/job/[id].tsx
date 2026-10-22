@@ -6,7 +6,7 @@ import { Sheet } from '@/components/sheet';
 import { Stepper } from '@/components/stepper';
 import { Button, Card, Field, Hair, Icon, IconButton, ListRow, Notice, PageHeader, PhotoTile, Row, Screen, T, type IconName } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { changeOrdersForJob, customerOf, hoursFor, invoiceForJob, jobById, jobStage, partsCost, receiptsOnJob, unsortedItems } from '@/data/selectors';
+import { changeOrdersForJob, customerOf, hoursFor, invoiceForJob, jobById, jobStage, partsCost, receiptsOnJob, unsortedItems, type Stage } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -55,6 +55,23 @@ export default function JobDetail() {
   const [photoAdded, setPhotoAdded] = useState(false);
   const [receiptSoon, setReceiptSoon] = useState(false);
   const hoursValue = parseHours(hoursText);
+  const canUnskip = state.skippedEstimates.includes(job.id) && !draft?.signed && !draft?.sent && !invoice && !co;
+
+  // ---------- tapping the progress bar ----------
+  // a draft opens in the builder; once sent or signed, it opens as the customer sees it
+  const estimateRoute: Href = draft && !draft.signed && !sentEstimate ? builderRoute : draft || sentEstimate ? customerEstimateRoute : builderRoute;
+  const onStep: Partial<Record<Stage, () => void>> = {
+    estimate: canUnskip
+      ? () => actions.unskipEstimate(job.id)
+      : draft || sentEstimate || stage === 'estimate'
+        ? () => router.push(estimateRoute)
+        : undefined,
+    // back from an unsent invoice draft; a sent invoice locks the work
+    work: detail === 'invoiceDraft' ? () => actions.reopenWork(job.id) : undefined,
+    // only opens an invoice that exists, so a stray tap never makes one
+    invoice: invoice && stage !== 'paid' ? () => router.push(`/invoice/${actions.finishJob(job.id)}`) : undefined,
+    paid: invoice && stage === 'paid' ? () => router.push(`/invoice/${invoice.id}`) : undefined,
+  };
 
   // ---------- what's next ----------
   type Next = { title: string; body: string; action?: { label: string; icon: IconName; onPress: () => void }; extra?: ReactNode };
@@ -82,12 +99,16 @@ export default function JobDetail() {
             icon: 'check',
             onPress: () => router.push(`/invoice/${actions.finishJob(job.id)}`),
           },
+          // undo a skipped estimate, but only while nothing has been signed or invoiced
+          extra: canUnskip ? <Button label={t('flow.backToEstimate')} icon="corner-up-left" variant="ghost" onPress={() => actions.unskipEstimate(job.id)} /> : undefined,
         };
       case 'invoiceDraft':
         return {
           title: t('flow.invoiceDraft'),
           body: t('flow.invoiceDraftBody'),
           action: invoice ? { label: t('flow.reviewInvoice'), icon: 'file-text', onPress: () => router.push(`/invoice/${invoice.id}`) } : undefined,
+          // not sent yet, so the owner can still add hours, photos, or receipts
+          extra: <Button label={t('flow.backToWork')} icon="corner-up-left" variant="ghost" onPress={() => actions.reopenWork(job.id)} />,
         };
       case 'invoiceSent':
         return {
@@ -194,7 +215,7 @@ export default function JobDetail() {
               </>
             }
           />
-          <Stepper stage={stage} />
+          <Stepper stage={stage} onStep={onStep} />
         </>
       }
       footer={next.action ? <Button label={next.action.label} icon={next.action.icon} big onPress={next.action.onPress} /> : undefined}>

@@ -1,5 +1,5 @@
 import Feather from '@expo/vector-icons/Feather';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import type { Stage } from '@/data/selectors';
 import { useLang } from '@/i18n';
@@ -8,8 +8,11 @@ import { usePalette } from '@/theme/use-palette';
 
 const STEPS: Stage[] = ['estimate', 'work', 'invoice', 'paid'];
 
-/** Estimate · Work · Invoice · Paid, with done steps checked and the current step in orange. */
-export function Stepper({ stage }: { stage: Stage }) {
+/**
+ * Estimate · Work · Invoice · Paid, with done steps checked and the current step in orange.
+ * A step with an action in `onStep` can be tapped (open that step's page, or go back to it).
+ */
+export function Stepper({ stage, onStep = {} }: { stage: Stage; onStep?: Partial<Record<Stage, () => void>> }) {
   const p = usePalette();
   const { t } = useLang();
   const current = STEPS.indexOf(stage);
@@ -17,18 +20,22 @@ export function Stepper({ stage }: { stage: Stage }) {
   const doneUpTo = stage === 'paid' ? STEPS.length : current;
 
   return (
-    <View
-      accessible
-      accessibilityRole="progressbar"
-      accessibilityLabel={t('flow.stepOf', { n: current + 1, name: t(`flow.${stage}`) })}
-      style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
       {STEPS.map((step, i) => {
         const done = i < doneUpTo;
         const now = i === current && stage !== 'paid';
         const bg = done ? p.inverse : now ? p.accent : 'transparent';
         const fg = done ? p.onInverse : now ? p.onAccent : p.muted;
+        const action = onStep[step];
         return (
-          <View key={step} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
+          <Pressable
+            key={step}
+            onPress={action}
+            disabled={!action}
+            accessibilityRole={action ? 'button' : 'text'}
+            accessibilityState={{ selected: now, disabled: !action }}
+            accessibilityLabel={t('flow.stepOf', { n: i + 1, name: t(`flow.${step}`) })}
+            style={({ pressed }) => ({ flex: 1, alignItems: 'center', gap: 4, minHeight: 52, opacity: pressed ? 0.6 : 1 })}>
             <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
               <View style={{ flex: 1, height: 2, backgroundColor: i === 0 ? 'transparent' : i <= doneUpTo ? p.inverse : p.line }} />
               <View
@@ -57,7 +64,7 @@ export function Stepper({ stage }: { stage: Stage }) {
               style={{ fontFamily: now ? font.bold : font.medium, fontSize: 13, color: done || now ? p.ink : p.muted }}>
               {t(`flow.${step}`)}
             </Text>
-          </View>
+          </Pressable>
         );
       })}
     </View>

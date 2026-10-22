@@ -1,16 +1,16 @@
-import Feather from '@expo/vector-icons/Feather';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import { PriceListEditor } from '@/components/price-list-editor';
+import { TradePicker } from '@/components/trade-picker';
 import { Button, Field, IconButton, Notice, Row, Screen, Segmented, T } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import { useStore } from '@/data/store';
-import { ITEM_UNITS, TRADES, starterItemIds, suggestedPricing, type TradeId } from '@/data/trades';
+import { ITEM_UNITS, starterItemIds, suggestedPricing, type TradeId } from '@/data/trades';
 import type { PriceItem } from '@/data/types';
 import { useLang } from '@/i18n';
-import { font, radius } from '@/theme/tokens';
+import { radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
 const STEPS = 4;
@@ -128,36 +128,7 @@ export default function Setup() {
         <>
           <T v="title">{t('setup.tradesTitle')}</T>
           <T v="body" muted>{t('setup.tradesBody')}</T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            {TRADES.map((trade) => {
-              const on = trades.includes(trade.id);
-              return (
-                <Pressable
-                  key={trade.id}
-                  onPress={() => toggleTrade(trade.id)}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: on }}
-                  accessibilityLabel={t(`trades.${trade.id}`)}
-                  style={({ pressed }) => ({
-                    width: '48%',
-                    flexGrow: 1,
-                    minHeight: 96,
-                    borderRadius: radius.md,
-                    padding: 14,
-                    gap: 8,
-                    justifyContent: 'space-between',
-                    backgroundColor: on ? p.inverse : p.card,
-                    opacity: pressed ? 0.85 : 1,
-                  })}>
-                  <Row style={{ justifyContent: 'space-between' }}>
-                    <Feather name={trade.icon} size={26} color={on ? p.accent : p.ink} />
-                    {on ? <Feather name="check-circle" size={22} color={p.accent} /> : null}
-                  </Row>
-                  <Text style={{ fontFamily: font.bold, fontSize: 16, color: on ? p.onInverse : p.ink }}>{t(`trades.${trade.id}`)}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <TradePicker value={trades} onToggle={toggleTrade} />
         </>
       ) : null}
 

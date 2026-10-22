@@ -15,7 +15,7 @@ function parseDollars(text: string): number | null {
   return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 100) : null;
 }
 
-/** New job: customer, what and where, how you charge. Optional extras stay folded away. */
+/** New job: customer and address, what the job is, how you charge. Optional extras stay folded away. */
 export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }) {
   const p = usePalette();
   const { t } = useLang();
@@ -70,6 +70,10 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
     onCreated(id);
   };
 
+  const addressField = (
+    <Field label={t('newJob.address')} value={address} onChangeText={setAddress} placeholder={t('newJob.addressPlaceholder')} autoComplete="street-address" />
+  );
+
   return (
     <View style={{ gap: 14 }}>
       <T v="eyebrow">{t('newJob.customer')}</T>
@@ -120,7 +124,6 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
       ) : (
         <>
           <Field label={t('newJob.name')} value={name} onChangeText={setName} autoComplete="name" autoCapitalize="words" />
-          <Field label={t('newJob.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
           <T v="label">{t('newJob.customerLang')}</T>
           <Segmented
             label={t('newJob.customerLang')}
@@ -131,12 +134,15 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
               { key: 'es', label: 'Español' },
             ]}
           />
+          {addressField}
+          <Field label={t('newJob.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
         </>
       )}
+      {/* an existing customer's address is filled in from their last job */}
+      {mode === 'existing' ? addressField : null}
 
       <Hair />
       <Field label={t('newJob.jobTitle')} value={title} onChangeText={setTitle} placeholder={t('newJob.jobTitlePlaceholder')} autoCapitalize="sentences" />
-      <Field label={t('newJob.address')} value={address} onChangeText={setAddress} placeholder={t('newJob.addressPlaceholder')} autoComplete="street-address" />
 
       <T v="label">{t('newJob.pricing')}</T>
       <Segmented

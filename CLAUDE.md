@@ -68,7 +68,7 @@ KILN is an AI invoicing tool for solo and very small trades businesses: plumbers
 
 - **App:** Expo SDK 57 (React Native) + TypeScript (strict), Expo Router, in `mobile/`. On SDK 57, not 58, so the App Store's Expo Go can open it; upgrade to 58 once Expo Go supports it (expected early Nov 2026) with `npx expo install expo@~58 --fix`. One codebase for iOS, Android, and web. Read `mobile/AGENTS.md` and the versioned Expo docs before touching an Expo API. Add packages with `npx expo install`.
 - **Backend:** Supabase: Postgres, Auth, Storage, Row Level Security, Edge Functions. For pre-release it runs **locally in Docker** on Rossen's computer (`npx supabase start` in the repo root; project id `kiln`, because the folder name ends in "-" which breaks Docker hostnames). Schema in `supabase/migrations/`; permission tests in `supabase/tests/database/` (`npx supabase test db`). The app reads the server address from `mobile/.env.local` (git-ignored; template in `.env.example`); with no address it runs in example mode. Server secrets go in `supabase/.env` (git-ignored), never in the app. Phones reach the local server through a Cloudflare Tunnel.
-- **Sign-in:** email and password, Sign in with Apple, Sign in with Google. Face ID or fingerprint to open the app after that.
+- **Sign-in:** email and password, Sign in with Apple, Sign in with Google. Face ID or fingerprint to open the app after that. **To add later:** after signing up with email, the owner verifies their email by typing a 6-digit code KILN emails them (a code, not a link, so they never leave the app). Supabase supports this; it needs the email sending service from "Decided" first. Until then, sign-up works without verifying.
 - **AI:** Claude API for reading receipts (vision), drafting estimates, invoices, change orders, and job summaries, and finding voice commands. Called only from the server (Edge Functions), never from the app directly.
 - **Speech-to-text:** not decided yet. Must handle English, Spanish, and notes that mix both.
 - **Languages:** all app text kept in translation files (`mobile/src/i18n/en.ts` and `es.ts`, using `i18n-js` + `expo-localization`). TypeScript checks that both files have the same keys. No hard-coded strings in screens.
@@ -129,6 +129,7 @@ Rossen is a cybersecurity student with Security+. Security is part of KILN's pit
 
 - One login per business for now. Design for helpers later.
 - Sending: texts from the owner's phone, emails from KILN. Automatic reminders go by email; text reminders are one tap for the owner.
+- KILN's emails come from KILN's own automated address, never the owner's or customer's email. "From" shows the business name (e.g. "Mike's Plumbing (via KILN)"), and Reply-To is the owner's email so customer replies reach them. Not a true "noreply" address. Set up later in development: a KILN domain with a separate sending sub-address, SPF/DKIM/DMARC records, and a sending service called only from an Edge Function. The same service also sends sign-in emails (password reset). Until then, local Supabase catches all emails at http://127.0.0.1:54324.
 - Sales tax for the first version: the owner sets one rate and switches tax on or off for labor and materials.
 - KILN's own pricing: leaning toward a monthly subscription. No billing needed in the first version.
 
@@ -140,3 +141,4 @@ Rossen is a cybersecurity student with Security+. Security is part of KILN's pit
 - KILN's exact price
 - Automatic sales tax by state
 - When to build the contractor web dashboard
+- KILN's domain and email sending service (leaning Resend to start; Postmark is the backup)

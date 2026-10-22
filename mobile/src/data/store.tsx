@@ -86,6 +86,8 @@ export interface State {
   estimates: Record<string, EstimateDraft>;
   /** Jobs where the owner chose to skip the estimate step. */
   skippedEstimates: string[];
+  /** Jobs taken back from an unsent invoice draft to the Work step (the draft is kept). */
+  reopenedJobs: string[];
   paidInvoices: string[];
   captures: Capture[];
   cardFee: boolean;
@@ -118,6 +120,7 @@ function initialState(): State {
     signed: {},
     estimates: JSON.parse(JSON.stringify(initialEstimates)) as Record<string, EstimateDraft>,
     skippedEstimates: [],
+    reopenedJobs: [],
     paidInvoices: [],
     captures: [],
     cardFee: false,
@@ -161,6 +164,7 @@ function connectedState(base: State): State {
     signed: {},
     estimates: {},
     skippedEstimates: [],
+    reopenedJobs: [],
     paidInvoices: [],
     captures: [],
     mode: 'connected',
@@ -196,11 +200,16 @@ const subscribe = (l: () => void) => {
   };
 };
 
+// saves run one at a time, in order, so a quick off-then-on can't reach the server backwards
+let saveQueue: Promise<void> = Promise.resolve();
+
 /** Save to the server in connected mode. A failed save is shown to the owner, never dropped silently. */
 function persist(task: (businessId: string) => Promise<void>): void {
   const { mode, businessId } = get();
   if (mode !== 'connected' || !businessId) return;
-  task(businessId).catch((e: unknown) => set((x) => ({ ...x, syncError: e instanceof Error ? e.message : String(e) })));
+  saveQueue = saveQueue
+    .then(() => task(businessId))
+    .catch((e: unknown) => set((x) => ({ ...x, syncError: e instanceof Error ? e.message : String(e) })));
 }
 
 /** Puts a business loaded from the server in place of whatever was showing. */
@@ -283,6 +292,17 @@ function makeActions() {
     skipEstimate(jobId: string) {
       set((s) => (s.skippedEstimates.includes(jobId) ? s : { ...s, skippedEstimates: [...s.skippedEstimates, jobId] }));
     },
+    /** Undo "Skip estimate" (the job screen only offers it before anything is signed or invoiced). */
+    unskipEstimate(jobId: string) {
+      set((s) => ({ ...s, skippedEstimates: s.skippedEstimates.filter((id) => id !== jobId) }));
+    },
+    /**
+     * Back to the Work step from an invoice draft that hasn't been sent, to add hours, photos,
+     * or receipts. The draft is kept; its lines always come from the job, so they update.
+     */
+    reopenWork(jobId: string) {
+      set((s) => (s.reopenedJobs.includes(jobId) ? s : { ...s, reopenedJobs: [...s.reopenedJobs, jobId] }));
+    },
     /** The customer signed the estimate (example build: from the customer page preview). */
     signEstimate(jobId: string) {
       set((s) => withDraft(s, jobId, (d) => ({ ...d, sent: true, signed: true })));
@@ -293,6 +313,8 @@ function makeActions() {
      * estimate, signed change orders, hours, and sorted receipt items.
      */
     finishJob(jobId: string): string {
+      // done again after going back to work: same draft, now with the new hours and receipts
+      set((s) => (s.reopenedJobs.includes(jobId) ? { ...s, reopenedJobs: s.reopenedJobs.filter((id) => id !== jobId) } : s));
       const existing = invoices.find((i) => i.jobId === jobId);
       if (existing) return existing.id;
       const job = jobs.find((j) => j.id === jobId);
@@ -377,6 +399,18 @@ function makeActions() {
       set((s) => ({ ...s, priceList: s.priceList.map((p) => (p.id === itemId ? { ...p, unitCents: cents } : p)) }));
       const item = get().priceList.find((p) => p.id === itemId);
       if (item) persist((bid) => dbApi.savePrice(bid, item));
+    },
+    /**
+     * Changes the work the owner does. New trades bring their starter items (no prices);
+     * a trade that's turned off takes away the items only it used. The owner's own items stay.
+     */
+    setTrades(trades: TradeId[], newItems: PriceItem[], removedItemIds: string[] = []) {
+      set((s) => ({
+        ...s,
+        profile: { ...s.profile, trades },
+        priceList: [...s.priceList.filter((i) => !removedItemIds.includes(i.id)), ...newItems],
+      }));
+      persist((bid) => dbApi.saveTrades(bid, trades, newItems, removedItemIds));
     },
     setCardFee(on: boolean) {
       set((s) => ({ ...s, cardFee: on }));

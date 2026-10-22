@@ -169,6 +169,28 @@ export async function saveSettings(businessId: string, s: PricingSettings, cardF
   );
 }
 
+/**
+ * Saves the owner's trades, adds the starter items new trades bring (skipping any already there),
+ * and deletes the starter items of a trade turned off. Estimate lines keep their own copy of
+ * name and price, so deleting an item never changes an estimate.
+ */
+export async function saveTrades(businessId: string, trades: TradeId[], newItems: PriceItem[], removedItemIds: string[]): Promise<void> {
+  ok(await db().from('businesses').update({ trades }).eq('id', businessId));
+  if (removedItemIds.length) {
+    ok(await db().from('price_list_items').delete().eq('business_id', businessId).in('catalog_id', removedItemIds));
+  }
+  if (newItems.length) {
+    ok(
+      await db()
+        .from('price_list_items')
+        .upsert(
+          newItems.map((p) => ({ business_id: businessId, catalog_id: p.id, name: p.name, unit: p.unit, unit_cents: p.unitCents })),
+          { onConflict: 'business_id,catalog_id', ignoreDuplicates: true },
+        ),
+    );
+  }
+}
+
 /** Saves a price. Items not in the database yet (an owner-added starter item) are added. */
 export async function savePrice(businessId: string, item: PriceItem): Promise<void> {
   if (item.dbId) {
