@@ -1,11 +1,14 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { EstimateLineRow, parseDollars, pickJobType, useEstimate, useLineMaker } from '@/components/estimate-parts';
+import { FixList } from '@/components/fix-list';
 import { PriceItemPicker } from '@/components/price-item-picker';
+import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Button, ButtonRow, Card, Field, Hair, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
+import { hasJob } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { estimateReady } from '@/lib/billing';
@@ -23,7 +26,7 @@ function clip(text: string, max = 60): string {
  * Estimate builder: the line items, with job details, customer text, and deposit
  * each one tap away on their own page (like Settings).
  */
-export default function EstimateBuilder() {
+function EstimateBuilder() {
   const p = usePalette();
   const { t } = useLang();
   const f = useFormat();
@@ -42,6 +45,10 @@ export default function EstimateBuilder() {
   const optionalFees = [...new Set([...(hourly ? ['trip'] : []), ...(isCustom ? [] : (jobType.extras ?? []))])]
     .filter((id) => !draft.lines.some((line) => line.priceItemId === id && !line.excluded));
   const ready = estimateReady(draft);
+  // the marked rows above; the general rule covers anything else blocking Send
+  const toFix = draft.lines.filter((l) => !l.excluded && (l.unitCents === null || l.qtyHundredths <= 0 || !l.description.trim())).length;
+  const fixes = draft.lines.length === 0 || ready ? []
+    : [{ key: 'lines', text: toFix ? t('estimate.linesToFix', { count: toFix }) : t('review.unresolved') }];
   const customCents = customPrice.trim() ? parseDollars(customPrice) : null;
   const customBad = customPrice.trim().length > 0 && customCents === null;
 
@@ -96,7 +103,7 @@ export default function EstimateBuilder() {
           ))}
         </Card>
       )}
-      {draft.lines.length > 0 && !ready ? <Notice text={t('review.unresolved')} tone="soft" /> : null}
+      <FixList items={fixes} />
       {optionalFees.length ? <Card style={{ gap: 10 }}>
         <T v="eyebrow">{t('review.optionalFees')}</T>
         {optionalFees.map((id) =>
@@ -146,4 +153,10 @@ export default function EstimateBuilder() {
       </Sheet>
     </Screen>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function EstimateBuilderRoute() {
+  const { jobId } = useLocalSearchParams<{ jobId: string }>();
+  return <RecordGate found={() => hasJob(jobId)}><EstimateBuilder /></RecordGate>;
 }

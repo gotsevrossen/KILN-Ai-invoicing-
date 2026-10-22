@@ -223,7 +223,7 @@ export function Card({
 
 // ---------- Buttons ----------
 
-type ButtonVariant = 'primary' | 'dark' | 'outline' | 'soft' | 'ghost';
+type ButtonVariant = 'primary' | 'dark' | 'outline' | 'soft' | 'ghost' | 'danger';
 
 export function Button({
   label,
@@ -255,6 +255,8 @@ export function Button({
     outline: { bg: 'transparent', fg: p.ink, border: p.ink },
     soft: { bg: p.ground, fg: p.ink },
     ghost: { bg: 'transparent', fg: p.ink },
+    // for actions that can't be undone, like deleting
+    danger: { bg: p.danger, fg: p.onDanger },
   };
   const c = colors[variant];
   return (

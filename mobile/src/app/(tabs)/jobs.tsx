@@ -2,8 +2,6 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { NewJobForm } from '@/components/new-job';
-import { Sheet } from '@/components/sheet';
 import { Card, Field, Hair, IconButton, Notice, PageHeader, Pill, Row, Screen, Segmented, T, type Tone } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { customerOf, hoursFor, jobAmount, jobGroup, jobStatus, type JobStatus } from '@/data/selectors';
@@ -32,7 +30,6 @@ export default function Jobs() {
   const { state } = useStore();
   const [group, setGroup] = useState<JobGroup>('active');
   const [query, setQuery] = useState('');
-  const [newOpen, setNewOpen] = useState(false);
 
   const q = query.trim().toLowerCase();
   const matches = (job: Job) =>
@@ -53,7 +50,7 @@ export default function Jobs() {
   return (
     <Screen
       header={
-        <PageHeader title={t('jobs.title')} right={<IconButton icon="plus" label={t('common.newJob')} tone="dark" onPress={() => setNewOpen(true)} />} />
+        <PageHeader title={t('jobs.title')} right={<IconButton icon="plus" label={t('common.newJob')} tone="dark" onPress={() => router.push('/new-job')} />} />
       } tabs>
       <Field value={query} onChangeText={setQuery} placeholder={t('jobs.search')} accessibilityLabel={t('jobs.search')} returnKeyType="search" />
       <Segmented
@@ -89,15 +86,6 @@ export default function Jobs() {
         );
       })}
       <View />
-      <Sheet open={newOpen} onClose={() => setNewOpen(false)} title={t('newJob.title')}>
-        <NewJobForm
-          onCreated={(id) => {
-            setNewOpen(false);
-            setGroup('active');
-            router.push(`/job/${id}`);
-          }}
-        />
-      </Sheet>
     </Screen>
   );
 }

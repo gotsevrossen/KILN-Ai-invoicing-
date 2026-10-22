@@ -128,6 +128,8 @@ export interface JobScope {
 }
 
 export interface EstimateDraft {
+  /** Shown to the customer, e.g. E-1001. */
+  number?: string;
   lines: EstimateLine[];
   depositOn: boolean;
   depositBps: number;

@@ -38,7 +38,27 @@ export function receiptItemById(id: string): ReceiptItem {
 export const invoiceForJob = (jobId: string): Invoice | undefined => sample.invoices.find((i) => i.jobId === jobId);
 export const invoiceById = (id: string): Invoice | undefined => sample.invoices.find((i) => i.id === id);
 export const changeOrdersForJob = (jobId: string): ChangeOrder[] => sample.changeOrders.filter((c) => c.jobId === jobId);
+
+/**
+ * A job made by accident can be deleted. One with a sent estimate or invoice, or a change order
+ * the customer answered, is a business record and stays (the server refuses too).
+ */
+export function canDeleteJob(state: State, job: Job): boolean {
+  if (job.baseStatus !== 'live') return false;
+  if (state.estimates[job.id]?.sent || sample.customerEstimates.some((e) => e.jobId === job.id)) return false;
+  if (changeOrdersForJob(job.id).some((c) => state.signed[c.id] || state.declinedChanges.includes(c.id))) return false;
+  return !sample.invoices.some((i) => i.jobId === job.id && state.sentInvoices.includes(i.id));
+}
 export const changeOrderById = (id: string): ChangeOrder | undefined => sample.changeOrders.find((c) => c.id === id);
+
+// Is the record in memory yet? A page opened from a link or a browser refresh can arrive
+// before the signed-in business has loaded; the page waits instead of crashing.
+export const hasJob = (id: string): boolean => sample.jobs.some((j) => j.id === id);
+export const hasReceipt = (id: string): boolean => sample.receipts.some((r) => r.id === id);
+export const hasInvoice = (id: string): boolean => { const i = invoiceById(id); return !!i && hasJob(i.jobId); };
+export const hasChangeOrder = (id: string): boolean => { const c = changeOrderById(id); return !!c && hasJob(c.jobId); };
+/** A customer estimate opens by its own id (sent) or by its job's id (draft preview). */
+export const hasCustomerEstimate = (id: string): boolean => hasJob(sample.customerEstimates.find((e) => e.id === id)?.jobId ?? id);
 
 export function hoursFor(state: State, jobId: string): number {
   return state.timeEntries.filter((t) => t.jobId === jobId).reduce((a, t) => a + t.hundredths, 0);

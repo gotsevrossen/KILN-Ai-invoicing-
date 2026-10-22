@@ -4,11 +4,12 @@ import { View } from 'react-native';
 
 import { ActivityDays, useJobActivity } from '@/components/job-activity';
 import { useJobDocs, type DocStatus } from '@/components/job-docs';
+import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Stepper } from '@/components/stepper';
 import { Button, Card, Field, Hair, Icon, IconButton, ListRow, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { changeOrdersForJob, customerOf, hoursFor, invoiceForJob, jobById, jobStage, partsCost, unsortedItems, type Stage } from '@/data/selectors';
+import { canDeleteJob, changeOrdersForJob, customerOf, hasJob, hoursFor, invoiceForJob, jobById, jobStage, partsCost, type Stage, unsortedItems } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { callNumber, dialable, textNumber } from '@/lib/contact';
@@ -21,7 +22,7 @@ function parseHours(text: string): number | null {
   return Math.round(n * 100);
 }
 
-export default function JobDetail() {
+function JobDetail() {
   const p = usePalette();
   const { t } = useLang();
   const f = useFormat();
@@ -45,6 +46,7 @@ export default function JobDetail() {
   const [hoursText, setHoursText] = useState('');
   const [hoursNote, setHoursNote] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [photoAdded, setPhotoAdded] = useState(false);
   const [receiptSoon, setReceiptSoon] = useState(false);
@@ -189,9 +191,8 @@ export default function JobDetail() {
               if (r) router.push(`/receipt/${r.id}`);
               else setReceiptSoon(true);
             }} />
-          {job.pricing === 'hourly' ? (
-            <Button label={t('job.logHours')} icon="clock" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setHoursOpen(true)} />
-          ) : null}
+          {/* every job: hourly jobs bill these; flat-price jobs keep them for the owner's records */}
+          <Button label={t('job.logHours')} icon="clock" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setHoursOpen(true)} />
           <Button
             label={t('flow.photo')}
             icon="camera"
@@ -223,6 +224,23 @@ export default function JobDetail() {
         <Button label={t('job.seeAll', { count: activity.length })} icon="list" variant="outline" onPress={() => router.push(`/job/${job.id}/activity`)} />
       ) : null}
 
+      {/* only while nothing on it was sent or signed */}
+      {canDeleteJob(state, job) ? (
+        <Button label={t('job.delete')} icon="trash-2" variant="outline" style={{ marginTop: 16 }} onPress={() => setDeleteOpen(true)} />
+      ) : null}
+
+      <Sheet open={deleteOpen} onClose={() => setDeleteOpen(false)} title={t('job.deleteTitle')}>
+        <T v="body">{t('job.deleteBody')}</T>
+        <Button label={t('job.delete')} icon="trash-2" variant="danger" big onPress={() => {
+          setDeleteOpen(false);
+          if (router.canGoBack()) router.back();
+          else router.replace('/jobs');
+          // once this screen has closed, so it never shows a job that's gone
+          setTimeout(() => actions.deleteJob(job.id), 400);
+        }} />
+        <Button label={t('common.cancel')} variant="outline" onPress={() => setDeleteOpen(false)} />
+      </Sheet>
+
       <Sheet open={changeOpen} onClose={() => setChangeOpen(false)} title={t('review.newChange')}>
         <T muted>{t('review.changeHelp')}</T>
         <Field label={t('review.changeDescription')} value={changeDescription} onChangeText={setChangeDescription}
@@ -240,6 +258,7 @@ export default function JobDetail() {
       </Sheet>
 
       <Sheet open={hoursOpen} onClose={() => setHoursOpen(false)} title={t('logHours.title')}>
+        {job.pricing === 'flat' ? <T v="small" muted>{t('logHours.flatNote')}</T> : null}
         <Field label={t('logHours.hours')} value={hoursText} onChangeText={setHoursText} keyboardType="decimal-pad" placeholder="2.5" />
         {hoursText && hoursValue === null ? <T v="small" color={p.danger}>{t('logHours.bad')}</T> : null}
         <Field label={t('logHours.note')} value={hoursNote} onChangeText={setHoursNote} placeholder={t('logHours.notePlaceholder')} />
@@ -271,4 +290,10 @@ export default function JobDetail() {
       </Sheet>
     </Screen>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function JobDetailRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RecordGate found={() => hasJob(id)}><JobDetail /></RecordGate>;
 }

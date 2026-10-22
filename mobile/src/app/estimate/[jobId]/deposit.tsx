@@ -1,9 +1,11 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { TextInput, View } from 'react-native';
 
 import { EstimatePage, parsePercent, useEstimate } from '@/components/estimate-parts';
+import { RecordGate } from '@/components/record-gate';
 import { Button, Card, Chip, Row, SwitchRow, T } from '@/components/ui';
+import { hasJob } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -14,7 +16,7 @@ import { usePalette } from '@/theme/use-palette';
 const DEPOSIT_CHOICES = [1000, 2500, 3000, 5000];
 
 /** Deposit the customer pays when they sign. */
-export default function EstimateDeposit() {
+function EstimateDeposit() {
   const p = usePalette();
   const { t } = useLang();
   const f = useFormat();
@@ -85,4 +87,10 @@ export default function EstimateDeposit() {
       </Row>
     </EstimatePage>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function EstimateDepositRoute() {
+  const { jobId } = useLocalSearchParams<{ jobId: string }>();
+  return <RecordGate found={() => hasJob(jobId)}><EstimateDeposit /></RecordGate>;
 }

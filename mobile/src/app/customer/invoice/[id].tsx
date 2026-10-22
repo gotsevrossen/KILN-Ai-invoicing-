@@ -4,9 +4,10 @@ import { Pressable, View } from 'react-native';
 
 import { CustomerPage } from '@/components/customer-page';
 import { ScopeCard } from '@/components/job-scope';
+import { RecordGate } from '@/components/record-gate';
 import { Button, ButtonRow, Card, Hair, LineRow, Notice, PhotoTile, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, invoiceById, invoiceLines, invoiceTotals, jobById, taxScope, invoiceSummary, invoiceTax } from '@/data/selectors';
+import { customerOf, hasInvoice, invoiceById, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, jobById, taxScope } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useTFor } from '@/i18n';
 import { addDays, formatters } from '@/lib/format';
@@ -14,7 +15,7 @@ import { lineTotal } from '@/lib/money';
 import { radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
-export default function CustomerInvoice() {
+function CustomerInvoice() {
   const p = usePalette();
   const { state } = useStore();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -94,4 +95,10 @@ export default function CustomerInvoice() {
       </Card>
     </CustomerPage>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function CustomerInvoiceRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RecordGate found={() => hasInvoice(id)}><CustomerInvoice /></RecordGate>;
 }

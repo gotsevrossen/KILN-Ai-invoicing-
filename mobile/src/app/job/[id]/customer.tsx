@@ -1,15 +1,16 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
 
+import { RecordGate } from '@/components/record-gate';
 import { Button, ButtonRow, Card, Hair, Icon, ListRow, PageHeader, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, jobById } from '@/data/selectors';
+import { customerOf, hasJob, jobById } from '@/data/selectors';
 import { useLang } from '@/i18n';
 import { callNumber, dialable, textNumber } from '@/lib/contact';
 import { usePalette } from '@/theme/use-palette';
 
 /** Who the job is for and where: phone, address, language, the private note, and their other jobs. */
-export default function JobCustomer() {
+function JobCustomer() {
   const p = usePalette();
   const { t } = useLang();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -64,4 +65,10 @@ export default function JobCustomer() {
       ) : null}
     </Screen>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function JobCustomerRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RecordGate found={() => hasJob(id)}><JobCustomer /></RecordGate>;
 }

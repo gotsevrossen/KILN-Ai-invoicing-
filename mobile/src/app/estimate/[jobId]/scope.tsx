@@ -1,13 +1,15 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { EstimatePage, pickJobType, useEstimate } from '@/components/estimate-parts';
 import { ScopeEditor } from '@/components/job-scope';
+import { RecordGate } from '@/components/record-gate';
 import { Button, Notice, T } from '@/components/ui';
+import { hasJob } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 
 /** What the customer sees: the job description and optional scope details. */
-export default function EstimateScope() {
+function EstimateScope() {
   const { t } = useLang();
   const { state, actions } = useStore();
   const { job, customer, draft } = useEstimate();
@@ -21,4 +23,10 @@ export default function EstimateScope() {
       {['painting', 'flooring', 'drywall', 'carpentry', 'landscaping'].includes(trade.id) ? <T v="small" muted>{t('scope.measurement')}</T> : null}
     </EstimatePage>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function EstimateScopeRoute() {
+  const { jobId } = useLocalSearchParams<{ jobId: string }>();
+  return <RecordGate found={() => hasJob(jobId)}><EstimateScope /></RecordGate>;
 }

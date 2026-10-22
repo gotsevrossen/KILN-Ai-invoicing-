@@ -16,7 +16,11 @@ import type {
 // Example data so every screen can be tried before sign-in and saving exist.
 // "Today" in the examples is Oct 19, 2026. All names are made up.
 
-export const TODAY = '2026-10-19';
+// The example data is set on this day. A signed-in business uses the phone's real date.
+export let TODAY = '2026-10-19';
+export function setToday(iso: string): void {
+  TODAY = iso;
+}
 
 export const business: Business = {
   name: 'Rivera Home Repair',

@@ -2,7 +2,7 @@
 -- Run with: npx supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(46);
 
 -- two owners, each with their own business
 insert into auth.users (id, email) values
@@ -61,17 +61,93 @@ select throws_ok(
 -- B's data is untouched
 select is((select name from public.customers where business_id = (select b from ids)), 'B customer', 'B''s customer was not changed or deleted');
 
--- a signed estimate can't be edited
+-- an estimate: drafts can be unfinished, sending needs every included line priced,
+-- and a sent estimate can't be edited
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 insert into public.jobs (business_id, customer_id, title)
   select ids.a, c.id, 'Leak repair' from ids, public.customers c where c.business_id = ids.a;
-insert into public.estimates (business_id, job_id, number, signed_at)
-  select ids.a, j.id, 'E-1', now() from ids, public.jobs j;
+select throws_ok(
+  $$ insert into public.estimates (business_id, job_id, number, sent_at) select ids.a, j.id, 'E-0', now() from ids, public.jobs j $$,
+  'P0001', 'an estimate starts as a draft', 'an estimate can''t be created already sent');
+insert into public.estimates (business_id, job_id, number) select ids.a, j.id, 'E-1' from ids, public.jobs j;
+select lives_ok(
+  $$ insert into public.estimate_lines (business_id, estimate_id, description, unit, qty_hundredths, unit_cents)
+     select business_id, id, '', 'hour', 0, null from public.estimates $$,
+  'a draft line can be blank while the owner types');
+select throws_ok(
+  $$ update public.estimates set sent_at = now(), tax_rate_bps = 0, tax_labor = false, tax_materials = false $$,
+  'P0001', 'price or exclude every included line before sending', 'an unpriced estimate can''t be sent');
+update public.estimate_lines set description = 'Labor', qty_hundredths = 200, unit_cents = 9500;
+select lives_ok(
+  $$ update public.estimates set sent_at = now(), tax_rate_bps = 0, tax_labor = false, tax_materials = false $$,
+  'a priced estimate can be sent');
+select throws_ok($$ update public.estimate_lines set unit_cents = 1 $$, 'P0001', 'this document is signed or sent and can''t be changed', 'sent estimate lines are frozen');
+select throws_ok(
+  $$ insert into public.estimate_lines (business_id, estimate_id, description, unit, qty_hundredths, unit_cents)
+     select business_id, id, 'Extra', 'flat', 100, 100 from public.estimates $$,
+  'P0001', 'this document is signed or sent and can''t be changed', 'no lines can be added to a sent estimate');
+select throws_ok($$ update public.estimates set deposit_bps = 1 $$, 'P0001', 'this document is signed or sent and can''t be changed', 'a sent estimate''s deposit can''t change');
+select lives_ok($$ update public.estimates set signed_at = now() $$, 'a sent estimate can be signed');
+select throws_ok($$ update public.estimates set signed_at = null $$, 'P0001', 'this document is signed or sent and can''t be changed', 'a signature time can''t be undone');
+
+-- signatures: same business only, and never changed or removed
+select throws_ok(
+  $$ insert into public.signatures (business_id, document_type, document_id, signer_name, document_hash)
+     select b, 'estimate', (select id from public.estimates), 'Pat Doe', repeat('a', 64) from ids $$,
+  'P0001', 'a signature must belong to a document of the same business', 'A can''t file a signature under B''s business');
+select lives_ok(
+  $$ insert into public.signatures (business_id, document_type, document_id, signer_name, document_hash)
+     select a, 'estimate', (select id from public.estimates), 'Pat Doe', repeat('a', 64) from ids $$,
+  'A records the customer''s signature');
+select throws_ok(
+  $$ insert into public.signatures (business_id, document_type, document_id, signer_name, document_hash)
+     select a, 'estimate', (select id from public.estimates), 'Pat Doe', 'not-a-hash' from ids $$,
+  'P0001', 'a signature needs the SHA-256 of the signed document', 'a signature needs the document''s fingerprint');
+select lives_ok($$ update public.signatures set signer_name = 'Someone else' $$, 'editing a signature runs but touches nothing');
+select lives_ok($$ delete from public.signatures $$, 'deleting a signature runs but touches nothing');
+select is((select signer_name from public.signatures), 'Pat Doe', 'the signature is unchanged');
+
+-- a change order, once answered, can't change
+insert into public.change_orders (business_id, job_id, number, description, amount_cents, base_cents)
+  select ids.a, j.id, 1, 'Replace shutoff valve', 4500, 19000 from ids, public.jobs j;
+update public.change_orders set signed_at = now();
+select throws_ok($$ update public.change_orders set amount_cents = 1 $$, 'P0001', 'this change order was answered and can''t be changed', 'a signed change order is frozen');
+
+-- an invoice: lines before sending, frozen once sent, paid only after sending
+insert into public.invoices (business_id, job_id, number) select ids.a, j.id, '1001' from ids, public.jobs j;
+select throws_ok($$ update public.invoices set paid_at = now() $$, 'P0001', 'only a sent invoice can be marked paid', 'an unsent invoice can''t be marked paid');
+select throws_ok(
+  $$ update public.invoices set sent_at = now(), tax_rate_bps = 0, tax_labor = false, tax_materials = false, issued_on = current_date, due_days = 15 $$,
+  'P0001', 'an invoice needs its lines before it is sent', 'an invoice can''t be sent without lines');
+insert into public.invoice_lines (business_id, invoice_id, kind, description, qty_hundredths, unit_cents)
+  select business_id, id, 'labor', 'Leak repair', 100, 19000 from public.invoices;
+update public.invoices set sent_at = now(), tax_rate_bps = 0, tax_labor = false, tax_materials = false, issued_on = current_date, due_days = 15;
+select throws_ok($$ update public.invoice_lines set unit_cents = 1 $$, 'P0001', 'this document is signed or sent and can''t be changed', 'sent invoice lines are frozen');
+select throws_ok($$ update public.invoices set summary = 'changed' $$, 'P0001', 'this document is signed or sent and can''t be changed', 'a sent invoice can''t be edited');
+select lives_ok($$ update public.invoices set paid_at = now() $$, 'a sent invoice can be marked paid');
+
+-- hours, notes, and payments stay inside the business
+select lives_ok($$ insert into public.time_entries (business_id, job_id, hundredths) select business_id, id, 250 from public.jobs $$, 'A logs hours on its job');
+select lives_ok($$ insert into public.notes (business_id, job_id, body) select business_id, id, 'Gate code 1234' from public.jobs $$, 'A adds a note to its job');
+select lives_ok($$ insert into public.payments (business_id, invoice_id, amount_cents, method) select business_id, id, 19000, 'cash' from public.invoices $$, 'A records a payment');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select is((select count(*)::int from public.estimates) + (select count(*)::int from public.invoices) + (select count(*)::int from public.time_entries)
+  + (select count(*)::int from public.notes) + (select count(*)::int from public.signatures) + (select count(*)::int from public.payments),
+  0, 'B sees none of A''s estimates, invoices, hours, notes, signatures, or payments');
 reset role;
-insert into public.estimate_lines (business_id, estimate_id, description, unit, qty_hundredths, unit_cents)
-  select business_id, id, 'Labor', 'hour', 200, 9500 from public.estimates;
+select throws_ok(
+  $$ insert into public.payments (business_id, invoice_id, amount_cents, method) select ids.b, i.id, 100, 'cash' from ids, public.invoices i $$,
+  'P0001', 'invoices must belong to the same business', 'a payment can''t point at another business''s invoice');
+
+-- a job made by accident can be deleted; one with a sent document is kept
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
-select throws_ok($$ update public.estimate_lines set unit_cents = 1 $$, 'P0001', 'this document is signed or sent and can''t be changed', 'signed estimate lines are frozen');
+select throws_ok($$ delete from public.jobs where title = 'Leak repair' $$, 'P0001', 'a job with a sent or signed document can''t be deleted', 'a job with a sent estimate and invoice can''t be deleted');
+insert into public.jobs (business_id, customer_id, title)
+  select ids.a, c.id, 'Oops' from ids, public.customers c where c.business_id = ids.a;
+insert into public.time_entries (business_id, job_id, hundredths) select business_id, id, 100 from public.jobs where title = 'Oops';
+select lives_ok($$ delete from public.jobs where title = 'Oops' $$, 'a fresh job can be deleted, with its hours');
+select is((select count(*)::int from public.jobs where title = 'Oops'), 0, 'the deleted job is gone');
+reset role;
 
 -- the activity log can't be rewritten
 reset role;

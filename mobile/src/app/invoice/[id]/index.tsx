@@ -1,55 +1,58 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { ScopeCard } from '@/components/job-scope';
-import { needsActualHours } from '@/lib/billing';
 
-import { Button, ButtonRow, Card, Checkbox, Field, Hair, Icon, IconButton, LineRow, Notice, PageHeader, PhotoTile, Pill, Row, Screen, Segmented, SwitchRow, T } from '@/components/ui';
-import * as sample from '@/data/sample';
-import { changeOrdersForJob, customerOf, hoursFor, invoiceById, invoiceLines, invoiceTotals, jobById, receiptItemById, billedPrice, suggestionOpen, taxScope, invoiceSources, invoiceBilling, invoiceSummary, invoiceTax } from '@/data/selectors';
+import { FixList } from '@/components/fix-list';
+import { useInvoice } from '@/components/invoice-parts';
+import { RecordGate } from '@/components/record-gate';
+import { Sheet } from '@/components/sheet';
+import { Button, ButtonRow, Card, Checkbox, Hair, Icon, IconButton, LineRow, ListRow, Notice, PageHeader, Pill, Row, Screen, T } from '@/components/ui';
+import { billedPrice, hasInvoice, hoursFor, invoiceSources, invoiceSummary, invoiceTax, invoiceTotals, receiptItemById, suggestionOpen, taxScope } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
-import { addDays, useFormat } from '@/lib/format';
+import { useFormat } from '@/lib/format';
 import { lineTotal } from '@/lib/money';
 import { font, radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
-export default function InvoiceDraft() {
+/** Short enough for one summary row. */
+function clip(text: string, max = 60): string {
+  const s = text.trim().replace(/\s+/g, ' ');
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/**
+ * Invoice: the charges and total, with billing, proof of work, and options
+ * each one tap away on their own page (like Settings).
+ */
+function InvoiceDraft() {
   const p = usePalette();
   const { t } = useLang();
   const f = useFormat();
   const { state, actions } = useStore();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const invoice = invoiceById(id)!;
-  const job = jobById(invoice.jobId);
-  const customer = customerOf(job);
-  const sent = state.sentInvoices.includes(invoice.id);
-  const paid = state.paidInvoices.includes(invoice.id);
+  const { invoice, job, customer, sent, paid, billing, agreed, lines, fixes, mode, dueDays, dueDate } = useInvoice();
   const sources = invoiceSources(state, invoice);
-
-  const summary = invoiceSummary(state, invoice);
-  const billing = invoiceBilling(state, invoice);
-  const issued = state.issuedInvoices[invoice.id];
-  const agreed = !!state.estimates[job.id]?.signed;
-  const missingHours = needsActualHours(job, state.estimates[job.id], billing, hoursFor(state, job.id));
-  const pendingChange = changeOrdersForJob(job.id).find((change) => !state.signed[change.id] && !state.declinedChanges.includes(change.id));
-  const [showLocation, setShowLocation] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
   const [byText, setByText] = useState(true);
   const [byEmail, setByEmail] = useState(true);
 
-  const lines = invoiceLines(state, invoice);
   const totals = invoiceTotals(state, invoice);
   const labor = lines.filter((l) => l.kind !== 'material');
   const materials = lines.filter((l) => l.kind === 'material');
-  const mode = issued?.materialsMode ?? state.materialsMode[invoice.id] ?? 'items';
   const suggestion = invoice.suggestion;
   const showSuggestion = !sent && billing.materials === 'additional' && suggestion && suggestionOpen(state, invoice);
   const suggestionPrice = suggestion ? billedPrice(state, receiptItemById(suggestion.receiptItemId), job.id) : 0;
-  const dueDays = issued?.dueDays ?? state.settings.dueDays;
-  const dueDate = addDays(issued?.issuedOn ?? sample.TODAY, dueDays);
   const scope = taxScope(state, invoice);
   const tax = invoiceTax(state, invoice);
   const taxKey = scope === 'all' ? 'invoice.taxAll' : scope === 'labor' ? 'invoice.taxLabor' : scope === 'materials' ? 'invoice.taxMaterials' : null;
+  const summary = invoiceSummary(state, invoice).trim();
+  const seeAsCustomer = () => router.push(`/customer/invoice/${invoice.id}`);
+
+  const billingSub = [
+    job.pricing === 'hourly' ? (billing.labor === 'actual' ? t('review.actual') : t('review.estimate')) : null,
+    billing.materials === 'included' ? t('invoice.materialsIncluded') : t('invoice.materialsExtra'),
+  ].filter(Boolean).join(' · ');
+  const dueText = dueDays === 0 ? t('invoice.dueOnReceipt') : t('invoice.dueIn', { days: dueDays });
 
   return (
     <Screen
@@ -68,59 +71,22 @@ export default function InvoiceDraft() {
           <>
             <Notice text={t('invoice.sentDone', { name: customer.firstName })} icon="send" />
             <ButtonRow gap={10}>
-              <Button label={t('invoice.seeAsCustomer', { name: customer.firstName })} variant="outline" icon="eye" flex onPress={() => router.push(`/customer/invoice/${invoice.id}`)} />
+              <Button label={t('invoice.seeAsCustomer', { name: customer.firstName })} variant="outline" icon="eye" flex onPress={seeAsCustomer} />
               <Button label={t('flow.markPaid')} icon="dollar-sign" variant="dark" flex onPress={() => actions.markPaid(invoice.id)} />
             </ButtonRow>
           </>
         ) : (
-          <>
-            <Row gap={16}>
-              <View style={{ flex: 1 }}><Checkbox label={t('invoice.byText')} value={byText} onChange={setByText} /></View>
-              <View style={{ flex: 1 }}><Checkbox label={t('invoice.byEmail')} value={byEmail} onChange={setByEmail} /></View>
-            </Row>
-            <Row gap={10}>
-              <IconButton icon="eye" label={t('invoice.seeAsCustomer', { name: customer.firstName })} onPress={() => router.push(`/customer/invoice/${invoice.id}`)} />
-              <Button
-                label={t('invoice.sendTo', { name: customer.firstName })}
-                icon="send"
-                big
-                flex
-                disabled={(!byText && !byEmail) || !billing.reviewed || lines.length === 0 || !!pendingChange || missingHours}
-                onPress={() => actions.sendInvoice(invoice.id)}
-              />
-            </Row>
-          </>
+          <Row gap={10}>
+            <IconButton icon="eye" label={t('invoice.seeAsCustomer', { name: customer.firstName })} onPress={seeAsCustomer} />
+            <Button label={t('invoice.sendTo', { name: customer.firstName })} icon="send" big flex disabled={fixes.length > 0} onPress={() => setSendOpen(true)} />
+          </Row>
         )
       }>
       <T v="small" muted>
-        {t('invoice.builtFrom', {
-          photos: sources.photos,
-          voice: sources.voice,
-          receipts: sources.receipts,
-          hours: f.qty(hoursFor(state, job.id)),
-        })}
+        {t('invoice.builtFrom', { photos: sources.photos, voice: sources.voice, receipts: sources.receipts, hours: f.qty(hoursFor(state, job.id)) })}
       </T>
 
-      {!sent && agreed ? <Card style={{ gap: 12 }}>
-        <T v="h3">{t('review.billBasis')}</T>
-        {job.pricing === 'hourly' ? <>
-          <Segmented label={t('invoice.labor')} value={billing.labor} options={[
-            { key: 'actual', label: t('review.actual') }, { key: 'estimate', label: t('review.estimate') },
-          ]} onChange={(labor) => actions.setInvoiceBilling(invoice.id, { labor, reviewed: false })} />
-          <T v="small" muted>{t('review.laborHelp')}</T>
-        </> : null}
-        <SwitchRow label={t('review.materialsIncluded')} value={billing.materials === 'included'}
-          onChange={(included) => actions.setInvoiceBilling(invoice.id, { materials: included ? 'included' : 'additional', reviewed: false })} />
-        <T v="small" muted>{t('review.materialsHelp')}</T>
-        <Checkbox label={t('review.billingConfirmed')} value={billing.reviewed}
-          onChange={(reviewed) => actions.setInvoiceBilling(invoice.id, { reviewed })} />
-      </Card> : null}
-      {!lines.length ? <Notice text={t('review.emptyInvoice')} tone="soft" /> : null}
-      {missingHours ? <Notice text={t('review.hoursNeeded')} tone="soft" /> : null}
-      {pendingChange ? <Button label={t('review.changePending')} variant="outline"
-        onPress={() => router.push(`/change-order/${pendingChange.id}`)} /> : null}
-      <ScopeCard scope={issued ? issued.scope : state.estimates[job.id]?.scope}
-        excluded={issued ? issued.excludedScope : state.estimates[job.id]?.lines.filter((l) => l.excluded).map((l) => l.description)} t={t} />
+      <FixList items={fixes} />
 
       {showSuggestion && suggestion ? (
         <Card tone="flag" style={{ gap: 10 }}>
@@ -148,24 +114,12 @@ export default function InvoiceDraft() {
           />
         ))}
         <Hair style={{ marginVertical: 8 }} />
-        <Row style={{ justifyContent: 'space-between' }}>
-          <T v="eyebrow">{t('invoice.materials')}</T>
-        </Row>
-        {!sent ? <Segmented
-          label={t('invoice.materials')}
-          value={mode}
-          onChange={(m) => actions.setMaterialsMode(invoice.id, m)}
-          options={[
-            { key: 'items', label: t('invoice.itemized') },
-            { key: 'total', label: t('invoice.oneTotal') },
-          ]}
-        /> : null}
+        <T v="eyebrow">{t('invoice.materials')}</T>
         {mode === 'items' ? (
           materials.map((line) => <LineRow key={line.id} label={line.description} value={f.money(lineTotal(line.qtyHundredths, line.unitCents))} />)
         ) : (
           <LineRow label={t('invoice.materials')} value={f.money(totals.materials)} />
         )}
-        <T v="small" muted>{t('invoice.markupHidden', { pct: f.pct(state.settings.markupBps) })}</T>
         <Hair style={{ marginVertical: 8 }} />
         <LineRow label={t('invoice.subtotal')} value={f.money(totals.subtotal)} />
         {taxKey ? <LineRow label={t(taxKey, { pct: f.pct(tax.rateBps) })} value={f.money(totals.tax)} /> : null}
@@ -175,21 +129,44 @@ export default function InvoiceDraft() {
         </Row>
       </Card>
 
-      <Card style={{ gap: 12 }}>
-        <T v="eyebrow">{t('invoice.proof')}</T>
-        <Row gap={8}>
-          <PhotoTile tag={t('job.before')} height={110} />
-          <PhotoTile tag={t('job.after')} height={110} />
-        </Row>
-        <Field label={t('invoice.summaryLabel')} value={summary} editable={!sent} maxLength={4000}
-          onChangeText={(text) => actions.setInvoiceSummary(invoice.id, text)} multiline style={{ minHeight: 100, paddingTop: 14, textAlignVertical: 'top', fontSize: 16 }} />
-        <SwitchRow label={t('invoice.showLocation')} value={showLocation} onChange={setShowLocation} />
+      <Card style={{ gap: 4 }}>
+        {/* billing choices only matter before sending, and only with an agreed price */}
+        {!sent && agreed ? (
+          <>
+            <ListRow icon="sliders" iconTone={billing.reviewed ? 'soft' : 'flag'} title={t('invoice.billing')} sub={billingSub}
+              onPress={() => router.push(`/invoice/${invoice.id}/billing`)} />
+            <Hair />
+          </>
+        ) : null}
+        <ListRow icon="camera" title={t('invoice.proof')} sub={summary ? clip(summary) : t('invoice.noSummary')}
+          onPress={() => router.push(`/invoice/${invoice.id}/proof`)} />
+        <Hair />
+        <ListRow icon="settings" title={t('invoice.options')}
+          sub={`${mode === 'items' ? t('invoice.itemized') : t('invoice.oneTotal')} · ${dueText} (${f.date(dueDate)})`}
+          onPress={() => router.push(`/invoice/${invoice.id}/options`)} />
       </Card>
 
-      <Card style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <T v="body">{dueDays === 0 ? t('invoice.dueOnReceipt') : t('invoice.dueIn', { days: dueDays })}</T>
-        <T v="money">{f.date(dueDate)}</T>
-      </Card>
+      <Sheet open={sendOpen} onClose={() => setSendOpen(false)} title={t('invoice.sendTo', { name: customer.firstName })}>
+        <T v="eyebrow">{t('invoice.sendBy')}</T>
+        <View style={{ gap: 4 }}>
+          <Checkbox label={t('invoice.byText')} value={byText} onChange={setByText} />
+          <Checkbox label={t('invoice.byEmail')} value={byEmail} onChange={setByEmail} />
+        </View>
+        <Row style={{ justifyContent: 'space-between' }}>
+          <T v="eyebrow" muted>{t('invoice.total')}</T>
+          <T v="money" style={{ fontSize: 24, fontFamily: font.black }}>{f.money(totals.total)}</T>
+        </Row>
+        <Button label={t('invoice.send')} icon="send" big disabled={!byText && !byEmail} onPress={() => {
+          actions.sendInvoice(invoice.id);
+          setSendOpen(false);
+        }} />
+      </Sheet>
     </Screen>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function InvoiceDraftRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RecordGate found={() => hasInvoice(id)}><InvoiceDraft /></RecordGate>;
 }

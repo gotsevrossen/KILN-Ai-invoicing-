@@ -5,10 +5,11 @@ import { Pressable, View } from 'react-native';
 import { CustomerPage } from '@/components/customer-page';
 import { ScopeCard } from '@/components/job-scope';
 import { estimateReady } from '@/lib/billing';
+import { RecordGate } from '@/components/record-gate';
 import { SignaturePad } from '@/components/signature-pad';
 import { Button, Card, Checkbox, Field, Hair, LineRow, Notice, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, estimateDocLines, estimateDraft, jobById } from '@/data/selectors';
+import { customerOf, estimateDocLines, estimateDraft, hasCustomerEstimate, jobById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import type { DocLine } from '@/data/types';
 import { useTFor } from '@/i18n';
@@ -18,7 +19,7 @@ import { font, radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
 /** Customer estimate page. `id` is a sent estimate (e-208) or a job whose draft is being previewed (walsh). */
-export default function CustomerEstimate() {
+function CustomerEstimate() {
   const p = usePalette();
   const { state, actions } = useStore();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -33,7 +34,7 @@ export default function CustomerEstimate() {
   const draft = saved ? null : estimateDraft(state, job.id);
   const lines: DocLine[] = saved ? saved.lines : estimateDocLines(draft!);
   // non-breaking hyphen keeps "E-208" on one line under the big title
-  const number = (saved ? saved.number : 'E-209').replace('-', '‑');
+  const number = (saved ? saved.number : draft?.number ?? 'E-209').replace('-', '‑');
   const goodUntil = saved ? saved.goodUntil : addDays(sample.TODAY, 14);
   const tax = saved ? saved.tax ?? { rateBps: 0, labor: false, materials: false } : draft?.tax ?? state.settings.tax;
   const totals = documentTotals(lines, tax);
@@ -113,7 +114,7 @@ export default function CustomerEstimate() {
           />
           <Button label={tc('customer.signPay')} big disabled={!ready} onPress={() => {
               // signing a draft moves the job on to the work step
-              if (!saved) actions.signEstimate(job.id);
+              if (!saved) actions.signEstimate(job.id, name.trim());
               setDone(true);
             }} style={{ borderRadius: radius.sm }} />
           <Pressable onPress={() => router.back()} accessibilityRole="button" style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center' }}>
@@ -123,4 +124,10 @@ export default function CustomerEstimate() {
       ) : null}
     </CustomerPage>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function CustomerEstimateRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RecordGate found={() => hasCustomerEstimate(id)}><CustomerEstimate /></RecordGate>;
 }

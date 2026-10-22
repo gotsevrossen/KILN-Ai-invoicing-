@@ -2,20 +2,20 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { NewJobForm } from '@/components/new-job';
+import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
-import { Button, ButtonRow, Card, Checkbox, Field, Hair, Notice, PageHeader, Pill, Row, Screen, Segmented, SwitchRow, T, type Tone } from '@/components/ui';
+import { Button, ButtonRow, Card, Field, Hair, PageHeader, Pill, Row, Screen, T, type Tone } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, itemCostWithTax, jobById, receiptById } from '@/data/selectors';
+import { customerOf, hasReceipt, itemCostWithTax, jobById, receiptById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import type { ReceiptItem } from '@/data/types';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
-import { applyMarkup, splitByWeights } from '@/lib/money';
+import { applyMarkup } from '@/lib/money';
 import { font, radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
-export default function SortReceipt() {
+function SortReceipt() {
   const p = usePalette();
   const { t } = useLang();
   const f = useFormat();
@@ -24,13 +24,10 @@ export default function SortReceipt() {
   const receipt = receiptById(id);
   const activeJobs = sample.jobs.filter((j) => j.group === 'active');
 
-  const [splitOpen, setSplitOpen] = useState(false);
-  const [splitJobs, setSplitJobs] = useState<string[]>([]);
-  const [splitMode, setSplitMode] = useState<'equal' | 'quantity'>('equal');
-  const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [fixOpen, setFixOpen] = useState(false);
   const [fixText, setFixText] = useState('');
-  const [newOpen, setNewOpen] = useState(false);
+  // the full list stays folded while sorting: the current item is what matters
+  const [listOpen, setListOpen] = useState(false);
 
   const nameOf = (item: ReceiptItem) => state.fixedNames[item.id] ?? item.name;
   const isFlagged = (item: ReceiptItem) => !!item.flagged && !state.fixedNames[item.id];
@@ -39,13 +36,7 @@ export default function SortReceipt() {
   const flagged = receipt.items.find((i) => isFlagged(i) && !state.assignments[i.id]);
   const done = receipt.items.filter((i) => state.assignments[i.id]).length;
   const total = receipt.items.reduce((a, i) => a + i.costCents, 0) + receipt.taxCents;
-  const weights = splitJobs.map((jobId) => {
-    const text = quantities[jobId] ?? '1';
-    return /^\d{1,6}([.,]\d{1,2})?$/.test(text) ? Math.round(Number(text.replace(',', '.')) * 100) : 0;
-  });
-  const validSplit = splitMode === 'equal' || weights.every((weight) => weight > 0);
-  const splitShares = current && splitJobs.length > 0 && validSplit
-    ? splitByWeights(itemCostWithTax(current), splitMode === 'equal' ? splitJobs.map(() => 1) : weights) : [];
+  const showList = listOpen || !current;
 
   const statusOf = (item: ReceiptItem): { label: string; tone: Tone | 'outline' } => {
     const a = state.assignments[item.id];
@@ -56,6 +47,9 @@ export default function SortReceipt() {
     if (isFlagged(item)) return { label: t('receipt.cantRead'), tone: 'flag' };
     return { label: t('receipt.waiting'), tone: 'soft' };
   };
+
+  const cost = current ? itemCostWithTax(current) : 0;
+  const markupOn = current ? !state.markupOff[current.id] : false;
 
   return (
     <Screen
@@ -77,9 +71,19 @@ export default function SortReceipt() {
                 {nameOf(current)} <T v="h2" muted>{current.qtyLabel}</T>
               </T>
               <View style={{ alignItems: 'flex-end' }}>
-                <T v="money" style={{ fontSize: 21 }}>{f.money(itemCostWithTax(current))}</T>
-                {itemCostWithTax(current) !== current.costCents ? <T v="small" muted>{t('receipt.inclTax', { amount: f.money(itemCostWithTax(current) - current.costCents) })}</T> : null}
+                <T v="money" style={{ fontSize: 21 }}>{f.money(cost)}</T>
+                {cost !== current.costCents ? <T v="small" muted>{t('receipt.inclTax', { amount: f.money(cost - current.costCents) })}</T> : null}
               </View>
+            </Row>
+            {/* markup in one line: what this bills, and a button to change it */}
+            <Row style={{ justifyContent: 'space-between' }} gap={10}>
+              <T v="small" muted style={{ flex: 1 }}>
+                {markupOn
+                  ? t('receipt.markupOnLine', { amount: f.money(applyMarkup(cost, state.settings.markupBps)), pct: f.pct(state.settings.markupBps) })
+                  : t('receipt.markupOffLine', { amount: f.money(cost) })}
+              </T>
+              <Button label={markupOn ? t('receipt.markupTurnOff') : t('receipt.markupTurnOn')} variant="outline"
+                style={{ minHeight: tap.min, paddingHorizontal: 14 }} onPress={() => actions.toggleMarkup(current.id)} />
             </Row>
           </View>
           <Hair />
@@ -113,20 +117,13 @@ export default function SortReceipt() {
               </Pressable>
             );
           })}
-          <Button label={t('common.newJob')} icon="plus" variant="outline" onPress={() => setNewOpen(true)} />
+          <Button label={t('common.newJob')} icon="plus" variant="outline"
+            onPress={() => router.push({ pathname: '/new-job', params: { item: current.id } })} />
           <ButtonRow>
-            <Button label={t('receipt.split')} variant="soft" flex onPress={() => setSplitOpen(true)} />
+            <Button label={t('receipt.split')} variant="soft" flex onPress={() => router.push(`/receipt/${receipt.id}/split/${current.id}`)} />
             <Button label={t('receipt.personal')} variant="soft" flex onPress={() => actions.assign(current.id, { type: 'personal' })} />
             <Button label={t('receipt.overhead')} variant="soft" flex onPress={() => actions.assign(current.id, { type: 'overhead' })} />
           </ButtonRow>
-          <SwitchRow
-            label={t('receipt.markup', {
-              pct: f.pct(state.settings.markupBps),
-              amount: f.money(state.markupOff[current.id] ? itemCostWithTax(current) : applyMarkup(itemCostWithTax(current), state.settings.markupBps)),
-            })}
-            value={!state.markupOff[current.id]}
-            onChange={() => actions.toggleMarkup(current.id)}
-          />
         </Card>
       ) : (
         <Card tone="inverse" style={{ gap: 12, padding: 20 }}>
@@ -143,73 +140,34 @@ export default function SortReceipt() {
         </Card>
       )}
 
-      <Card style={{ gap: 0 }}>
-        <T v="eyebrow" style={{ marginBottom: 6 }}>{t('receipt.onReceipt')}</T>
-        {receipt.items.map((item) => {
-          const s = statusOf(item);
-          return (
-            <Row key={item.id} gap={10} style={{ minHeight: 52, borderTopWidth: 1, borderTopColor: p.line, paddingVertical: 6 }}>
-              <T v="small" muted style={{ width: 16, fontFamily: font.semi }}>{item.line}</T>
-              <T v="body" style={{ flex: 1 }} numberOfLines={2}>{nameOf(item)}</T>
-              <T v="money" style={{ fontFamily: font.medium, fontSize: 15 }}>{f.money(itemCostWithTax(item))}</T>
-              <View style={{ width: 96, alignItems: 'flex-end' }}>
-                <Pill label={s.label} tone={s.tone} />
-              </View>
-            </Row>
-          );
-        })}
-        <Hair style={{ marginTop: 6 }} />
-        <T v="small" muted style={{ marginTop: 10 }}>{t('receipt.taxSplit', { amount: f.money(receipt.taxCents) })}</T>
-      </Card>
+      {current ? (
+        <Button label={listOpen ? t('receipt.hideAll') : t('receipt.seeAll', { count: receipt.items.length })}
+          icon={listOpen ? 'chevron-up' : 'chevron-down'} variant="outline" onPress={() => setListOpen(!listOpen)} />
+      ) : null}
+      {showList ? (
+        <Card style={{ gap: 0 }}>
+          <T v="eyebrow" style={{ marginBottom: 6 }}>{t('receipt.onReceipt')}</T>
+          {receipt.items.map((item) => {
+            const s = statusOf(item);
+            return (
+              <Row key={item.id} gap={10} style={{ minHeight: 52, borderTopWidth: 1, borderTopColor: p.line, paddingVertical: 6 }}>
+                <T v="small" muted style={{ width: 16, fontFamily: font.semi }}>{item.line}</T>
+                <T v="body" style={{ flex: 1 }} numberOfLines={2}>{nameOf(item)}</T>
+                <T v="money" style={{ fontFamily: font.medium, fontSize: 15 }}>{f.money(itemCostWithTax(item))}</T>
+                <View style={{ width: 96, alignItems: 'flex-end' }}>
+                  <Pill label={s.label} tone={s.tone} />
+                </View>
+              </Row>
+            );
+          })}
+          <Hair style={{ marginTop: 6 }} />
+          <T v="small" muted style={{ marginTop: 10 }}>{t('receipt.taxSplit', { amount: f.money(receipt.taxCents) })}</T>
+        </Card>
+      ) : null}
 
       <Pressable onPress={() => router.back()} accessibilityRole="link" style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center' }}>
         <T v="label" style={{ textDecorationLine: 'underline' }}>{t('receipt.finishLater')}</T>
       </Pressable>
-
-      <Sheet open={splitOpen} onClose={() => setSplitOpen(false)} title={t('receipt.splitTitle')}>
-        <T v="body" muted>{t('review.splitHelp')}</T>
-        <Segmented label={t('review.splitMode')} value={splitMode}
-          options={[{ key: 'equal', label: t('review.equal') }, { key: 'quantity', label: t('review.quantities') }]}
-          onChange={setSplitMode} />
-        {activeJobs.map((job) => {
-          const on = splitJobs.includes(job.id);
-          const share = on ? splitShares[splitJobs.indexOf(job.id)] : undefined;
-          return (
-            <View key={job.id} style={{ gap: 8 }}><Row style={{ justifyContent: 'space-between' }}>
-              <View style={{ flex: 1 }}>
-                <Checkbox label={job.title} value={on} onChange={(v) => setSplitJobs(v ? [...splitJobs, job.id] : splitJobs.filter((j) => j !== job.id))} />
-              </View>
-              {share !== undefined ? <T v="money">{f.money(share)}</T> : null}
-            </Row>
-              {on && splitMode === 'quantity' ? <Field label={`${t('review.weight')}: ${job.title}`}
-                keyboardType="decimal-pad" value={quantities[job.id] ?? '1'}
-                onChangeText={(value) => setQuantities({ ...quantities, [job.id]: value })} /> : null}
-            </View>
-          );
-        })}
-        <Button
-          label={t('review.splitSave')}
-          disabled={splitJobs.length < 2 || !current || !validSplit}
-          onPress={() => {
-            if (!current) return;
-            actions.assign(current.id, { type: 'jobs', jobIds: splitJobs, weights: splitMode === 'quantity' ? weights : undefined });
-            setSplitJobs([]);
-            setQuantities({});
-            setSplitOpen(false);
-          }}
-        />
-        {!validSplit ? <Notice text={t('review.splitBad')} tone="soft" /> : null}
-      </Sheet>
-
-      <Sheet open={newOpen} onClose={() => setNewOpen(false)} title={t('newJob.title')}>
-        <NewJobForm
-          onCreated={(id) => {
-            // the item being sorted goes straight onto the new job
-            if (current) actions.assign(current.id, { type: 'jobs', jobIds: [id] });
-            setNewOpen(false);
-          }}
-        />
-      </Sheet>
 
       <Sheet open={fixOpen} onClose={() => setFixOpen(false)} title={flagged ? t('receipt.fixLine', { n: flagged.line }) : ''}>
         <Field value={fixText} onChangeText={setFixText} placeholder={t('capture.notePlaceholder')} autoFocus />
@@ -226,4 +184,10 @@ export default function SortReceipt() {
       </Sheet>
     </Screen>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function SortReceiptRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RecordGate found={() => hasReceipt(id)}><SortReceipt /></RecordGate>;
 }

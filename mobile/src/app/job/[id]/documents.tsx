@@ -2,14 +2,15 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
 
 import { useJobDocs, type DocStatus } from '@/components/job-docs';
+import { RecordGate } from '@/components/record-gate';
 import { Card, Hair, ListRow, Notice, PageHeader, Screen } from '@/components/ui';
-import { invoiceTotals, jobById } from '@/data/selectors';
+import { hasJob, invoiceTotals, jobById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 
 /** The job's estimate, change orders, and invoice in one list. */
-export default function JobDocuments() {
+function JobDocuments() {
   const { t } = useLang();
   const f = useFormat();
   const { state } = useStore();
@@ -47,4 +48,10 @@ export default function JobDocuments() {
       )}
     </Screen>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function JobDocumentsRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RecordGate found={() => hasJob(id)}><JobDocuments /></RecordGate>;
 }

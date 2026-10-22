@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { RecordGate } from '@/components/record-gate';
 import { SignaturePad } from '@/components/signature-pad';
 import { Button, Card, Checkbox, Field, Hair, Icon, LineRow, Notice, PhotoTile, Row, Screen, T } from '@/components/ui';
-import { changeOrderById, changeOrderTotal, customerOf, jobById } from '@/data/selectors';
+import { changeOrderById, changeOrderTotal, customerOf, hasChangeOrder, jobById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang, useTFor } from '@/i18n';
 import { formatters } from '@/lib/format';
@@ -13,7 +14,7 @@ import { font, radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
 /** Hand-the-phone signing. Everything below the black strip is in the customer's language. */
-export default function ChangeOrderSign() {
+function ChangeOrderSign() {
   const p = usePalette();
   const { t } = useLang();
   const { state, actions } = useStore();
@@ -113,4 +114,10 @@ export default function ChangeOrderSign() {
       )}
     </View>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function ChangeOrderSignRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RecordGate found={() => hasChangeOrder(id)}><ChangeOrderSign /></RecordGate>;
 }

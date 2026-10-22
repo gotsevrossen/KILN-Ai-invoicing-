@@ -1,11 +1,13 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { TextInput, View } from 'react-native';
 
 import { CUSTOM, EstimatePage, parseQty, pickJobType, useEstimate, useLineMaker } from '@/components/estimate-parts';
 import { PriceItemPicker } from '@/components/price-item-picker';
+import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Button, Card, Chip, Icon, IconButton, Row, T } from '@/components/ui';
+import { hasJob } from '@/data/selectors';
 import * as sample from '@/data/sample';
 import { useStore } from '@/data/store';
 import { tradeById, type TradeId } from '@/data/trades';
@@ -16,7 +18,7 @@ import { font, radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
 /** Job details: trade, job type, and the quantities that become owner-priced line items. */
-export default function EstimateDetails() {
+function EstimateDetails() {
   const p = usePalette();
   const { t } = useLang();
   const f = useFormat();
@@ -155,4 +157,10 @@ export default function EstimateDetails() {
       </Sheet>
     </EstimatePage>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function EstimateDetailsRoute() {
+  const { jobId } = useLocalSearchParams<{ jobId: string }>();
+  return <RecordGate found={() => hasJob(jobId)}><EstimateDetails /></RecordGate>;
 }

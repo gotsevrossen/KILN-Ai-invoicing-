@@ -1,12 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { ActivityDays, useJobActivity } from '@/components/job-activity';
+import { RecordGate } from '@/components/record-gate';
 import { PageHeader, Screen, T } from '@/components/ui';
-import { jobById } from '@/data/selectors';
+import { hasJob, jobById } from '@/data/selectors';
 import { useLang } from '@/i18n';
 
 /** Everything captured on the job, by day. The job page shows only the latest few. */
-export default function JobActivity() {
+function JobActivity() {
   const { t } = useLang();
   const { id } = useLocalSearchParams<{ id: string }>();
   const job = jobById(id);
@@ -17,4 +18,10 @@ export default function JobActivity() {
       {activity.length === 0 ? <T v="body" muted>{t('job.noTimeline')}</T> : <ActivityDays items={activity} />}
     </Screen>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function JobActivityRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RecordGate found={() => hasJob(id)}><JobActivity /></RecordGate>;
 }

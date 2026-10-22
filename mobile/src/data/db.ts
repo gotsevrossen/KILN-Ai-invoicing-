@@ -1,6 +1,7 @@
 import * as Crypto from 'expo-crypto';
 
-import { supabase } from '@/lib/supabase';
+import { db, ok } from './db-client';
+import { loadDocs, type LoadedDocs } from './db-docs';
 
 import type { PricingSettings, Profile, SetupInput } from './store';
 import type { TradeId } from './trades';
@@ -12,15 +13,6 @@ import type { Customer, Job, PriceItem, Unit } from './types';
 /** Ids are made on the phone so a new record can be used right away, even offline. */
 export const newUuid = (): string => Crypto.randomUUID();
 
-function db() {
-  if (!supabase) throw new Error('No server is set up');
-  return supabase;
-}
-
-function ok<T>(res: { data: T; error: { message: string } | null }): T {
-  if (res.error) throw new Error(res.error.message);
-  return res.data;
-}
 
 interface BusinessRow {
   id: string;
@@ -56,6 +48,8 @@ interface CustomerRow {
 interface JobRow {
   id: string;
   customer_id: string;
+  estimate_skipped: boolean;
+  reopened: boolean;
   title: string;
   address: string;
   pricing: 'hourly' | 'flat';
@@ -72,6 +66,8 @@ export interface Loaded {
   priceList: PriceItem[];
   customers: Customer[];
   jobs: Job[];
+  /** Hours, notes, estimates, change orders, receipts, and invoices. */
+  docs: LoadedDocs;
 }
 
 const toPriceItem = (r: PriceRow): PriceItem => ({ id: r.catalog_id ?? r.id, dbId: r.id, name: r.name, unit: r.unit, unitCents: r.unit_cents });
@@ -98,7 +94,7 @@ export async function loadAll(): Promise<Loaded | null> {
   const [items, customers, jobs] = await Promise.all([
     db().from('price_list_items').select('id, catalog_id, name, unit, unit_cents').order('created_at').returns<PriceRow[]>(),
     db().from('customers').select('id, name, phone, lang').order('created_at').returns<CustomerRow[]>(),
-    db().from('jobs').select('id, customer_id, title, address, pricing, rate_cents, work_order, private_note').order('created_at', { ascending: false }).returns<JobRow[]>(),
+    db().from('jobs').select('id, customer_id, title, address, pricing, rate_cents, work_order, private_note, estimate_skipped, reopened').order('created_at', { ascending: false }).returns<JobRow[]>(),
   ]);
   return {
     businessId: b.id,
@@ -120,6 +116,10 @@ export async function loadAll(): Promise<Loaded | null> {
     priceList: (ok(items) ?? []).map(toPriceItem),
     customers: (ok(customers) ?? []).map(toCustomer),
     jobs: (ok(jobs) ?? []).map(toJob),
+    docs: await loadDocs({
+      skipped: (ok(jobs) ?? []).filter((j) => j.estimate_skipped).map((j) => j.id),
+      reopened: (ok(jobs) ?? []).filter((j) => j.reopened).map((j) => j.id),
+    }),
   };
 }
 

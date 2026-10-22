@@ -1,9 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
 
+import { RecordGate } from '@/components/record-gate';
 import { Card, Hair, ListRow, PageHeader, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { hoursFor, jobById, partsCost, receiptsOnJob } from '@/data/selectors';
+import { hasJob, hoursFor, jobById, partsCost, receiptsOnJob } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -20,7 +21,7 @@ function Stat({ label, value, last }: { label: string; value: string; last?: boo
 }
 
 /** How the job is charged, the hours logged on it, and the receipts sorted to it. */
-export default function JobCosts() {
+function JobCosts() {
   const { t } = useLang();
   const f = useFormat();
   const { state } = useStore();
@@ -69,4 +70,10 @@ export default function JobCosts() {
       )}
     </Screen>
   );
+}
+
+/** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
+export default function JobCostsRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RecordGate found={() => hasJob(id)}><JobCosts /></RecordGate>;
 }
