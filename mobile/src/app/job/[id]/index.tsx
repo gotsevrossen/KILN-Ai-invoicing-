@@ -2,26 +2,18 @@ import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { ActivityDays, useJobActivity } from '@/components/job-activity';
+import { useJobDocs, type DocStatus } from '@/components/job-docs';
 import { Sheet } from '@/components/sheet';
 import { Stepper } from '@/components/stepper';
-import { Button, Card, Field, Hair, Icon, IconButton, ListRow, Notice, PageHeader, PhotoTile, Row, Screen, T, type IconName } from '@/components/ui';
+import { Button, Card, Field, Hair, Icon, IconButton, ListRow, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { changeOrdersForJob, customerOf, hoursFor, invoiceForJob, jobById, jobStage, partsCost, receiptsOnJob, unsortedItems, type Stage } from '@/data/selectors';
+import { changeOrdersForJob, customerOf, hoursFor, invoiceForJob, jobById, jobStage, partsCost, unsortedItems, type Stage } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { callNumber, dialable, textNumber } from '@/lib/contact';
 import { useFormat } from '@/lib/format';
-import { font } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
-
-function Stat({ label, value, last }: { label: string; value: string; last?: boolean }) {
-  const p = usePalette();
-  return (
-    <View style={{ flex: 1, gap: 2, paddingHorizontal: 12, borderRightWidth: last ? 0 : 1, borderRightColor: p.line }}>
-      <T v="small" muted>{label}</T>
-      <T v="money">{value}</T>
-    </View>
-  );
-}
 
 function parseHours(text: string): number | null {
   const n = Number(text.replace(',', '.'));
@@ -89,7 +81,7 @@ export default function JobDetail() {
           title: t('flow.estimateDraft'),
           body: t('flow.estimateDraftBody'),
           action: { label: t('flow.buildEstimate'), icon: 'clipboard', onPress: () => router.push(builderRoute) },
-          extra: <Button label={t('flow.skipEstimate')} variant="ghost" onPress={() => actions.skipEstimate(job.id)} />,
+          extra: <Button label={t('flow.skipEstimate')} variant="outline" onPress={() => actions.skipEstimate(job.id)} />,
         };
       case 'estimateWaiting':
         return {
@@ -107,7 +99,7 @@ export default function JobDetail() {
             onPress: () => router.push(`/invoice/${actions.finishJob(job.id)}`),
           },
           // undo a skipped estimate, but only while nothing has been signed or invoiced
-          extra: canUnskip ? <Button label={t('flow.backToEstimate')} icon="corner-up-left" variant="ghost" onPress={() => actions.unskipEstimate(job.id)} /> : undefined,
+          extra: canUnskip ? <Button label={t('flow.backToEstimate')} icon="corner-up-left" variant="outline" onPress={() => actions.unskipEstimate(job.id)} /> : undefined,
         };
       case 'invoiceDraft':
         return {
@@ -115,97 +107,35 @@ export default function JobDetail() {
           body: t('flow.invoiceDraftBody'),
           action: invoice ? { label: t('flow.reviewInvoice'), icon: 'file-text', onPress: () => router.push(`/invoice/${invoice.id}`) } : undefined,
           // not sent yet, so the owner can still add hours, photos, or receipts
-          extra: <Button label={t('flow.backToWork')} icon="corner-up-left" variant="ghost" onPress={() => actions.reopenWork(job.id)} />,
+          extra: <Button label={t('flow.backToWork')} icon="corner-up-left" variant="outline" onPress={() => actions.reopenWork(job.id)} />,
         };
       case 'invoiceSent':
         return {
           title: t('flow.invoiceSent'),
           body: t('flow.invoiceSentBody'),
           action: invoice ? { label: t('flow.markPaid'), icon: 'dollar-sign', onPress: () => actions.markPaid(invoice.id) } : undefined,
-          extra: invoice ? <Button label={t('flow.viewInvoice')} variant="ghost" onPress={() => router.push(`/invoice/${invoice.id}`)} /> : undefined,
+          extra: invoice ? <Button label={t('flow.viewInvoice')} variant="outline" onPress={() => router.push(`/invoice/${invoice.id}`)} /> : undefined,
         };
       default:
         return { title: t('flow.paidDone'), body: t('flow.paidBody') };
     }
   })();
 
-  // ---------- timeline, newest day first ----------
-  const byDate = new Map<string, ReactNode[]>();
-  const add = (date: string, node: ReactNode) => byDate.set(date, [...(byDate.get(date) ?? []), node]);
-
-  for (const item of sample.timeline.filter((x) => x.jobId === job.id)) {
-    if (item.kind === 'photos') {
-      add(
-        item.date,
-        <Card key={item.id} style={{ gap: 10 }}>
-          <Row style={{ justifyContent: 'space-between' }}>
-            <T v="small" muted>{t('job.photos', { count: item.tags.length })}</T>
-            <T v="small" muted>{item.time}</T>
-          </Row>
-          <Row gap={8}>
-            {item.tags.slice(0, 3).map((tag, i) => (
-              <PhotoTile key={i} tag={t(`job.${tag}`)} />
-            ))}
-          </Row>
-        </Card>,
-      );
-    } else {
-      add(
-        item.date,
-        <Card key={item.id}>
-          <Row style={{ alignItems: 'flex-start' }} gap={12}>
-            <IconButton icon="play" label={t('job.play')} tone="dark" />
-            <View style={{ flex: 1, gap: 4 }}>
-              <Row style={{ justifyContent: 'space-between' }}>
-                <T v="small" muted>{t('job.voiceNote', { length: item.length })}</T>
-                <T v="small" muted>{item.time}</T>
-              </Row>
-              <T v="body">“{item.transcript}”</T>
-            </View>
-          </Row>
-        </Card>,
-      );
-    }
-  }
-  for (const { receipt, items, cost } of receiptsOnJob(state, job.id)) {
-    add(
-      receipt.date,
-      <Card key={receipt.id} style={{ paddingVertical: 8 }}>
-        <ListRow
-          icon="file-text"
-          title={t('job.receiptLine', { store: receipt.store, count: items.length })}
-          sub={items.map((i) => state.fixedNames[i.id] ?? i.name).join(', ')}
-          right={<T v="money">{f.money(cost)}</T>}
-          onPress={() => router.push(`/receipt/${receipt.id}`)}
-          chevron={false}
-        />
-      </Card>,
-    );
-  }
-  for (const entry of state.timeEntries.filter((x) => x.jobId === job.id)) {
-    add(
-      entry.date,
-      <Card key={entry.id} style={{ paddingVertical: 8 }}>
-        <ListRow icon="clock" title={t('job.hoursLine', { note: entry.note || t('job.hours') })} right={<T v="money">{f.qty(entry.hundredths)} h</T>} />
-      </Card>,
-    );
-  }
-  for (const c of state.captures.filter((x) => x.jobId === job.id)) {
-    add(
-      c.date,
-      c.kind === 'photo' ? (
-        <Card key={c.id} style={{ gap: 10 }}>
-          <T v="small" muted>{t('job.photos', { count: 1 })}</T>
-          <PhotoTile tag={t('job.during')} height={120} flex={false} />
-        </Card>
-      ) : (
-        <Card key={c.id} style={{ paddingVertical: 8 }}>
-          <ListRow icon={c.kind === 'voice' ? 'mic' : 'edit-3'} title={c.text || t('job.voiceNote', { length: '0:15' })} />
-        </Card>
-      ),
-    );
-  }
-  const days = [...byDate.keys()].sort().reverse();
+  // ---------- summaries: each opens its own page ----------
+  const activity = useJobActivity(job.id);
+  const docs = useJobDocs(job);
+  const status = (x: DocStatus) => t(`job.docStatus.${x}`);
+  const docsSub = [
+    docs.estimate ? `${t('job.estimate')}: ${status(docs.estimate.status)}` : null,
+    ...docs.changes.map(({ co: c, status: x }) => `${t('job.changeOrder')} #${c.number}: ${status(x)}`),
+    docs.invoiceStatus ? `${t('flow.invoice')}: ${status(docs.invoiceStatus)}` : null,
+  ].filter(Boolean).join(' · ') || t('job.noDocuments');
+  const hours = hoursFor(state, job.id);
+  const costSub = [
+    job.pricing === 'hourly' && job.rateCents ? t('job.perHour', { amount: f.money(job.rateCents) }) : t('job.flat'),
+    job.pricing === 'hourly' || hours > 0 ? `${f.qty(hours)} h` : null,
+    `${t('job.partsCost')} ${f.money(partsCost(state, job.id))}`,
+  ].filter(Boolean).join(' · ');
   const canCapture = stage === 'estimate' || stage === 'work';
 
   return (
@@ -216,20 +146,35 @@ export default function JobDetail() {
             title={job.title}
             back={() => router.back()}
             right={
-              <>
-                <IconButton icon="phone" label={t('job.call', { name: customer.firstName })} />
-                <IconButton icon="message-square" label={t('job.text', { name: customer.firstName })} />
-              </>
+              dialable(customer.phone) ? (
+                <>
+                  <IconButton icon="phone" label={t('job.call', { name: customer.firstName })} onPress={() => callNumber(customer.phone)} />
+                  <IconButton icon="message-square" label={t('job.text', { name: customer.firstName })} onPress={() => textNumber(customer.phone)} />
+                </>
+              ) : undefined
             }
           />
           <Stepper stage={stage} onStep={onStep} />
         </>
       }
       footer={next.action ? <Button label={next.action.label} icon={next.action.icon} big onPress={next.action.onPress} /> : undefined}>
-      <T v="small" muted>
-        {customer.name} · {job.address}
-        {job.workOrder ? ` · ${t('job.workOrder', { number: job.workOrder })}` : ''}
-      </T>
+      <Card style={{ paddingVertical: 6, gap: 0 }}>
+        <ListRow
+          icon="user"
+          title={customer.name}
+          sub={`${job.address}${job.workOrder ? ` · ${t('job.workOrder', { number: job.workOrder })}` : ''}`}
+          onPress={() => router.push(`/job/${job.id}/customer`)}
+        />
+        {job.privateNote ? (
+          <Row gap={10} style={{ alignItems: 'flex-start', borderTopWidth: 1, borderTopColor: p.line, paddingVertical: 10 }}>
+            <Icon name="lock" size={18} color={p.muted} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <T v="label">{job.privateNote}</T>
+              <T v="small" muted>{t('common.privateNote')}</T>
+            </View>
+          </Row>
+        ) : null}
+      </Card>
 
       <Card tone={stage === 'paid' ? 'inverse' : 'plain'} style={{ gap: 6 }}>
         <T v="h2" color={stage === 'paid' ? p.onInverse : undefined}>{next.title}</T>
@@ -237,14 +182,16 @@ export default function JobDetail() {
         {next.extra}
       </Card>
 
-      <Card style={{ flexDirection: 'row', paddingHorizontal: 6 }}>
-        <Stat label={t('job.labor')} value={job.pricing === 'hourly' && job.rateCents ? t('job.perHour', { amount: f.money(job.rateCents) }) : t('job.flat')} />
-        <Stat label={t('job.hours')} value={f.qty(hoursFor(state, job.id))} />
-        <Stat label={t('job.partsCost')} value={f.money(partsCost(state, job.id))} last />
-      </Card>
-
       {canCapture ? (
         <Row gap={8}>
+          <Button label={t('flow.receipt')} icon="file-text" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => {
+              const r = sample.receipts.find((x) => unsortedItems(state, x).length > 0) ?? sample.receipts[0];
+              if (r) router.push(`/receipt/${r.id}`);
+              else setReceiptSoon(true);
+            }} />
+          {job.pricing === 'hourly' ? (
+            <Button label={t('job.logHours')} icon="clock" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setHoursOpen(true)} />
+          ) : null}
           <Button
             label={t('flow.photo')}
             icon="camera"
@@ -257,59 +204,24 @@ export default function JobDetail() {
             }}
           />
           <Button label={t('flow.note')} icon="edit-3" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setNoteOpen(true)} />
-          <Button label={t('flow.receipt')} icon="file-text" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => {
-              const r = sample.receipts.find((x) => unsortedItems(state, x).length > 0) ?? sample.receipts[0];
-              if (r) router.push(`/receipt/${r.id}`);
-              else setReceiptSoon(true);
-            }} />
-          {job.pricing === 'hourly' ? (
-            <Button label={t('job.logHours')} icon="clock" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setHoursOpen(true)} />
-          ) : null}
         </Row>
       ) : null}
       {photoAdded ? <Notice text={t('flow.photoAdded')} icon="camera" /> : null}
       {receiptSoon ? <Notice text={t('capture.receiptSoon')} icon="info" tone="soft" /> : null}
       {(stage === 'work' || detail === 'invoiceDraft') ? <Button label={t('review.newChange')} variant="outline" icon="plus"
         onPress={() => pendingChange ? router.push(`/change-order/${pendingChange.id}`) : setChangeOpen(true)} /> : null}
-      {pendingChange ? <Notice text={t('review.changePending')} tone="soft" /> : null}
 
-      {co || draft || sentEstimate ? (
-        <Row gap={8}>
-          {draft || sentEstimate ? (
-            <Button
-              label={t('flow.viewEstimate')}
-              icon="clipboard"
-              variant="soft"
-              stacked
-              style={{ backgroundColor: p.card }}
-              onPress={() => router.push(draft && !draft.signed && !sentEstimate ? builderRoute : customerEstimateRoute)}
-            />
-          ) : null}
-          {co ? (
-            <Button label={t('job.changeOrder')} icon="edit-3" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => router.push(`/change-order/${co.id}`)} />
-          ) : null}
-        </Row>
+      <Card style={{ gap: 4 }}>
+        <ListRow icon="dollar-sign" title={t('job.costs')} sub={costSub} onPress={() => router.push(`/job/${job.id}/costs`)} />
+        <Hair />
+        <ListRow icon="folder" iconTone={pendingChange ? 'flag' : 'soft'} title={t('job.documents')} sub={docsSub}
+          onPress={() => router.push(`/job/${job.id}/documents`)} />
+      </Card>
+
+      {activity.length === 0 ? <T v="body" muted>{t('job.noTimeline')}</T> : <ActivityDays items={activity.slice(0, 3)} />}
+      {activity.length > 3 ? (
+        <Button label={t('job.seeAll', { count: activity.length })} icon="list" variant="outline" onPress={() => router.push(`/job/${job.id}/activity`)} />
       ) : null}
-
-      {job.privateNote ? (
-        <Card tone="flag" style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          <Icon name="lock" color={p.onFlag} />
-          <View style={{ flex: 1, gap: 2 }}>
-            <T v="label" color={p.onFlag}>{job.privateNote}</T>
-            <T v="small" color={p.onFlag}>{t('common.privateNote')}</T>
-          </View>
-        </Card>
-      ) : null}
-
-      {days.length === 0 ? <T v="body" muted>{t('job.noTimeline')}</T> : null}
-      {days.map((day) => (
-        <View key={day} style={{ gap: 10 }}>
-          <T style={{ fontFamily: font.black, fontSize: 18, letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 8 }}>
-            {day === sample.TODAY ? t('common.today') : f.date(day)}
-          </T>
-          {byDate.get(day)}
-        </View>
-      ))}
 
       <Sheet open={changeOpen} onClose={() => setChangeOpen(false)} title={t('review.newChange')}>
         <T muted>{t('review.changeHelp')}</T>

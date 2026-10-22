@@ -40,7 +40,7 @@ export default function SignIn() {
           <Button label={busy ? t('auth.working') : mode === 'in' ? t('auth.signIn') : t('auth.signUp')} icon="log-in" big disabled={!ready || busy} onPress={submit} />
           <Button
             label={mode === 'in' ? t('auth.toSignUp') : t('auth.toSignIn')}
-            variant="ghost"
+            variant="outline"
             onPress={() => {
               setMode(mode === 'in' ? 'up' : 'in');
               setError(null);

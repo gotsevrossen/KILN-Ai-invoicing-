@@ -96,7 +96,7 @@ export default function Setup() {
           {step === 0 && !auth.configured ? (
             <Button
               label={t('setup.skip')}
-              variant="ghost"
+              variant="outline"
               onPress={() => {
                 actions.skipSetup();
                 router.replace('/');

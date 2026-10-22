@@ -136,7 +136,7 @@ All three accepted optional fixture/location/outcome detail and package-once bil
 #### What each reviewer contributed
 
 - **Solo repair/troubleshooting owner: 6.5/10** (2.5 workflow, 1.75 trade, 2.25 admin). Wanted diagnosis-only, repaired, and return-needed outcomes; room/device wording; and a clear distinction between hourly labor and installed-device prices. A diagnosis should be billable as agreed without implying a repair happened.
-- **Three-person additions/service firm: 6.2/10** (2.4, 1.6, 2.2). Wanted device/room variations and real owner-initiated change creation. In `mobile/src/app/job/[id].tsx`, the change-order button is conditional on an existing sample change order, leaving the ordinary new-addition path incomplete.
+- **Three-person additions/service firm: 6.2/10** (2.4, 1.6, 2.2). Wanted device/room variations and real owner-initiated change creation. In `mobile/src/app/job/[id]/index.tsx`, the change-order button is conditional on an existing sample change order, leaving the ordinary new-addition path incomplete.
 - **Six-person residential contractor: 5.5/10** (2, 2, 1.5). Emphasized replacement versus new location, explicit treatment of every proposed unpriced item, and capture evidence behind additions. Its estimating handoffs and team coordination exceed v1's size target.
 
 The consensus preserves reasonable small-job workflow coverage but rates trade specificity conservatively: combined device labels and vague completion descriptions do not explain actual agreed work. It does not average in large-company approval needs as v1 requirements.
@@ -405,7 +405,7 @@ Keep scheduling, dispatch, crew logins, payroll, full bookkeeping, financing, su
 
 - [Product intent and scope](../CLAUDE.md), [planned screens and build order](app-outline.md).
 - [Trade templates and starter units](../mobile/src/data/trades.ts), [English content](../mobile/src/i18n/en.ts), [Spanish content](../mobile/src/i18n/es.ts).
-- [Estimate builder](../mobile/src/app/estimate/[jobId].tsx), [billing and document selectors](../mobile/src/data/selectors.ts), [state actions](../mobile/src/data/store.tsx).
+- [Estimate builder](../mobile/src/app/estimate/[jobId]/index.tsx), [billing and document selectors](../mobile/src/data/selectors.ts), [state actions](../mobile/src/data/store.tsx).
 - [Job creation](../mobile/src/components/new-job.tsx), [capture](../mobile/src/app/(tabs)/capture.tsx), [invoice editor](../mobile/src/app/invoice/[id].tsx), [customer invoice](../mobile/src/app/customer/invoice/[id].tsx), [customer estimate](../mobile/src/app/customer/estimate/[id].tsx).
 - [Connected data paths](../mobile/src/data/db.ts), [authentication](../mobile/src/data/auth.tsx), [types](../mobile/src/data/types.ts).
 

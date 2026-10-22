@@ -7,7 +7,7 @@ import * as dbApi from './db';
 import * as sample from './sample';
 import { TODAY, business, customers, initialAssignments, initialEstimates, invoices, jobs, priceList, timeEntries } from './sample';
 import type { TradeId } from './trades';
-import type { Assignment, Customer, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, PriceItem, TimeEntry } from './types';
+import type { Assignment, Customer, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, PriceItem, TimeEntry, Unit } from './types';
 import { changeOrderBase, hoursFor, invoiceBilling, invoiceLines, invoiceSummary, invoiceTax } from './selectors';
 
 export type { EstimateDraft, EstimateLine };
@@ -469,6 +469,14 @@ function makeActions() {
       set((s) => ({ ...s, priceList: s.priceList.map((p) => (p.id === itemId ? { ...p, unitCents: cents } : p)) }));
       const item = get().priceList.find((p) => p.id === itemId);
       if (item) persist((bid) => dbApi.savePrice(bid, item));
+    },
+    /** The owner's own price list item (not a trade starter item). No price is fine; KILN flags it. */
+    addPriceItem(name: string, unit: Unit, unitCents: Cents | null): PriceItem {
+      const item: PriceItem = { id: newId('own'), name: name.trim().slice(0, 160), unit, unitCents };
+      set((s) => ({ ...s, priceList: [...s.priceList, item] }));
+      // saved like a starter item the owner added: its id is kept, so it loads back the same
+      persist((bid) => dbApi.savePrice(bid, item));
+      return item;
     },
     /**
      * Changes the work the owner does. New trades bring their starter items (no prices);

@@ -67,12 +67,13 @@ export default function Capture() {
         <PageHeader title={t('capture.title')} sub={t('capture.sub')} />
       } tabs>
 
+      {/* same order as a job's capture buttons, with Voice in Log hours' place */}
       <Row gap={12}>
-        <Tile icon="mic" label={t('capture.voice')} accent onPress={() => setMode('voice')} />
-        <Tile icon="camera" label={t('capture.photo')} onPress={() => setMode('photo')} />
+        <Tile icon="file-text" label={t('capture.receipt')} accent onPress={() => (receiptToSort ? router.push(`/receipt/${receiptToSort.id}`) : setReceiptSoon(true))} />
+        <Tile icon="mic" label={t('capture.voice')} onPress={() => setMode('voice')} />
       </Row>
       <Row gap={12}>
-        <Tile icon="file-text" label={t('capture.receipt')} onPress={() => (receiptToSort ? router.push(`/receipt/${receiptToSort.id}`) : setReceiptSoon(true))} />
+        <Tile icon="camera" label={t('capture.photo')} onPress={() => setMode('photo')} />
         <Tile icon="edit-3" label={t('capture.note')} onPress={() => setNoteOpen(true)} />
       </Row>
 
