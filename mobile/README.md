@@ -6,6 +6,8 @@ The [trade-review implementation notes](../docs/trade-review-implementation-2026
 
 ## Run it
 
+On Windows, you can double-click **Start KILN.cmd**, **Stop KILN.cmd**, or **KILN Status.cmd** in the repository folder. See [local service controls](../docs/local-services.md) for details. Stop preserves the database and shuts down idle Docker Desktop to free resources.
+
 ```bash
 cd mobile
 npm install

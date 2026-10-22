@@ -1,0 +1,2 @@
+# Local service process records and logs; never application data.
+.kiln-runtime/

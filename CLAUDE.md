@@ -24,6 +24,7 @@ KILN is an AI invoicing tool for solo and very small trades businesses: plumbers
 - Y Combinator one-page pitch drafted.
 - Customer discovery in progress: interviews with local trades businesses.
 - Pages, features, and build order outlined in `docs/app-outline.md`. That file has the full screen list.
+- Windows service controls: repository-root `Start KILN.cmd`, `Stop KILN.cmd`, and `KILN Status.cmd` call `scripts/kiln-services.ps1`. Start resumes existing KILN containers, refreshes the temporary Cloudflare URL in `mobile/.env.local`, and launches Expo in the background. Optional analytics/vector containers stay off. Stop preserves volumes, targets only KILN processes/containers, and stops Docker Desktop if no other containers are running. See `docs/local-services.md`. Do not restart services after a resource-saving shutdown unless requested or briefly needed to test the requested service controls; leave them off afterward.
 
 ## First version scope
 
