@@ -78,7 +78,7 @@ export interface Receipt {
 }
 
 export type Assignment =
-  | { type: 'jobs'; jobIds: string[] }
+  | { type: 'jobs'; jobIds: string[]; weights?: number[] }
   | { type: 'personal' }
   | { type: 'overhead' };
 
@@ -113,6 +113,18 @@ export interface EstimateLine {
   unitCents: Cents | null;
   /** Heard in a voice note but not in the price list. */
   fromVoice?: boolean;
+  kind?: LineKind;
+  /** Explicitly excluded by the owner, retained for the customer scope. */
+  excluded?: boolean;
+}
+
+export interface JobScope {
+  tradeId?: import('./trades').TradeId;
+  jobTypeId?: string;
+  notes?: string;
+  location?: string;
+  details?: string;
+  exclusions?: string;
 }
 
 export interface EstimateDraft {
@@ -122,6 +134,28 @@ export interface EstimateDraft {
   sent: boolean;
   /** The customer signed it (by link or on the owner's phone). */
   signed: boolean;
+  scope?: JobScope;
+  /** Tax rules frozen when this estimate is issued. */
+  tax?: TaxRule;
+}
+
+export interface InvoiceBilling {
+  labor: 'actual' | 'estimate';
+  materials: 'included' | 'additional';
+  reviewed: boolean;
+}
+
+export interface InvoiceSnapshot {
+  lines: DocLine[];
+  tax: TaxRule;
+  summary: string;
+  scope?: JobScope;
+  excludedScope?: string[];
+  materialsMode: 'items' | 'total';
+  dueDays: number;
+  issuedOn: string;
+  address: string;
+  workOrder?: string;
 }
 
 export interface Suggestion {
@@ -160,4 +194,5 @@ export interface CustomerEstimate {
   jobId: string;
   goodUntil: string;
   lines: DocLine[];
+  tax?: TaxRule;
 }

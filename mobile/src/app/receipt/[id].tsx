@@ -4,7 +4,7 @@ import { Pressable, View } from 'react-native';
 
 import { NewJobForm } from '@/components/new-job';
 import { Sheet } from '@/components/sheet';
-import { Button, ButtonRow, Card, Checkbox, Field, Hair, PageHeader, Pill, Row, Screen, SwitchRow, T, type Tone } from '@/components/ui';
+import { Button, ButtonRow, Card, Checkbox, Field, Hair, Notice, PageHeader, Pill, Row, Screen, Segmented, SwitchRow, T, type Tone } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { customerOf, itemCostWithTax, jobById, receiptById } from '@/data/selectors';
 import { useStore } from '@/data/store';
@@ -26,6 +26,8 @@ export default function SortReceipt() {
 
   const [splitOpen, setSplitOpen] = useState(false);
   const [splitJobs, setSplitJobs] = useState<string[]>([]);
+  const [splitMode, setSplitMode] = useState<'equal' | 'quantity'>('equal');
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [fixOpen, setFixOpen] = useState(false);
   const [fixText, setFixText] = useState('');
   const [newOpen, setNewOpen] = useState(false);
@@ -37,6 +39,13 @@ export default function SortReceipt() {
   const flagged = receipt.items.find((i) => isFlagged(i) && !state.assignments[i.id]);
   const done = receipt.items.filter((i) => state.assignments[i.id]).length;
   const total = receipt.items.reduce((a, i) => a + i.costCents, 0) + receipt.taxCents;
+  const weights = splitJobs.map((jobId) => {
+    const text = quantities[jobId] ?? '1';
+    return /^\d{1,6}([.,]\d{1,2})?$/.test(text) ? Math.round(Number(text.replace(',', '.')) * 100) : 0;
+  });
+  const validSplit = splitMode === 'equal' || weights.every((weight) => weight > 0);
+  const splitShares = current && splitJobs.length > 0 && validSplit
+    ? splitByWeights(itemCostWithTax(current), splitMode === 'equal' ? splitJobs.map(() => 1) : weights) : [];
 
   const statusOf = (item: ReceiptItem): { label: string; tone: Tone | 'outline' } => {
     const a = state.assignments[item.id];
@@ -158,30 +167,38 @@ export default function SortReceipt() {
       </Pressable>
 
       <Sheet open={splitOpen} onClose={() => setSplitOpen(false)} title={t('receipt.splitTitle')}>
-        <T v="body" muted>{t('receipt.splitHelp')}</T>
+        <T v="body" muted>{t('review.splitHelp')}</T>
+        <Segmented label={t('review.splitMode')} value={splitMode}
+          options={[{ key: 'equal', label: t('review.equal') }, { key: 'quantity', label: t('review.quantities') }]}
+          onChange={setSplitMode} />
         {activeJobs.map((job) => {
           const on = splitJobs.includes(job.id);
-          const shares = current && splitJobs.length > 0 ? splitByWeights(itemCostWithTax(current), splitJobs.map(() => 1)) : [];
-          const share = on ? shares[splitJobs.indexOf(job.id)] : undefined;
+          const share = on ? splitShares[splitJobs.indexOf(job.id)] : undefined;
           return (
-            <Row key={job.id} style={{ justifyContent: 'space-between' }}>
+            <View key={job.id} style={{ gap: 8 }}><Row style={{ justifyContent: 'space-between' }}>
               <View style={{ flex: 1 }}>
                 <Checkbox label={job.title} value={on} onChange={(v) => setSplitJobs(v ? [...splitJobs, job.id] : splitJobs.filter((j) => j !== job.id))} />
               </View>
               {share !== undefined ? <T v="money">{f.money(share)}</T> : null}
             </Row>
+              {on && splitMode === 'quantity' ? <Field label={`${t('review.weight')}: ${job.title}`}
+                keyboardType="decimal-pad" value={quantities[job.id] ?? '1'}
+                onChangeText={(value) => setQuantities({ ...quantities, [job.id]: value })} /> : null}
+            </View>
           );
         })}
         <Button
-          label={t('receipt.splitDo')}
-          disabled={splitJobs.length < 2 || !current}
+          label={t('review.splitSave')}
+          disabled={splitJobs.length < 2 || !current || !validSplit}
           onPress={() => {
             if (!current) return;
-            actions.assign(current.id, { type: 'jobs', jobIds: splitJobs });
+            actions.assign(current.id, { type: 'jobs', jobIds: splitJobs, weights: splitMode === 'quantity' ? weights : undefined });
             setSplitJobs([]);
+            setQuantities({});
             setSplitOpen(false);
           }}
         />
+        {!validSplit ? <Notice text={t('review.splitBad')} tone="soft" /> : null}
       </Sheet>
 
       <Sheet open={newOpen} onClose={() => setNewOpen(false)} title={t('newJob.title')}>

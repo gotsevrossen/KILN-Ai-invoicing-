@@ -1,7 +1,8 @@
 import { applyMarkup, documentTotals, percentOf, splitByWeights, type Cents, type Totals } from '@/lib/money';
+import { composeInvoiceLines, defaultBilling, estimateLines, receiptShares } from '@/lib/billing';
 
 import * as sample from './sample';
-import { emptyDraft, type State } from './store';
+import type { State } from './store';
 import type { ChangeOrder, Customer, DocLine, EstimateDraft, Invoice, Job, Receipt, ReceiptItem } from './types';
 
 // Read-only views over the example data plus what the owner changed this session.
@@ -61,7 +62,7 @@ export function shareOf(state: State, item: ReceiptItem, jobId: string): Cents {
   if (!a || a.type !== 'jobs') return 0;
   const index = a.jobIds.indexOf(jobId);
   if (index === -1) return 0;
-  return splitByWeights(itemCostWithTax(item), a.jobIds.map(() => 1))[index];
+  return receiptShares(itemCostWithTax(item), a)[index];
 }
 
 export function partsCost(state: State, jobId: string): Cents {
@@ -90,30 +91,38 @@ export function billedPrice(state: State, item: ReceiptItem, jobId: string): Cen
  * change orders, logged hours (hourly jobs), fees, and receipt items with markup.
  */
 export function invoiceLines(state: State, invoice: Invoice): DocLine[] {
+  const issued = state.issuedInvoices[invoice.id];
+  if (issued) return issued.lines;
   const job = jobById(invoice.jobId);
-  const lines: DocLine[] = [];
   const draft = state.estimates[job.id];
-  if (draft?.signed) lines.push(...estimateDocLines(draft).map((l) => ({ ...l, id: `est-${l.id}` })));
-  for (const co of changeOrdersForJob(job.id)) {
-    if (state.signed[co.id]) lines.push({ id: co.id, kind: 'labor', description: co.description, qtyHundredths: 100, unitCents: co.amountCents });
-  }
-  const hours = hoursFor(state, job.id);
-  if (job.pricing === 'hourly' && job.rateCents && hours > 0) {
-    lines.push({ id: 'labor', kind: 'labor', description: invoice.laborDescription, qtyHundredths: hours, unitCents: job.rateCents, unit: 'hour' });
-  }
-  lines.push(...invoice.fees);
+  const changes: DocLine[] = changeOrdersForJob(job.id).filter((co) => state.signed[co.id])
+    .map((co) => ({ id: co.id, kind: 'labor', description: co.description, qtyHundredths: 100, unitCents: co.amountCents }));
   const materialIds = invoice.materialItemIds
     ? [...invoice.materialItemIds]
     : receiptsOnJob(state, job.id).flatMap((r) => r.items.map((i) => i.id));
   if (invoice.suggestion && state.acceptedSuggestions.includes(invoice.suggestion.id)) {
     materialIds.push(invoice.suggestion.receiptItemId);
   }
-  for (const id of materialIds) {
+  const materials: DocLine[] = [];
+  for (const id of new Set(materialIds)) {
     const item = receiptItemById(id);
     const name = item.qtyLabel && item.qtyLabel !== '× 1' ? `${item.name} ${item.qtyLabel}` : item.name;
-    lines.push({ id, kind: 'material', description: name, qtyHundredths: 100, unitCents: billedPrice(state, item, job.id) });
+    materials.push({ id, kind: 'material', description: state.fixedNames[id] ?? name, qtyHundredths: 100, unitCents: billedPrice(state, item, job.id) });
   }
-  return lines;
+  return composeInvoiceLines({ job, estimate: draft, billing: invoiceBilling(state, invoice),
+    hours: hoursFor(state, job.id), laborDescription: invoice.laborDescription, fees: invoice.fees, changes, materials });
+}
+
+export function invoiceBilling(state: State, invoice: Invoice) {
+  return state.invoiceBilling[invoice.id] ?? defaultBilling(!!state.estimates[invoice.jobId]?.signed);
+}
+
+export function invoiceSummary(state: State, invoice: Invoice): string {
+  return state.issuedInvoices[invoice.id]?.summary ?? state.invoiceSummaries[invoice.id] ?? invoice.summary;
+}
+
+export function invoiceTax(state: State, invoice: Invoice) {
+  return state.issuedInvoices[invoice.id]?.tax ?? state.estimates[invoice.jobId]?.tax ?? state.settings.tax;
 }
 
 /** What KILN built the invoice from, for the "built from" line. */
@@ -130,7 +139,7 @@ export function invoiceSources(state: State, invoice: Invoice) {
 }
 
 export function invoiceTotals(state: State, invoice: Invoice): Totals {
-  return documentTotals(invoiceLines(state, invoice), state.settings.tax);
+  return documentTotals(invoiceLines(state, invoice), invoiceTax(state, invoice));
 }
 
 export function suggestionOpen(state: State, invoice: Invoice): boolean {
@@ -142,20 +151,29 @@ export function changeOrderTotal(co: ChangeOrder): Cents {
   return co.baseCents + co.amountCents;
 }
 
-export function estimateDraft(state: State, jobId: string): EstimateDraft {
-  return state.estimates[jobId] ?? emptyDraft(state);
+/** Change-order approval shows the pre-tax base; tax stays in document totals. */
+export function changeOrderBase(state: State, job: Job): Cents {
+  const invoice = invoiceForJob(job.id);
+  if (invoice) return documentTotals(invoiceLines(state, invoice), { rateBps: 0, labor: false, materials: false }).subtotal;
+  const approved = changeOrdersForJob(job.id).filter((co) => state.signed[co.id]).reduce((sum, co) => sum + co.amountCents, 0);
+  if (state.estimates[job.id]?.signed) return estimateTotals(state, job.id).subtotal + approved;
+  const saved = sample.customerEstimates.find((estimate) => estimate.jobId === job.id);
+  if (saved) return documentTotals(saved.lines, { rateBps: 0, labor: false, materials: false }).subtotal + approved;
+  return (changeOrdersForJob(job.id)[0]?.baseCents ?? job.amountCents ?? 0) + approved;
 }
 
-/** Priced lines, ready for the money math. Lines still waiting for a price are left out. */
+export function estimateDraft(state: State, jobId: string): EstimateDraft {
+  return state.estimates[jobId] ?? { lines: [], depositOn: true, depositBps: state.settings.depositBps, sent: false, signed: false };
+}
+
+/** Included priced lines for totals; estimateReady separately blocks unresolved issue/signing. */
 export function estimateDocLines(draft: EstimateDraft): DocLine[] {
-  return draft.lines
-    .filter((l) => l.unitCents !== null && l.qtyHundredths > 0)
-    .map((l) => ({ id: l.id, kind: 'labor', description: l.description, qtyHundredths: l.qtyHundredths, unitCents: l.unitCents ?? 0, unit: l.unit }));
+  return estimateLines(draft);
 }
 
 export function estimateTotals(state: State, jobId: string) {
   const draft = estimateDraft(state, jobId);
-  const totals = documentTotals(estimateDocLines(draft), { rateBps: 0, labor: false, materials: false });
+  const totals = documentTotals(estimateDocLines(draft), draft.tax ?? state.settings.tax);
   return { ...totals, deposit: draft.depositOn ? percentOf(totals.total, draft.depositBps) : 0 };
 }
 
@@ -203,7 +221,7 @@ export function jobStatus(state: State, job: Job): JobStatus {
     if (state.sentInvoices.includes(invoice.id)) return 'sent';
     if (!state.reopenedJobs.includes(job.id)) return 'invoiceReady';
   }
-  if (changeOrdersForJob(job.id).some((co) => !state.signed[co.id])) return 'needsSignature';
+  if (changeOrdersForJob(job.id).some((co) => !state.signed[co.id] && !state.declinedChanges.includes(co.id))) return 'needsSignature';
   const { detail } = jobStage(state, job);
   if (detail === 'estimateDraft') return 'needsEstimate';
   if (detail === 'estimateWaiting') return 'estimateSent';
@@ -252,8 +270,8 @@ export function homeSummary(state: State) {
 }
 
 /** Which tax label to show: on everything, labor only, or materials only. Null when nothing is taxed. */
-export function taxScope(state: State): 'all' | 'labor' | 'materials' | null {
-  const { tax } = state.settings;
+export function taxScope(state: State, invoice?: Invoice): 'all' | 'labor' | 'materials' | null {
+  const tax = invoice ? invoiceTax(state, invoice) : state.settings.tax;
   if (tax.rateBps === 0 || (!tax.labor && !tax.materials)) return null;
   if (tax.labor && tax.materials) return 'all';
   return tax.labor ? 'labor' : 'materials';

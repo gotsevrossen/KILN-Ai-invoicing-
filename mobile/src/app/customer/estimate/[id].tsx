@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { CustomerPage } from '@/components/customer-page';
+import { ScopeCard } from '@/components/job-scope';
+import { estimateReady } from '@/lib/billing';
 import { SignaturePad } from '@/components/signature-pad';
 import { Button, Card, Checkbox, Field, Hair, LineRow, Notice, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
@@ -27,13 +29,15 @@ export default function CustomerEstimate() {
   const tc = useTFor(customer.lang);
   const fc = formatters(customer.lang);
 
-  // a sent estimate, or this job's draft (lines without a price yet are left off)
+  // Incomplete drafts are clearly marked and cannot be accepted.
   const draft = saved ? null : estimateDraft(state, job.id);
   const lines: DocLine[] = saved ? saved.lines : estimateDocLines(draft!);
   // non-breaking hyphen keeps "E-208" on one line under the big title
   const number = (saved ? saved.number : 'E-209').replace('-', '‑');
   const goodUntil = saved ? saved.goodUntil : addDays(sample.TODAY, 14);
-  const total = documentTotals(lines, { rateBps: 0, labor: false, materials: false }).total;
+  const tax = saved ? saved.tax ?? { rateBps: 0, labor: false, materials: false } : draft?.tax ?? state.settings.tax;
+  const totals = documentTotals(lines, tax);
+  const total = totals.total;
   const askDeposit = draft ? draft.depositOn : true;
   const depositBps = draft ? draft.depositBps : sample.business.depositBps;
   const deposit = askDeposit ? percentOf(total, depositBps) : 0;
@@ -44,7 +48,8 @@ export default function CustomerEstimate() {
   const [padKey, setPadKey] = useState(0);
   const [agreed, setAgreed] = useState(false);
   const [done, setDone] = useState(false);
-  const ready = name.trim().length > 1 && hasInk && agreed;
+  const canAccept = saved ? true : !!draft?.sent && !draft.signed && estimateReady(draft);
+  const ready = canAccept && name.trim().length > 1 && hasInk && agreed;
   const unit = (l: DocLine) => (l.unit ? tc(`estimate.units.${l.unit}`) : '');
 
   return (
@@ -56,6 +61,10 @@ export default function CustomerEstimate() {
         </T>
       </View>
 
+      {!saved && !draft?.sent ? <Notice text={tc('review.previewOnly')} tone="soft" /> : null}
+      {draft?.signed ? <Notice text={tc('review.accepted')} /> : null}
+      {draft && !estimateReady(draft) ? <Notice text={tc('review.unresolved')} tone="soft" /> : null}
+      <ScopeCard scope={draft?.scope} excluded={draft?.lines.filter((line) => line.excluded).map((line) => line.description)} t={tc} />
       <Card style={{ gap: 6 }}>
         {lines.map((l) => (
           <LineRow
@@ -66,6 +75,10 @@ export default function CustomerEstimate() {
           />
         ))}
         <Hair style={{ marginVertical: 6, backgroundColor: p.ink, height: 2 }} />
+        {totals.tax > 0 ? <>
+          <LineRow label={tc('invoice.subtotal')} value={fc.money(totals.subtotal)} />
+          <LineRow label={tc('customer.taxAll', { pct: fc.pct(tax.rateBps) })} value={fc.money(totals.tax)} />
+        </> : null}
         <LineRow label={tc('customer.total')} value={fc.money(total)} strong />
       </Card>
 
@@ -81,7 +94,7 @@ export default function CustomerEstimate() {
 
       {done ? (
         <Notice text={tc('customer.payDemo')} icon="credit-card" />
-      ) : (
+      ) : canAccept ? (
         <>
           <Field label={tc('customer.yourName')} value={name} onChangeText={setName} placeholder={tc('customer.namePlaceholder')} autoComplete="name" />
           <View style={{ gap: 6 }}>
@@ -107,7 +120,7 @@ export default function CustomerEstimate() {
             <T v="label" style={{ textDecorationLine: 'underline' }}>{tc('customer.decline')}</T>
           </Pressable>
         </>
-      )}
+      ) : null}
     </CustomerPage>
   );
 }

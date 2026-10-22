@@ -38,7 +38,9 @@ export default function JobDetail() {
   const job = jobById(id);
   const customer = customerOf(job);
   const invoice = invoiceForJob(job.id);
-  const co = changeOrdersForJob(job.id)[0];
+  const changes = changeOrdersForJob(job.id);
+  const pendingChange = changes.find((change) => !state.signed[change.id] && !state.declinedChanges.includes(change.id));
+  const co = pendingChange ?? changes[changes.length - 1];
   const { stage, detail } = jobStage(state, job);
 
   // a sent estimate opens as the customer sees it; a draft opens in the builder
@@ -54,6 +56,11 @@ export default function JobDetail() {
   const [noteText, setNoteText] = useState('');
   const [photoAdded, setPhotoAdded] = useState(false);
   const [receiptSoon, setReceiptSoon] = useState(false);
+  const [changeOpen, setChangeOpen] = useState(false);
+  const [changeDescription, setChangeDescription] = useState('');
+  const [changePrice, setChangePrice] = useState('');
+  const changeCents = /^\d{1,6}([.,]\d{1,2})?$/.test(changePrice)
+    ? Math.round(Number(changePrice.replace(',', '.')) * 100) : null;
   const hoursValue = parseHours(hoursText);
   const canUnskip = state.skippedEstimates.includes(job.id) && !draft?.signed && !draft?.sent && !invoice && !co;
 
@@ -262,6 +269,9 @@ export default function JobDetail() {
       ) : null}
       {photoAdded ? <Notice text={t('flow.photoAdded')} icon="camera" /> : null}
       {receiptSoon ? <Notice text={t('capture.receiptSoon')} icon="info" tone="soft" /> : null}
+      {(stage === 'work' || detail === 'invoiceDraft') ? <Button label={t('review.newChange')} variant="outline" icon="plus"
+        onPress={() => pendingChange ? router.push(`/change-order/${pendingChange.id}`) : setChangeOpen(true)} /> : null}
+      {pendingChange ? <Notice text={t('review.changePending')} tone="soft" /> : null}
 
       {co || draft || sentEstimate ? (
         <Row gap={8}>
@@ -300,6 +310,22 @@ export default function JobDetail() {
           {byDate.get(day)}
         </View>
       ))}
+
+      <Sheet open={changeOpen} onClose={() => setChangeOpen(false)} title={t('review.newChange')}>
+        <T muted>{t('review.changeHelp')}</T>
+        <Field label={t('review.changeDescription')} value={changeDescription} onChangeText={setChangeDescription}
+          multiline maxLength={2000} style={{ minHeight: 100, paddingTop: 14, textAlignVertical: 'top' }} />
+        <Field label={t('review.changePrice')} value={changePrice} onChangeText={setChangePrice} keyboardType="decimal-pad" />
+        <Button label={t('review.changeCreate')} disabled={!changeDescription.trim() || changeCents === null} onPress={() => {
+          if (changeCents === null) return;
+          const changeId = actions.createChangeOrder(job.id, changeDescription, changeCents);
+          if (!changeId) return;
+          setChangeOpen(false);
+          setChangeDescription('');
+          setChangePrice('');
+          setTimeout(() => router.push(`/change-order/${changeId}`), 400);
+        }} />
+      </Sheet>
 
       <Sheet open={hoursOpen} onClose={() => setHoursOpen(false)} title={t('logHours.title')}>
         <Field label={t('logHours.hours')} value={hoursText} onChangeText={setHoursText} keyboardType="decimal-pad" placeholder="2.5" />

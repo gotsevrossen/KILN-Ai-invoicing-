@@ -4,7 +4,7 @@ import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SignaturePad } from '@/components/signature-pad';
-import { Button, Card, Checkbox, Field, Hair, Icon, LineRow, PhotoTile, Row, Screen, T } from '@/components/ui';
+import { Button, Card, Checkbox, Field, Hair, Icon, LineRow, Notice, PhotoTile, Row, Screen, T } from '@/components/ui';
 import { changeOrderById, changeOrderTotal, customerOf, jobById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang, useTFor } from '@/i18n';
@@ -47,7 +47,10 @@ export default function ChangeOrderSign() {
         </Row>
       </SafeAreaView>
 
-      {signed ? (
+      {state.declinedChanges.includes(co.id) ? <Screen noTopInset>
+        <Notice text={tc('review.changeDeclined')} tone="soft" />
+        <Button label={tc('changeOrder.giveBack')} onPress={() => router.back()} />
+      </Screen> : signed ? (
         <Screen scroll={false} noTopInset>
           <View style={{ flex: 1, justifyContent: 'center', gap: 18 }}>
             <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: p.accent, alignItems: 'center', justifyContent: 'center' }}>
@@ -102,6 +105,7 @@ export default function ChangeOrderSign() {
           <Checkbox label={tc('changeOrder.approve', { amount: newTotal })} value={agreed} onChange={setAgreed} />
 
           <Button label={tc('changeOrder.signApprove')} big disabled={!ready} onPress={() => actions.sign(co.id, name.trim())} />
+          <Button label={tc('customer.decline')} variant="outline" onPress={() => actions.declineChange(co.id)} />
           {!ready ? <T v="small" muted style={{ textAlign: 'center' }}>{tc('changeOrder.needAll')}</T> : null}
           <Hair />
           <T v="small" muted>{tc('changeOrder.privacy', { business: state.profile.businessName })}</T>

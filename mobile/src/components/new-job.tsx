@@ -7,7 +7,7 @@ import { useLang, type Lang } from '@/i18n';
 import { radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
-import { Button, Field, Hair, Icon, ListRow, Row, Segmented, T } from './ui';
+import { Button, Chip, Field, Hair, Icon, ListRow, Row, Segmented, T } from './ui';
 
 /** "85" or "$85.50" -> cents, or null. */
 function parseDollars(text: string): number | null {
@@ -44,6 +44,10 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
     .filter((c) => !q || c.name.toLowerCase().includes(q) || (digits.length >= 3 && c.phone.replace(/\D/g, '').includes(digits)))
     .slice(0, q ? 8 : 5);
   const picked = customerId ? sample.customers.find((c) => c.id === customerId) : undefined;
+  const properties = [...new Set(sample.jobs.filter((job) => job.customerId === customerId)
+    .map((job) => job.address.trim()).filter(Boolean))];
+
+  const clearProperty = () => { setAddress(''); setWorkOrder(''); setNote(''); };
 
   const rateCents = parseDollars(rateText);
   const hasCustomer = mode === 'existing' ? customerId !== null : name.trim().length > 1;
@@ -51,9 +55,7 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
 
   const pickCustomer = (id: string) => {
     setCustomerId(id);
-    // fill in the address from this customer's last job (owner can change it)
-    const last = sample.jobs.find((j) => j.customerId === id);
-    if (last && !address.trim()) setAddress(last.address);
+    clearProperty();
   };
 
   const create = () => {
@@ -80,7 +82,7 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
       <Segmented
         label={t('newJob.customer')}
         value={mode}
-        onChange={setMode}
+        onChange={(value) => { setMode(value); setCustomerId(null); clearProperty(); }}
         options={[
           { key: 'existing', label: t('newJob.existing') },
           { key: 'new', label: t('newJob.newCustomer') },
@@ -94,7 +96,7 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
               <T v="label" style={{ fontSize: 16 }}>{picked.name}</T>
               {picked.phone ? <T v="small" muted>{picked.phone}</T> : null}
             </View>
-            <Button label={t('newJob.change')} variant="outline" onPress={() => setCustomerId(null)} style={{ minHeight: tap.min }} />
+            <Button label={t('newJob.change')} variant="outline" onPress={() => { setCustomerId(null); clearProperty(); }} style={{ minHeight: tap.min }} />
           </Row>
         ) : (
           <View style={{ gap: 6 }}>
@@ -138,7 +140,12 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
           <Field label={t('newJob.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
         </>
       )}
-      {/* an existing customer's address is filled in from their last job */}
+      {mode === 'existing' && picked && properties.length ? <View style={{ gap: 10 }}>
+        <T v="label">{t('review.savedProperties')}</T>
+        {properties.map((property) => <Chip key={property} label={property} selected={address === property}
+          onPress={() => { setAddress(property); setWorkOrder(''); setNote(''); }} />)}
+        <T v="small" muted>{t('review.propertyHelp')}</T>
+      </View> : null}
       {mode === 'existing' ? addressField : null}
 
       <Hair />

@@ -23,7 +23,7 @@ export default function Home() {
   const receipt = sample.receipts.find((r) => unsortedItems(state, r).length > 0);
   const unsorted = receipt ? unsortedItems(state, receipt) : [];
   const invoice = sample.invoices.find((i) => !state.sentInvoices.includes(i.id));
-  const co = sample.changeOrders.find((c) => !state.signed[c.id]);
+  const co = sample.changeOrders.find((c) => !state.signed[c.id] && !state.declinedChanges.includes(c.id));
   const overdueJobs = sample.jobs.filter((j) => j.baseStatus === 'overdue');
   const pendingUploads = state.mode === 'example' ? sample.business.pendingUploads : 0;
   const nothing = !receipt && !invoice && !co && overdueJobs.length === 0;
@@ -39,7 +39,7 @@ export default function Home() {
           </Row>
           <Row>
             {pendingUploads ? <Pill label={t('home.upload', { count: pendingUploads })} tone="plain" /> : null}
-            <IconButton icon="settings" label={t('home.settings')} onPress={() => router.push('/settings')} />
+            <IconButton icon="settings" label={t('home.settings')} onPress={() => router.push('./settings')} />
           </Row>
         </Row>
       }>

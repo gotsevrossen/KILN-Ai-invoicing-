@@ -18,7 +18,8 @@ KILN is an AI invoicing tool for solo and very small trades businesses: plumbers
 
 ## Current stage (Oct 2026)
 
-- First app build done (Oct 19): every screen works with example data in `mobile/`. No sign-in or saving yet; Supabase is next.
+- The app has example mode and connected Supabase sign-in. Business/setup, settings, prices, customers, and jobs have database save/load paths. Document drafts, hours, receipt sorting, change approvals, and invoice snapshots still live in the app session; they are not yet durable across restarts or devices.
+- Trade-review improvements (Oct 21): optional customer-visible scope prompts for all 10 trades in English/Spanish; explicit exclusion of unpriced estimate items; editable descriptions, quantities, prices and labor/material/fee classification; optional fees; invoice labor/material reconciliation; issued-document copies; weighted receipt splits; explicit property selection; owner-created change proposals with approve/decline. See `docs/trade-review-implementation-2026-10-21.md` for coverage and limits.
 - Y Combinator one-page pitch drafted.
 - Customer discovery in progress: interviews with local trades businesses.
 - Pages, features, and build order outlined in `docs/app-outline.md`. That file has the full screen list.
@@ -43,6 +44,8 @@ KILN is an AI invoicing tool for solo and very small trades businesses: plumbers
 **Job flow:** every job moves through Create → Estimate (can be skipped for small or hourly jobs) → Work (photos, receipts, notes, hours) → Invoice (built on "Job done" from the signed estimate, signed change orders, hours, and sorted receipts) → Paid. The job screen shows this as a progress bar and always offers one big next-step button.
 
 **Trades and setup:** first-run setup asks the business name, language, which trades they do (pick all that apply: plumbing, electrical, HVAC, drywall, painting, flooring, handyman, carpentry/decks, lawn care, landscaping), and how they usually charge. Job types, estimate questions, and the starter price list come from the trades (`mobile/src/data/trades.ts`). Starter items have **no prices**; the owner types their own.
+
+**Current estimate/invoice safeguards:** every included estimate item needs a valid quantity, description, and owner-entered price (zero is allowed). Explicitly excluded lines remain visible as excluded scope. Template fees are opt-in and their quantities are editable. On invoices with an accepted estimate, the owner confirms whether to use agreed or actual hourly labor and whether receipt materials are included or additional; estimated and actual hourly labor are not both appended. A missing actual-hours entry cannot silently replace quoted hours. Issued estimate content is locked, and issued invoices copy their lines, tax, scope, summary, materials display and due-date settings within the current session. Production storage, customer-link versioning and signature audit remain unfinished.
 
 **Receipt tax:** when receipt items are sorted to jobs, each item's cost includes its share of the receipt's tax (split by price, to the cent). Markup applies to that cost, so invoices don't add sales tax on materials by default (owner can turn it on in Settings).
 

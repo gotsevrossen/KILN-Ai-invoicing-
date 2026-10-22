@@ -1,12 +1,14 @@
 import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 
 import type { Cents, TaxRule } from '@/lib/money';
+import { copyDocument, estimateReady, needsActualHours, receiptShares } from '@/lib/billing';
 
 import * as dbApi from './db';
 import * as sample from './sample';
 import { TODAY, business, customers, initialAssignments, initialEstimates, invoices, jobs, priceList, timeEntries } from './sample';
 import type { TradeId } from './trades';
-import type { Assignment, Customer, EstimateDraft, EstimateLine, Invoice, Job, PriceItem, TimeEntry } from './types';
+import type { Assignment, Customer, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, PriceItem, TimeEntry } from './types';
+import { changeOrderBase, hoursFor, invoiceBilling, invoiceLines, invoiceSummary, invoiceTax } from './selectors';
 
 export type { EstimateDraft, EstimateLine };
 
@@ -80,8 +82,12 @@ export interface State {
   dismissedSuggestions: string[];
   materialsMode: Record<string, 'items' | 'total'>;
   sentInvoices: string[];
+  issuedInvoices: Record<string, InvoiceSnapshot>;
+  invoiceBilling: Record<string, InvoiceBilling>;
+  invoiceSummaries: Record<string, string>;
   voiceConfirmed: boolean;
   signed: Record<string, { name: string; at: string }>;
+  declinedChanges: string[];
   /** Estimate drafts by job id. A job without one starts empty. */
   estimates: Record<string, EstimateDraft>;
   /** Jobs where the owner chose to skip the estimate step. */
@@ -116,9 +122,14 @@ function initialState(): State {
     dismissedSuggestions: [],
     materialsMode: {},
     sentInvoices: [],
+    issuedInvoices: {},
+    invoiceBilling: {},
+    invoiceSummaries: {},
     voiceConfirmed: false,
     signed: {},
-    estimates: JSON.parse(JSON.stringify(initialEstimates)) as Record<string, EstimateDraft>,
+    declinedChanges: [],
+    estimates: Object.fromEntries(Object.entries(initialEstimates).map(([id, draft]) =>
+      [id, { ...copyDocument(draft), tax: draft.sent ? { ...business.tax } : undefined }])),
     skippedEstimates: [],
     reopenedJobs: [],
     paidInvoices: [],
@@ -160,8 +171,12 @@ function connectedState(base: State): State {
     dismissedSuggestions: [],
     materialsMode: {},
     sentInvoices: [],
+    issuedInvoices: {},
+    invoiceBilling: {},
+    invoiceSummaries: {},
     voiceConfirmed: false,
     signed: {},
+    declinedChanges: [],
     estimates: {},
     skippedEstimates: [],
     reopenedJobs: [],
@@ -178,11 +193,11 @@ export function emptyDraft(s: State): EstimateDraft {
 }
 
 function withDraft(s: State, jobId: string, fn: (d: EstimateDraft) => EstimateDraft): State {
+  if (s.estimates[jobId]?.sent || invoices.some((invoice) => invoice.jobId === jobId && s.sentInvoices.includes(invoice.id))) return s;
   return { ...s, estimates: { ...s.estimates, [jobId]: fn(s.estimates[jobId] ?? emptyDraft(s)) } };
 }
 
-let nextId = 1;
-const newId = (prefix: string) => `${prefix}-${nextId++}`;
+const newId = (prefix: string) => `${prefix}-${dbApi.newUuid()}`;
 
 // ---------- the state lives outside React so actions can read the latest value ----------
 
@@ -231,6 +246,7 @@ function applyLoaded(loaded: dbApi.Loaded): void {
 function makeActions() {
   return {
     assign(itemId: string, assignment: Assignment) {
+      if (assignment.type === 'jobs') receiptShares(0, assignment);
       set((s) => ({ ...s, assignments: { ...s.assignments, [itemId]: assignment } }));
     },
     resetReceipt(itemIds: string[]) {
@@ -263,16 +279,54 @@ function makeActions() {
       set((s) => ({ ...s, dismissedSuggestions: [...s.dismissedSuggestions, id] }));
     },
     setMaterialsMode(invoiceId: string, mode: 'items' | 'total') {
+      if (get().issuedInvoices[invoiceId]) return;
       set((s) => ({ ...s, materialsMode: { ...s.materialsMode, [invoiceId]: mode } }));
     },
     sendInvoice(invoiceId: string) {
-      set((s) => (s.sentInvoices.includes(invoiceId) ? s : { ...s, sentInvoices: [...s.sentInvoices, invoiceId] }));
+      const s = get();
+      const invoice = invoices.find((i) => i.id === invoiceId);
+      if (!invoice || s.sentInvoices.includes(invoiceId) || !invoiceBilling(s, invoice).reviewed) return;
+      if (sample.changeOrders.some((change) => change.jobId === invoice.jobId && !s.signed[change.id] && !s.declinedChanges.includes(change.id))) return;
+      const job = jobs.find((j) => j.id === invoice.jobId)!;
+      if (needsActualHours(job, s.estimates[job.id], invoiceBilling(s, invoice), hoursFor(s, job.id))) return;
+      const lines = invoiceLines(s, invoice);
+      if (lines.length === 0) return;
+      const snapshot: InvoiceSnapshot = copyDocument({ lines, tax: invoiceTax(s, invoice), summary: invoiceSummary(s, invoice),
+        scope: s.estimates[job.id]?.scope, excludedScope: s.estimates[job.id]?.lines.filter((l) => l.excluded).map((l) => l.description),
+        materialsMode: s.materialsMode[invoiceId] ?? 'items', dueDays: s.settings.dueDays,
+        issuedOn: TODAY, address: job.address, workOrder: job.workOrder });
+      set((x) => ({ ...x, issuedInvoices: { ...x.issuedInvoices, [invoiceId]: snapshot }, sentInvoices: [...x.sentInvoices, invoiceId] }));
+    },
+    setInvoiceBilling(invoiceId: string, patch: Partial<InvoiceBilling>) {
+      const s = get();
+      const invoice = invoices.find((i) => i.id === invoiceId);
+      if (!invoice || s.issuedInvoices[invoiceId]) return;
+      set((x) => ({ ...x, invoiceBilling: { ...x.invoiceBilling, [invoiceId]: { ...invoiceBilling(x, invoice), ...patch } } }));
+    },
+    setInvoiceSummary(invoiceId: string, summary: string) {
+      if (get().issuedInvoices[invoiceId]) return;
+      set((s) => ({ ...s, invoiceSummaries: { ...s.invoiceSummaries, [invoiceId]: summary } }));
+    },
+    sendEstimate(jobId: string) {
+      const s = get();
+      const draft = s.estimates[jobId];
+      if (!draft || draft.sent || !estimateReady(draft) ||
+        invoices.some((invoice) => invoice.jobId === jobId && s.sentInvoices.includes(invoice.id))) return;
+      const issued = copyDocument({ ...draft, sent: true, tax: s.settings.tax });
+      set((x) => ({ ...x, estimates: { ...x.estimates, [jobId]: issued } }));
     },
     confirmVoice() {
       set((s) => ({ ...s, voiceConfirmed: true }));
     },
     sign(changeOrderId: string, name: string) {
+      const co = sample.changeOrders.find((change) => change.id === changeOrderId);
+      if (!co || !name.trim() || get().signed[changeOrderId] || get().declinedChanges.includes(changeOrderId) ||
+        sample.invoices.some((invoice) => invoice.jobId === co.jobId && get().sentInvoices.includes(invoice.id))) return;
       set((s) => ({ ...s, signed: { ...s.signed, [changeOrderId]: { name, at: new Date().toISOString() } } }));
+    },
+    declineChange(changeOrderId: string) {
+      if (get().signed[changeOrderId] || get().declinedChanges.includes(changeOrderId)) return;
+      set((s) => ({ ...s, declinedChanges: [...s.declinedChanges, changeOrderId] }));
     },
     updateEstimate(jobId: string, patch: Partial<EstimateDraft>) {
       set((s) => withDraft(s, jobId, (d) => ({ ...d, ...patch })));
@@ -305,7 +359,23 @@ function makeActions() {
     },
     /** The customer signed the estimate (example build: from the customer page preview). */
     signEstimate(jobId: string) {
-      set((s) => withDraft(s, jobId, (d) => ({ ...d, sent: true, signed: true })));
+      const draft = get().estimates[jobId];
+      if (!draft?.sent || draft.signed || !estimateReady(draft)) return;
+      set((s) => ({ ...s, estimates: { ...s.estimates, [jobId]: { ...draft, signed: true } } }));
+    },
+    createChangeOrder(jobId: string, description: string, amountCents: number): string | null {
+      const s = get();
+      const job = jobs.find((j) => j.id === jobId);
+      if (!job || !description.trim() || description.length > 2000 || !Number.isSafeInteger(amountCents) || amountCents < 0 ||
+        sample.invoices.some((i) => i.jobId === jobId && s.sentInvoices.includes(i.id))) return null;
+      const changes = sample.changeOrders.filter((c) => c.jobId === jobId);
+      // Resolve outstanding changes before proposing another revised total.
+      if (changes.some((c) => !s.signed[c.id] && !s.declinedChanges.includes(c.id))) return null;
+      const id = newId('co');
+      sample.changeOrders.push({ id, jobId, number: Math.max(0, ...changes.map((c) => c.number)) + 1,
+        description: description.trim(), amountCents, baseCents: changeOrderBase(s, job) });
+      set((x) => ({ ...x, version: x.version + 1 }));
+      return id;
     },
     /**
      * "Job done": makes the invoice draft for a job (or returns the one it has).
@@ -324,7 +394,7 @@ function makeActions() {
         jobId,
         laborDescription: job?.title ?? '',
         fees: [],
-        summary: job ? `${job.title}: work completed.` : '',
+        summary: get().estimates[jobId]?.scope?.notes ?? job?.title ?? '',
       };
       invoices.push(invoice);
       set((s) => ({ ...s, version: s.version + 1 }));

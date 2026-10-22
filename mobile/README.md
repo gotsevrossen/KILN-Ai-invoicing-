@@ -1,6 +1,8 @@
 # KILN app (Expo)
 
-The contractor app for iPhone, Android, and web. This build uses example data so every screen can be tried; nothing is saved yet.
+The contractor app for iPhone, Android, and web. It supports example mode and Supabase sign-in. Business settings, prices, customers, and jobs have database save/load paths. Documents, captures, hours, receipt assignments, and approval records currently last for the app session; production document storage, real capture/AI, sending, payments, and signature auditing remain unfinished.
+
+The [trade-review implementation notes](../docs/trade-review-implementation-2026-10-21.md) describe the scope prompts, billing safeguards, receipt splits, and change-order improvements.
 
 ## Run it
 

@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { CustomerPage } from '@/components/customer-page';
+import { ScopeCard } from '@/components/job-scope';
 import { Button, ButtonRow, Card, Hair, LineRow, Notice, PhotoTile, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, invoiceById, invoiceLines, invoiceTotals, jobById, taxScope } from '@/data/selectors';
+import { customerOf, invoiceById, invoiceLines, invoiceTotals, jobById, taxScope, invoiceSummary, invoiceTax } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useTFor } from '@/i18n';
 import { addDays, formatters } from '@/lib/format';
@@ -26,10 +27,12 @@ export default function CustomerInvoice() {
 
   const lines = invoiceLines(state, invoice);
   const totals = invoiceTotals(state, invoice);
-  const itemized = (state.materialsMode[invoice.id] ?? 'items') === 'items';
+  const issued = state.issuedInvoices[invoice.id];
+  const itemized = (issued?.materialsMode ?? state.materialsMode[invoice.id] ?? 'items') === 'items';
   const shown = itemized ? lines : lines.filter((l) => l.kind !== 'material');
   const pay = () => setPayTapped(true);
-  const scope = taxScope(state);
+  const scope = taxScope(state, invoice);
+  const tax = invoiceTax(state, invoice);
   const taxKey = scope === 'all' ? 'customer.taxAll' : scope === 'labor' ? 'customer.taxLabor' : scope === 'materials' ? 'customer.taxMaterials' : null;
 
   return (
@@ -38,11 +41,12 @@ export default function CustomerInvoice() {
         <View style={{ gap: 2 }}>
           <T v="label">{tc('customer.invoiceNo', { n: invoice.number })}</T>
           <T v="small" muted>{tc('customer.forName', { name: customer.name })}</T>
-          <T v="small" muted>{job.address}</T>
+          <T v="small" muted>{issued?.address ?? job.address}</T>
+          {(issued ? issued.workOrder : job.workOrder) ? <T v="small" muted>{issued ? issued.workOrder : job.workOrder}</T> : null}
         </View>
         <View style={{ gap: 2, alignItems: 'flex-end' }}>
-          <T v="small" muted>{tc('customer.sent', { date: fc.date(sample.TODAY) })}</T>
-          <T v="label">{tc('customer.due', { date: fc.date(addDays(sample.TODAY, state.settings.dueDays)) })}</T>
+          <T v="small" muted>{tc('customer.sent', { date: fc.date(issued?.issuedOn ?? sample.TODAY) })}</T>
+          <T v="label">{tc('customer.due', { date: fc.date(addDays(issued?.issuedOn ?? sample.TODAY, issued?.dueDays ?? state.settings.dueDays)) })}</T>
         </View>
       </Row>
 
@@ -73,18 +77,20 @@ export default function CustomerInvoice() {
         {!itemized ? <LineRow label={tc('invoice.materials')} value={fc.money(totals.materials)} /> : null}
         <Hair style={{ marginVertical: 6 }} />
         <LineRow label={tc('customer.subtotal')} value={fc.money(totals.subtotal)} />
-        {taxKey ? <LineRow label={tc(taxKey, { pct: fc.pct(state.settings.tax.rateBps) })} value={fc.money(totals.tax)} /> : null}
+        {taxKey ? <LineRow label={tc(taxKey, { pct: fc.pct(tax.rateBps) })} value={fc.money(totals.tax)} /> : null}
         <Hair style={{ marginVertical: 6, backgroundColor: p.ink, height: 2 }} />
         <LineRow label={tc('customer.total')} value={fc.money(totals.total)} strong />
       </Card>
 
+      <ScopeCard scope={issued ? issued.scope : state.estimates[job.id]?.scope}
+        excluded={issued ? issued.excludedScope : state.estimates[job.id]?.lines.filter((l) => l.excluded).map((l) => l.description)} t={tc} />
       <Card style={{ gap: 10 }}>
         <T v="eyebrow">{tc('customer.theWork')}</T>
         <Row gap={8}>
           <PhotoTile tag={tc('job.before')} height={120} />
           <PhotoTile tag={tc('job.after')} height={120} />
         </Row>
-        <T v="body">{invoice.summary}</T>
+        <T v="body">{invoiceSummary(state, invoice)}</T>
       </Card>
     </CustomerPage>
   );
