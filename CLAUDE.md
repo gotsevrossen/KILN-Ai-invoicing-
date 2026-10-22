@@ -20,6 +20,7 @@ KILN is an AI invoicing tool for solo and very small trades businesses: plumbers
 
 - The app has example mode and connected Supabase sign-in. Business/setup, settings, prices, customers, and jobs have database save/load paths. Document drafts, hours, receipt sorting, change approvals, and invoice snapshots still live in the app session; they are not yet durable across restarts or devices.
 - Trade-review improvements (Oct 21): optional customer-visible scope prompts for all 10 trades in English/Spanish; explicit exclusion of unpriced estimate items; editable descriptions, quantities, prices and labor/material/fee classification; optional fees; invoice labor/material reconciliation; issued-document copies; weighted receipt splits; explicit property selection; owner-created change proposals with approve/decline. See `docs/trade-review-implementation-2026-10-21.md` for coverage and limits.
+- Deposit preview limitation (accepted by Rossen): estimates display the requested deposit, but the preview does not collect or record it, and invoices do not deduct deposit or partial payments yet. This is acceptable for the preview. Before real billing, confirmed payments must be linked to the job/invoice and subtracted from the balance due; requesting a deposit or signing an estimate must not count as payment.
 - Y Combinator one-page pitch drafted.
 - Customer discovery in progress: interviews with local trades businesses.
 - Pages, features, and build order outlined in `docs/app-outline.md`. That file has the full screen list.
