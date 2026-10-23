@@ -1,5 +1,5 @@
 import { tradeById, type TradeId } from '../data/trades.ts';
-import type { Unit } from '../data/types.ts';
+import type { PhotoTag, Unit } from '../data/types.ts';
 import { lineTotal, type LineKind } from './money.ts';
 
 // The app's own check on what the AI server sends back, before anything reaches a screen.
@@ -192,4 +192,11 @@ export function checkCommands(raw: unknown, jobIds: string[], itemIds: string[])
     }
     return [];
   }).slice(0, 10);
+}
+
+/** One guess per photo, in order; anything else (or a mismatched count) is no guess. */
+export function checkTags(raw: unknown, count: number): (PhotoTag | null)[] {
+  const tags = list(record(raw)?.tags);
+  if (tags.length !== count) return Array.from({ length: count }, () => null);
+  return tags.map((x) => (x === 'before' || x === 'during' || x === 'after' ? x : null));
 }

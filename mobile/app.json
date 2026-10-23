@@ -42,8 +42,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "KILN reads your old invoices or price sheets to fill in your price list.",
-          "cameraPermission": "KILN takes photos of receipts, old invoices, and price sheets to fill them in for you."
+          "photosPermission": "KILN adds photos you choose to your jobs, and reads receipts and old invoices you pick.",
+          "cameraPermission": "KILN takes photos of your jobs, receipts, and old invoices."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "KILN saves where job photos are taken, as proof of work. Customers see it only if you choose."
         }
       ],
       [

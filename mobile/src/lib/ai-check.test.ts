@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { PriceItem } from '../data/types.ts';
-import { checkChange, checkCommands, checkGuess, checkMissed, checkPrices, checkReceipt, checkScope, priceChange } from './ai-check.ts';
+import { checkChange, checkCommands, checkTags, checkGuess, checkMissed, checkPrices, checkReceipt, checkScope, priceChange } from './ai-check.ts';
 import { priceLooksOff, usualPrice } from './billing.ts';
 
 describe('price typo check', () => {
@@ -141,5 +141,15 @@ describe('receipts, change orders, and commands', () => {
       { type: 'work', jobId: 'smith', description: 'Trip fee', qtyHundredths: 100, unitCents: null, itemId: 'trip', kind: 'fee' },
       { type: 'note', jobId: 'smith', text: 'Call about the tub.' },
     ]);
+  });
+});
+
+describe('photo tags', () => {
+  it('keeps one known tag per photo', () => {
+    assert.deepEqual(checkTags({ tags: ['before', 'sideways', null] }, 3), ['before', null, null]);
+  });
+  it('uses no guess when the count doesn’t match', () => {
+    assert.deepEqual(checkTags({ tags: ['after'] }, 2), [null, null]);
+    assert.deepEqual(checkTags(null, 1), [null]);
   });
 });

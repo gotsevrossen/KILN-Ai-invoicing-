@@ -1,16 +1,21 @@
 import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import type { Cents, TaxRule } from '@/lib/money';
 import { copyDocument, estimateReady, needsActualHours, receiptShares, workItemValid } from '@/lib/billing';
+import type { NewPhoto } from '@/lib/job-photos';
+import { defaultTag } from '@/lib/photo-facts';
+import { removeFromPhone, stillOnPhone } from '@/lib/photo-file';
 
+import { aiReady, guessTags } from './ai';
 import * as dbApi from './db';
 import * as docsApi from './db-docs';
+import * as photosApi from './db-photos';
 import * as sample from './sample';
 import { business, customers, initialAssignments, initialEstimates, invoices, jobs, priceList, timeEntries } from './sample';
 import type { TradeId } from './trades';
-import type { Assignment, ChangeOrder, Customer, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, PriceItem, Receipt, TimeEntry, Unit, WorkItem } from './types';
-import { canDeleteJob, canDeleteReceipt, changeOrderBase, hoursFor, invoiceBilling, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, workLocked } from './selectors';
+import type { Assignment, ChangeOrder, Customer, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, Photo, PhotoTag, PriceItem, Receipt, TimeEntry, Unit, WorkItem } from './types';
+import { canDeleteJob, canDeleteReceipt, changeOrderBase, hoursFor, invoiceBilling, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, jobStage, receiptsOnJob, workLocked } from './selectors';
 
 export type { EstimateDraft, EstimateLine };
 
@@ -113,6 +118,8 @@ export interface State {
   reopenedJobs: string[];
   paidInvoices: string[];
   captures: Capture[];
+  /** Job photos: saved ones, and ones on this phone waiting for signal to upload. */
+  photos: Photo[];
   cardFee: boolean;
   /** KILN writes the customer's job description from the job and its lines. Off until turned on. */
   aiScope: boolean;
@@ -155,6 +162,7 @@ function initialState(): State {
     reopenedJobs: [],
     paidInvoices: [],
     captures: [],
+    photos: [],
     cardFee: false,
     aiScope: false,
     settings: { markupBps: business.markupBps, tax: { ...business.tax }, depositBps: business.depositBps, dueDays: business.dueDays },
@@ -206,6 +214,7 @@ function connectedState(base: State): State {
     reopenedJobs: [],
     paidInvoices: [],
     captures: [],
+    photos: [],
     mode: 'connected',
     syncError: null,
   };
@@ -276,6 +285,103 @@ const saveEstimateSoon = (jobId: string) => persistSoon(`estimate:${jobId}`, (bi
   return draft ? docsApi.saveEstimate(bid, jobId, draft) : Promise.resolve();
 });
 
+// ---------- job photos waiting to upload ----------
+// A photo stays on the phone until it's on the server, and the list of those waiting is kept
+// too, so no signal or a closed app never loses one. They're tried again when the app comes
+// back and every 45 seconds while any wait. (The web version has no app folder, so a closed
+// tab loses photos still waiting: see photo-file.web.ts.)
+
+const QUEUE_KEY = 'kiln.photoQueue';
+
+function readQueue(): Record<string, Photo[]> {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(QUEUE_KEY) : null;
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, Photo[]> : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePhotoQueue(): void {
+  const { mode, businessId, photos } = get();
+  if (mode !== 'connected' || !businessId || Platform.OS === 'web') return;
+  try {
+    const all = readQueue();
+    const waiting = photos.filter((p) => !p.path && p.localUri);
+    if (waiting.length) all[businessId] = waiting;
+    else delete all[businessId];
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(all));
+  } catch {
+    // no storage: photos still upload while the app is open
+  }
+}
+
+/** The saved photos, plus this business's photos still waiting on this phone. */
+function withQueued(businessId: string, saved: Photo[]): Photo[] {
+  const waiting: Photo[] = [];
+  for (const p of readQueue()[businessId] ?? []) {
+    if (!p.localUri) continue;
+    // it made it to the server just before the app closed: the phone's copy can go
+    if (saved.some((x) => x.id === p.id)) removeFromPhone(p.localUri);
+    else if (stillOnPhone(p.localUri)) waiting.push(p);
+  }
+  return [...saved, ...waiting];
+}
+
+let uploading = false;
+
+/** Uploads waiting photos one at a time. One that fails (no signal) waits for the next try. */
+async function flushPhotos(): Promise<void> {
+  if (uploading) return;
+  uploading = true;
+  try {
+    for (const { id } of get().photos.filter((p) => !p.path && p.localUri)) {
+      const { mode, businessId } = get();
+      if (mode !== 'connected' || !businessId) return;
+      const photo = get().photos.find((p) => p.id === id);
+      if (!photo || photo.path) continue;
+      try {
+        const path = await photosApi.uploadPhoto(businessId, photo);
+        const now = get().photos.find((p) => p.id === id);
+        if (!now) {
+          // deleted while it was uploading
+          persist(() => photosApi.deletePhoto(id, path));
+          continue;
+        }
+        set((x) => ({ ...x, photos: x.photos.map((p) => (p.id === id ? { ...p, path, localUri: undefined } : p)) }));
+        if (photo.localUri) removeFromPhone(photo.localUri);
+        // the tag changed while it was uploading
+        if (now.tag !== photo.tag) persist(() => photosApi.updatePhotoTag(id, now.tag));
+        savePhotoQueue();
+      } catch {
+        // no signal, or the server said no: it stays waiting
+      }
+    }
+  } finally {
+    uploading = false;
+  }
+}
+
+AppState.addEventListener('change', (next) => {
+  if (next === 'active') void flushPhotos();
+});
+// not while the web version is drawn on the computer, which would keep it from finishing
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    if (get().photos.some((p) => !p.path && p.localUri)) void flushPhotos();
+  }, 45_000);
+}
+
+/** A photo's before / during / after. KILN's guess (byOwner false) never replaces the owner's pick. */
+function changeTag(id: string, tag: PhotoTag, byOwner: boolean): void {
+  const photo = get().photos.find((p) => p.id === id);
+  if (!photo || photo.tag === tag || workLocked(get(), photo.jobId) || (!byOwner && photo.tagByOwner)) return;
+  set((x) => ({ ...x, photos: x.photos.map((p) => (p.id === id ? { ...p, tag, tagByOwner: p.tagByOwner || byOwner } : p)) }));
+  if (photo.path) persist(() => photosApi.updatePhotoTag(id, tag));
+  else savePhotoQueue();
+}
+
 /** Puts a business loaded from the server in place of whatever was showing. */
 function applyLoaded(loaded: dbApi.Loaded): void {
   clearExampleData();
@@ -290,6 +396,7 @@ function applyLoaded(loaded: dbApi.Loaded): void {
     ...connectedState(s),
     timeEntries: d.timeEntries,
     workItems: d.workItems,
+    photos: withQueued(loaded.businessId, loaded.photos),
     captures: d.notes.map((n) => ({ id: n.id, jobId: n.jobId, kind: 'note' as const, text: n.text, date: n.date })),
     estimates: d.estimates,
     skippedEstimates: d.skippedEstimates,
@@ -313,6 +420,7 @@ function applyLoaded(loaded: dbApi.Loaded): void {
     priceList: loaded.priceList,
     version: s.version + 1,
   }));
+  void flushPhotos();
 }
 
 function makeActions() {
@@ -390,6 +498,44 @@ function makeActions() {
       });
       persist((bid) => docsApi.insertReceipt(bid, receipt, jobId));
       return receipt.id;
+    },
+    /**
+     * New photos for a job, from the camera or library. They start as before, during, or after
+     * from where the job is, then KILN's guess (signed in) unless the owner changes one first.
+     * False if the job's invoice was already sent.
+     */
+    addPhotos(jobId: string, photos: NewPhoto[]): boolean {
+      const s = get();
+      const job = jobs.find((j) => j.id === jobId);
+      if (!job || !photos.length || workLocked(s, jobId)) return false;
+      const started = s.workItems.some((w) => w.jobId === jobId) || s.timeEntries.some((e) => e.jobId === jobId) || receiptsOnJob(s, jobId).length > 0;
+      const tag = defaultTag(jobStage(s, job).stage, started);
+      const added: Photo[] = photos.map((n) => ({ id: n.id, jobId, tag, takenAt: n.takenAt, lat: n.lat, lng: n.lng, localUri: n.localUri }));
+      set((x) => ({ ...x, photos: [...x.photos, ...added], version: x.version + 1 }));
+      savePhotoQueue();
+      void flushPhotos();
+      const small = photos.flatMap((n) => (n.small ? [{ id: n.id, data: n.small }] : [])).slice(0, 10);
+      if (aiReady(s.mode) && small.length) {
+        guessTags(job.title, small.map((x) => ({ mediaType: 'image/jpeg' as const, data: x.data })))
+          .then((tags) => tags.forEach((guess, i) => {
+            if (guess) changeTag(small[i].id, guess, false);
+          }))
+          .catch(() => {});
+      }
+      return true;
+    },
+    setPhotoTag(id: string, tag: PhotoTag) {
+      changeTag(id, tag, true);
+    },
+    /** A photo taken by mistake. False once the job's invoice was sent (it's part of the record). */
+    removePhoto(id: string): boolean {
+      const photo = get().photos.find((p) => p.id === id);
+      if (!photo || workLocked(get(), photo.jobId)) return false;
+      set((x) => ({ ...x, photos: x.photos.filter((p) => p.id !== id), version: x.version + 1 }));
+      if (photo.path) persist(() => photosApi.deletePhoto(id, photo.path!));
+      if (photo.localUri) removeFromPhone(photo.localUri);
+      savePhotoQueue();
+      return true;
     },
     /** A receipt typed in with a mistake. Returns false if it's kept (see canDeleteReceipt). */
     deleteReceipt(receiptId: string): boolean {
@@ -597,6 +743,8 @@ function makeActions() {
         else delete assignments[itemId];
         moved.push([itemId, next]);
       }
+      const jobPhotos = s.photos.filter((p) => p.jobId === jobId);
+      for (const p of jobPhotos) if (p.localUri) removeFromPhone(p.localUri);
       jobs.splice(jobs.indexOf(job), 1);
       for (const list of [invoices, sample.changeOrders] as { jobId: string }[][]) {
         for (let i = list.length - 1; i >= 0; i--) if (list[i].jobId === jobId) list.splice(i, 1);
@@ -611,6 +759,7 @@ function makeActions() {
           timeEntries: x.timeEntries.filter((e) => e.jobId !== jobId),
           workItems: x.workItems.filter((w) => w.jobId !== jobId),
           captures: x.captures.filter((c) => c.jobId !== jobId),
+          photos: x.photos.filter((p) => p.jobId !== jobId),
           skippedEstimates: x.skippedEstimates.filter((id) => id !== jobId),
           reopenedJobs: x.reopenedJobs.filter((id) => id !== jobId),
           version: x.version + 1,
@@ -623,7 +772,9 @@ function makeActions() {
       persist(async (bid) => {
         for (const [itemId, next] of moved) await docsApi.assignReceiptItem(bid, itemId, next);
         await docsApi.deleteJob(bid, jobId);
+        await photosApi.deletePhotoFiles(jobPhotos.flatMap((p) => (p.path ? [p.path] : [])));
       });
+      savePhotoQueue();
       return true;
     },
     markPaid(invoiceId: string) {

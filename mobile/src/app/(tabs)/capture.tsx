@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { CommandBox } from '@/components/command-box';
+import { PhotoSourceSheet } from '@/components/job-photos';
 import { JobPicker, Sheet } from '@/components/sheet';
 import { VoiceSheet } from '@/components/voice-sheet';
 import { Button, ButtonRow, Card, Field, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
@@ -13,7 +14,8 @@ import { jobById } from '@/data/selectors';
 import { useStore, type CaptureKind } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
-import { voiceAvailable } from '@/lib/voice';
+import type { NewPhoto } from '@/lib/job-photos';
+import { removeFromPhone } from '@/lib/photo-file';
 import { font, radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
@@ -51,13 +53,28 @@ export default function Capture() {
   const [note, setNote] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
-  // with the phone's speech recognition (not in Expo Go): signed in, KILN checks what was said
-  // for hours and work; otherwise the words are saved as a note on the job picked next
+  // signed in, KILN checks what was said for hours and work; otherwise the words are saved as
+  // a note on the job picked next. Without speech recognition (Expo Go) the owner types it.
   const ai = aiReady(state.mode);
-  const startVoice = () => (voiceAvailable ? setVoiceOpen(true) : setMode('voice'));
+  const startVoice = () => setVoiceOpen(true);
+
+  // photos are taken (or chosen) first, then the job is picked, like a note
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [picked, setPicked] = useState<NewPhoto[]>([]);
+  const dropPicked = () => {
+    for (const photo of picked) removeFromPhone(photo.localUri);
+    setPicked([]);
+  };
 
   const pick = (jobId: string) => {
     if (!mode) return;
+    if (mode === 'photo') {
+      if (actions.addPhotos(jobId, picked)) setSaved(jobById(jobId).title);
+      else dropPicked();
+      setPicked([]);
+      setMode(null);
+      return;
+    }
     actions.addCapture(jobId, mode, mode === 'note' ? note : undefined);
     setSaved(jobById(jobId).title);
     setMode(null);
@@ -80,7 +97,7 @@ export default function Capture() {
         <Tile icon="mic" label={t('capture.voice')} onPress={startVoice} />
       </Row>
       <Row gap={12}>
-        <Tile icon="camera" label={t('capture.photo')} onPress={() => setMode('photo')} />
+        <Tile icon="camera" label={t('capture.photo')} onPress={() => setPhotoOpen(true)} />
         <Tile icon="edit-3" label={t('capture.note')} onPress={() => setNoteOpen(true)} />
       </Row>
 
@@ -128,11 +145,22 @@ export default function Capture() {
       </Card>
       ) : null}
 
+      <PhotoSourceSheet open={photoOpen} onClose={() => setPhotoOpen(false)} onPicked={(photos) => {
+        setPhotoOpen(false);
+        setPicked(photos);
+        // let the photo sheet finish closing before the job sheet opens (iOS shows one modal at a time)
+        setTimeout(() => setMode('photo'), 400);
+      }} />
+
       <JobPicker
         open={mode !== null}
-        onClose={() => setMode(null)}
+        onClose={() => {
+          // photos taken but never given a job aren't kept
+          if (mode === 'photo') dropPicked();
+          setMode(null);
+        }}
         onPick={pick}
-        title={mode === 'voice' ? t('capture.recording') : mode === 'photo' ? t('capture.camera') : undefined}
+        title={mode === 'voice' ? t('capture.recording') : undefined}
       />
 
       <Sheet open={noteOpen} onClose={() => setNoteOpen(false)} title={t('capture.note')}>

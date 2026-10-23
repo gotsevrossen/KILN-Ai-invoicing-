@@ -19,6 +19,8 @@ import { useLang } from '@/i18n';
 import { font, radius, space, tap, type Palette } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
+import { useSheetOpen } from './sheet-state';
+
 export type IconName = ComponentProps<typeof Feather>['name'];
 
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
@@ -90,6 +92,7 @@ export function Screen({
 }) {
   const p = usePalette();
   const content = { padding: space.lg, gap: 14, paddingBottom: tabs ? 120 : space.xxl };
+  const sheetOpen = useSheetOpen();
   const top: ('top' | 'bottom')[] = noTopInset ? [] : ['top'];
   return (
     <SafeAreaView edges={footer || tabs ? top : [...top, 'bottom']} style={{ flex: 1, backgroundColor: p.ground }}>
@@ -99,9 +102,12 @@ export function Screen({
           contentContainerStyle={content}
           keyboardShouldPersistTaps="handled"
           scrollEnabled={scrollEnabled}
-          // iOS: scrolls the focused text box above the keyboard
-          automaticallyAdjustKeyboardInsets
-          keyboardDismissMode="interactive">
+          // iOS: scrolls the focused text box above the keyboard. Not while a sheet is open: its
+          // keyboard isn't this page's, and moving for it could leave the page scrolled past its end.
+          automaticallyAdjustKeyboardInsets={!sheetOpen}
+          // dropping the keyboard as the drag starts (not following the finger) keeps the page
+          // from ending up scrolled into blank space on iPhone
+          keyboardDismissMode="on-drag">
 
           {children}
         </ScrollView>

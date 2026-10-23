@@ -1,23 +1,28 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { TextInput, View } from 'react-native';
 
 import { useLang } from '@/i18n';
-import { joinHeard, loadVoiceLang, speech, voiceLocale } from '@/lib/voice';
+import { joinHeard, loadVoiceLang, speech, useVoiceAvailable, voiceLocale } from '@/lib/voice';
 import { radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
 import { Sheet } from './sheet';
-import { Button, Icon, Row, T } from './ui';
+import { Button, Icon, Notice, Row, T } from './ui';
 
 /**
- * Records a voice note with the phone's speech recognition and hands back the text when the
- * owner taps Done. Listens in the voice note language from Settings. Nothing is saved here.
+ * Records a voice note with the phone's speech recognition. The owner starts and stops it with
+ * one button, can record more after stopping (it's added on), and taps Done to use the text.
+ * Listens in the voice note language from Settings. Nothing is saved here.
+ * The words can be fixed by hand once it stops. Without speech recognition (Expo Go) the
+ * Record button is shown but off, and the owner types the note instead.
  */
 export function VoiceSheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: (text: string) => void }) {
   const p = usePalette();
   const { t, lang: appLang } = useLang();
   const [heard, setHeard] = useState('');
   const [listening, setListening] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const available = useVoiceAvailable();
   const [error, setError] = useState<string | null>(null);
   // read when recording starts, so a change in Settings counts right away
   const [lang, setLang] = useState(() => voiceLocale(loadVoiceLang(), appLang));
@@ -93,18 +98,6 @@ export function VoiceSheet({ open, onClose, onDone }: { open: boolean; onClose: 
     setListening(false);
     if (finishing.current === 'done') finish();
   });
-  const onPermission = useEffectEvent((granted: boolean) => {
-    if (!speech) return;
-    if (!granted) {
-      setError(t('voice.denied'));
-      return;
-    }
-    const now = voiceLocale(loadVoiceLang(), appLang);
-    setLang(now);
-    locale.current = now.locale;
-    setListening(true);
-    start(speech.supportsOnDeviceRecognition());
-  });
 
   useEffect(() => {
     if (!open || !speech) return;
@@ -113,12 +106,46 @@ export function VoiceSheet({ open, onClose, onDone }: { open: boolean; onClose: 
       speech.addListener('error', (e) => onError(e.error)),
       speech.addListener('end', () => onEnd()),
     ];
-    speech.requestPermissionsAsync().then((r) => onPermission(r.granted), () => onPermission(false));
     return () => {
       subs.forEach((s) => s.remove());
       speech?.abort();
     };
   }, [open]);
+
+  /** Start, or start again after a stop: what was already heard stays, and new words go after it. */
+  const record = async () => {
+    if (!speech || listening || starting) return;
+    setError(null);
+    setStarting(true);
+    try {
+      if (!(await speech.requestPermissionsAsync()).granted) {
+        setError(t('voice.denied'));
+        return;
+      }
+      const now = voiceLocale(loadVoiceLang(), appLang);
+      setLang(now);
+      locale.current = now.locale;
+      if (partial.current) {
+        finals.current.push(partial.current);
+        partial.current = '';
+      }
+      finishing.current = null;
+      setListening(true);
+      start(speech.supportsOnDeviceRecognition());
+    } catch {
+      setError(t('voice.failed'));
+    } finally {
+      setStarting(false);
+    }
+  };
+  /** The owner fixed or typed the words: they become what's heard so far. */
+  const edit = (text: string) => {
+    finals.current = text.trim() ? [text] : [];
+    partial.current = '';
+    setHeard(text);
+  };
+  // the last words arrive as listening stops; 'end' then marks it stopped
+  const stop = () => speech?.stop();
 
   const done = () => {
     finishing.current = 'done';
@@ -136,16 +163,34 @@ export function VoiceSheet({ open, onClose, onDone }: { open: boolean; onClose: 
   return (
     <Sheet open={open} onClose={cancel} title={t('voice.title')}>
       <Row gap={8} style={{ alignItems: 'center' }}>
-        <Icon name="mic" size={18} color={listening ? p.ink : p.muted} />
-        <T v="small" muted style={{ flex: 1 }}>
-          {listening ? t('voice.listening', { language: lang.lang === 'es' ? 'Español' : 'English' }) : t('voice.paused')}
+        <Icon name={listening ? 'radio' : 'mic'} size={18} color={listening ? p.danger : p.muted} />
+        <T v="small" muted={!listening} style={{ flex: 1 }}>
+          {listening ? t('voice.listening', { language: lang.lang === 'es' ? 'Español' : 'English' })
+            : !available ? t('voice.typeHere') : heard ? t('voice.paused') : t('voice.ready')}
         </T>
       </Row>
-      <View style={{ minHeight: 140, borderRadius: radius.sm, backgroundColor: p.ground, padding: 16 }}>
-        <T v="body" muted={!heard} style={{ fontSize: 18, lineHeight: 26 }}>{heard || t('voice.speakNow')}</T>
-      </View>
+      {!available ? <Notice text={t('voice.unavailable')} icon="info" tone="soft" /> : null}
+      {listening ? (
+        <View style={{ minHeight: 140, borderRadius: radius.sm, backgroundColor: p.ground, padding: 16 }}>
+          <T v="body" muted={!heard} style={{ fontSize: 18, lineHeight: 26 }}>{heard || t('voice.speakNow')}</T>
+        </View>
+      ) : (
+        <TextInput value={heard} onChangeText={edit} multiline maxLength={1000} accessibilityLabel={t('voice.title')}
+          placeholder={available ? t('voice.speakNow') : t('voice.typeHere')} placeholderTextColor={p.muted}
+          style={{ minHeight: 140, borderRadius: radius.sm, backgroundColor: p.ground, padding: 16, fontSize: 18, lineHeight: 26,
+            color: p.ink, textAlignVertical: 'top' }} />
+      )}
+      {heard && !listening && available ? <T v="small" muted>{t('voice.canFix')}</T> : null}
       {error ? <T v="small" color={p.danger}>{error}</T> : null}
-      <Button label={t('voice.done')} icon="check" big disabled={!heard} onPress={done} />
+      <Button
+        label={listening ? t('voice.stop') : heard ? t('voice.again') : t('voice.start')}
+        icon={listening ? 'square' : 'mic'}
+        variant={listening ? 'danger' : 'primary'}
+        big
+        disabled={starting || !available}
+        onPress={listening ? stop : record}
+      />
+      <Button label={t('voice.done')} icon="check" variant="dark" big disabled={!heard || starting} onPress={done} />
       <Button label={t('common.cancel')} variant="outline" onPress={cancel} />
       <T v="small" muted>{t('voice.help')}</T>
     </Sheet>

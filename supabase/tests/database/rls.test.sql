@@ -2,7 +2,7 @@
 -- Run with: npx supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(63);
+select plan(72);
 
 -- two owners, each with their own business
 insert into auth.users (id, email) values
@@ -175,6 +175,40 @@ insert into public.audit_log (business_id, actor, action, entity) select a, '000
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 select lives_ok($$ update public.audit_log set action = 'edited' $$, 'updating the log runs but touches nothing');
 select is((select action from public.audit_log), 'invoice.sent', 'the activity log entry is unchanged');
+
+-- photos: a row points only at its own file, only the tag changes, and a sent invoice's photos stay
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+insert into public.jobs (business_id, customer_id, title)
+  select ids.a, c.id, 'Photo job' from ids, public.customers c where c.business_id = ids.a;
+select lives_ok(
+  $$ insert into public.photos (id, business_id, job_id, storage_path, tag, lat, lng)
+     select '00000000-0000-0000-0000-0000000000f1', j.business_id, j.id, j.business_id || '/' || j.id || '/00000000-0000-0000-0000-0000000000f1.jpg', 'before', 40.42, -86.91
+     from public.jobs j where j.title = 'Photo job' $$,
+  'an owner can save a photo of their own job');
+select throws_ok(
+  $$ insert into public.photos (id, business_id, job_id, storage_path)
+     select '00000000-0000-0000-0000-0000000000f2', j.business_id, j.id, (select b from ids) || '/x/y.jpg'
+     from public.jobs j where j.title = 'Photo job' $$,
+  '23514', null, 'a photo row can''t point at another business''s files');
+select throws_ok(
+  $$ insert into public.photos (id, business_id, job_id, storage_path, lat)
+     select '00000000-0000-0000-0000-0000000000f3', j.business_id, j.id, j.business_id || '/' || j.id || '/00000000-0000-0000-0000-0000000000f3.jpg', 40
+     from public.jobs j where j.title = 'Photo job' $$,
+  '23514', null, 'a location needs both latitude and longitude');
+select lives_ok($$ update public.photos set tag = 'after' $$, 'the owner can change a photo''s tag');
+select throws_ok($$ update public.photos set lat = 0, lng = 0 $$, 'P0001', 'only a photo''s tag can change', 'where a photo was taken can''t be rewritten');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select is((select count(*)::int from public.photos), 0, 'B can''t see A''s photos');
+reset role;
+insert into public.photos (id, business_id, job_id, storage_path)
+  select '00000000-0000-0000-0000-0000000000f4', j.business_id, j.id, j.business_id || '/' || j.id || '/00000000-0000-0000-0000-0000000000f4.jpg'
+  from public.jobs j where j.title = 'Leak repair';
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+select throws_ok($$ update public.photos set tag = 'during' where id = '00000000-0000-0000-0000-0000000000f4' $$,
+  'P0001', 'this job''s invoice was sent; its photos can''t be changed', 'a sent invoice''s photo tags stay');
+select throws_ok($$ delete from public.photos where id = '00000000-0000-0000-0000-0000000000f4' $$,
+  'P0001', 'this job''s invoice was sent; its photos can''t be changed', 'a sent invoice''s photos can''t be deleted');
+select lives_ok($$ delete from public.photos where id = '00000000-0000-0000-0000-0000000000f1' $$, 'a photo on an open job can be deleted');
 
 -- AI helpers: the owner's switch, and a daily limit only the server function's call can count
 select is((select ai_write_scope from public.businesses), false, 'writing customer descriptions is off until the owner turns it on');

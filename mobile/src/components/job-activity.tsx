@@ -8,8 +8,10 @@ import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 import { lineTotal } from '@/lib/money';
+import { localDay } from '@/lib/photo-facts';
 import { font } from '@/theme/tokens';
 
+import { PhotoStrip } from './job-photos';
 import { Card, IconButton, ListRow, PhotoTile, Row, T } from './ui';
 
 export interface ActivityItem {
@@ -40,6 +42,29 @@ export function useJobActivity(jobId: string): ActivityItem[] {
       ) : (
         <Card key={c.id} style={{ paddingVertical: 8 }}>
           <ListRow icon={c.kind === 'voice' ? 'mic' : 'edit-3'} title={c.text || t('job.voiceNote', { length: '0:15' })} />
+        </Card>
+      ),
+    });
+  }
+  // photos by the day they were taken, newest first within the day
+  const byDay = new Map<string, typeof state.photos>();
+  for (const photo of state.photos.filter((x) => x.jobId === jobId).reverse()) {
+    const day = localDay(photo.takenAt);
+    byDay.set(day, [...(byDay.get(day) ?? []), photo]);
+  }
+  for (const [day, photos] of byDay) {
+    const waiting = photos.filter((x) => !x.path).length;
+    items.push({
+      key: `photos-${day}`,
+      date: day,
+      node: (
+        <Card key={`photos-${day}`} style={{ gap: 10 }}>
+          <Row style={{ justifyContent: 'space-between' }}>
+            <T v="small" muted>{t('job.photos', { count: photos.length })}</T>
+            {waiting ? <T v="small" muted>{t('photos.waitingCount', { count: waiting })}</T> : null}
+          </Row>
+          <PhotoStrip photos={photos} />
+          {photos.length > 3 ? <T v="small" muted>{t('photos.more', { count: photos.length - 3 })}</T> : null}
         </Card>
       ),
     });

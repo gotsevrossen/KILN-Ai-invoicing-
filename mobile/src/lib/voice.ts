@@ -1,25 +1,31 @@
 import '@/lib/storage-install';
 
-import { requireOptionalNativeModule } from 'expo';
-import type { ExpoSpeechRecognitionModuleType } from 'expo-speech-recognition/build/ExpoSpeechRecognitionModule.types';
+import { useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 
+import { speechModule } from './speech-module';
 import type { VoiceLang } from './voice-text';
 
 // Voice notes use the phone's own speech recognition (Apple / Google): free, and on the phone
-// itself when it supports it. It listens in one language at a time, set in Settings.
-//
-// The package's native part isn't in Expo Go. Asking for it by name (instead of importing the
-// package, which would crash there) lets Expo Go keep working: voice is simply off.
+// itself when it supports it. In a browser, Safari's or Chrome's own. It listens in one
+// language at a time, set in Settings. Off in Expo Go (see speech-module.ts).
 
-const native = Platform.OS === 'web' ? null : requireOptionalNativeModule<ExpoSpeechRecognitionModuleType>('ExpoSpeechRecognition');
+/** The phone's or browser's speech recognition, or null. */
+export const speech = speechModule;
 
-/** The phone's speech recognition, or null (Expo Go, web). */
-export const speech = native;
-export const voiceAvailable = native !== null;
+const noChange = () => () => {};
+// a browser can lack it (Firefox), and the web version is also drawn on the computer first,
+// where there's no browser at all: so it's checked on the page, and off until then
+const available = () => speech !== null && (Platform.OS !== 'web' || speech.isRecognitionAvailable());
+
+/** True when this phone or browser can turn voice notes into text. */
+export function useVoiceAvailable(): boolean {
+  return useSyncExternalStore(noChange, available, () => false);
+}
 
 /** "Same as the app", or always English or Spanish. Kept on this phone only, like the theme. */
 export type { VoiceLang } from './voice-text';
+
 const KEY = 'kiln.voiceLang';
 
 export function loadVoiceLang(): VoiceLang {

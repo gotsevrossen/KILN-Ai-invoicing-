@@ -67,6 +67,26 @@ export interface WorkItem {
 
 export type PhotoTag = 'before' | 'during' | 'after';
 
+/**
+ * A job photo. The file is a shrunk copy with no location inside it; where it was taken is only
+ * here (lat/lng), shown to a customer only if the owner chooses.
+ */
+export interface Photo {
+  id: string;
+  jobId: string;
+  tag: PhotoTag;
+  /** The owner picked the tag, so KILN's guess never changes it. */
+  tagByOwner?: boolean;
+  /** When it was taken (ISO time). */
+  takenAt: string;
+  lat?: number;
+  lng?: number;
+  /** The copy on this phone, until it's uploaded (always, in example mode). */
+  localUri?: string;
+  /** Its file on the server (job-photos/<business>/<job>/<id>.jpg), once uploaded. */
+  path?: string;
+}
+
 export type TimelineItem =
   | { kind: 'photos'; id: string; jobId: string; date: string; time: string; tags: PhotoTag[] }
   | { kind: 'voice'; id: string; jobId: string; date: string; time: string; length: string; transcript: string };

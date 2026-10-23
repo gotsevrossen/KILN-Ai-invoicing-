@@ -1,13 +1,13 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
 import {
-  checkChange, checkCommands, checkGuess, checkMissed, checkPrices, checkReceipt, checkScope,
+  checkChange, checkCommands, checkGuess, checkTags, checkMissed, checkPrices, checkReceipt, checkScope,
   type ChangeDraft, type Command, type Guess, type ImportedPrice, type MissedItem, type ScannedReceipt,
 } from '@/lib/ai-check';
 import { supabase } from '@/lib/supabase';
 
 import type { TradeId } from './trades';
-import type { Unit } from './types';
+import type { PhotoTag, Unit } from './types';
 
 // Calls to KILN's AI helpers on the server (supabase/functions/ai). Claude is never called
 // from the phone: the key stays on the server, which also checks the sign-in and daily limit.
@@ -29,7 +29,7 @@ export function aiReady(mode: 'example' | 'connected'): boolean {
   return mode === 'connected' && supabase !== null;
 }
 
-async function call(task: 'guess' | 'missed' | 'scope' | 'prices' | 'receipt' | 'change' | 'command', input: unknown): Promise<unknown> {
+async function call(task: 'guess' | 'missed' | 'scope' | 'prices' | 'receipt' | 'change' | 'command' | 'tags', input: unknown): Promise<unknown> {
   if (!supabase) throw new AiFailed('not_set_up');
   const { data, error } = await supabase.functions.invoke('ai', { body: { task, input } });
   if (!error) return data;
@@ -134,6 +134,11 @@ export interface CommandInput {
 
 export async function readCommand(input: CommandInput): Promise<Command[]> {
   return checkCommands(await call('command', input), input.jobs.map((j) => j.id), input.items.map((i) => i.id));
+}
+
+/** KILN's before / during / after guess for each photo (small copies), in order. Null: can't tell. */
+export async function guessTags(title: string, images: AiImage[]): Promise<(PhotoTag | null)[]> {
+  return checkTags(await call('tags', { title: title.slice(0, 200), images }), images.length);
 }
 
 export type { ChangeDraft, Command, Guess, ImportedPrice, MissedItem, ScannedReceipt };

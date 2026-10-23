@@ -4,6 +4,7 @@ import { View } from 'react-native';
 
 import { aiErrorText } from '@/components/ai-parts';
 import { ActivityDays, useJobActivity } from '@/components/job-activity';
+import { PhotoSourceSheet } from '@/components/job-photos';
 import { useJobDocs, type DocStatus } from '@/components/job-docs';
 import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
@@ -53,6 +54,7 @@ function JobDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [photoAdded, setPhotoAdded] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const [workOpen, setWorkOpen] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
   const [changeDescription, setChangeDescription] = useState('');
@@ -232,10 +234,7 @@ function JobDetail() {
             variant="soft"
             stacked
             style={{ backgroundColor: p.card }}
-            onPress={() => {
-              actions.addCapture(job.id, 'photo');
-              setPhotoAdded(true);
-            }}
+            onPress={() => setPhotoOpen(true)}
           />
           <Button label={t('flow.note')} icon="edit-3" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setNoteOpen(true)} />
         </Row>
@@ -308,6 +307,11 @@ function JobDetail() {
           setTimeout(() => router.push(`/change-order/${changeId}`), 400);
         }} />
       </Sheet>
+
+      <PhotoSourceSheet open={photoOpen} onClose={() => setPhotoOpen(false)} onPicked={(photos) => {
+        setPhotoOpen(false);
+        if (actions.addPhotos(job.id, photos)) setPhotoAdded(true);
+      }} />
 
       <WorkSheet jobId={job.id} open={workOpen} onClose={() => setWorkOpen(false)} onEstimate={!!draft?.signed} />
 

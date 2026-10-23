@@ -63,6 +63,8 @@ export const inputs = {
     images: z.array(image).max(3),
     items,
   }).refine((x) => x.text.trim().length > 0 || x.images.length > 0),
+  /** Before / during / after for new job photos (small copies). */
+  tags: z.object({ title: text(200), images: z.array(image).min(1).max(10) }),
   /** A store receipt read from photos (a long receipt can take two). */
   receipt: z.object({ images: z.array(image).min(1).max(2) }),
   /** A change order drafted from the owner's quick note, priced from their own list by the app. */
@@ -124,6 +126,23 @@ function hundredths(n: number): number | null {
   return h > 0 ? h : null;
 }
 
+const WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, dozen: 12,
+  uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, doce: 12, docena: 12,
+};
+
+/** Every number the owner wrote (450, 2.5, "1,200", "two", "dos"), in hundredths. */
+export function numbersIn(text: string): Set<number> {
+  const found = new Set<number>();
+  for (const m of text.matchAll(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?/g)) {
+    // "1,200" is twelve hundred; "2,5" (Spanish) is two and a half
+    const raw = /^\d{1,3}(,\d{3})+/.test(m[0]) ? m[0].replace(/,/g, '') : m[0].replace(',', '.');
+    found.add(Math.round(Number(raw) * 100));
+  }
+  for (const word of text.toLowerCase().split(/[^a-záéíóúñ]+/)) if (WORDS[word]) found.add(WORDS[word] * 100);
+  return found;
+}
+
 const clean = (s: string, max: number) => s.replace(/\s+/g, ' ').trim().slice(0, max);
 
 // ---------------------------------------------------------------- the tasks
@@ -156,13 +175,16 @@ async function guess(client: Anthropic, input: z.infer<typeof inputs.guess>) {
     effort: 'low',
     maxTokens: 4000,
   });
+  // a measurement (area, length, volume, hours) only counts when that number is in the owner's text
+  const measured = new Set(input.items.filter((i) => ['sq_ft', 'linear_ft', 'cu_yd', 'hour'].includes(i.unit)).map((i) => i.id));
+  const said = numbersIn([input.title, input.note, ...input.notes].join(' '));
 
   const [tradeId, jobTypeId] = out.jobType && jobTypes.some((j) => j.key === out.jobType) ? out.jobType.split('/') : [null, null];
   const seen = new Set<string>();
   const quantities: { itemId: string; qtyHundredths: number }[] = [];
   for (const x of out.items) {
     const qty = hundredths(x.qty);
-    if (!itemIds.includes(x.itemId) || seen.has(x.itemId) || qty === null) continue;
+    if (!itemIds.includes(x.itemId) || seen.has(x.itemId) || qty === null || (measured.has(x.itemId) && !said.has(qty))) continue;
     seen.add(x.itemId);
     quantities.push({ itemId: x.itemId, qtyHundredths: qty });
   }
@@ -410,6 +432,27 @@ async function command(client: Anthropic, input: z.infer<typeof inputs.command>)
   return { actions: actions.slice(0, 10) };
 }
 
+const TAGS = `You sort a small trades business owner's job photos into before, during, or after the work, for proof of work on the customer's invoice. You get the job title and the photos in order.
+
+For each photo, in the same order, give one tag:
+- before: the problem or the space before work started (damage, leaks, old fixtures, an untouched yard).
+- during: work in progress (open walls, tools out, parts half installed, materials laid out).
+- after: the finished result (clean, installed, repaired).
+- null: you can't tell, or it isn't a job photo (a receipt, a person, a screenshot).`;
+
+async function tags(client: Anthropic, input: z.infer<typeof inputs.tags>) {
+  const tag = z.enum(['before', 'during', 'after']).nullable();
+  const out = await ask(client, {
+    system: TAGS,
+    content: [data('job', { title: input.title }), ...photos(input.images)],
+    schema: z.object({ tags: z.array(tag) }),
+    effort: 'low',
+    maxTokens: 2000,
+  });
+  // one per photo, in order; a short or long answer can't be matched up, so none are used
+  return { tags: out.tags.length === input.images.length ? out.tags : input.images.map(() => null) };
+}
+
 /** The request checked against its task's limits, or a 400. Checked before any request is counted. */
 export function checkInput(task: Task, input: unknown): unknown {
   const parsed = inputs[task].safeParse(input);
@@ -423,6 +466,7 @@ export function runTask(client: Anthropic, task: Task, input: unknown) {
     case 'missed': return missed(client, input as z.infer<typeof inputs.missed>);
     case 'scope': return scope(client, input as z.infer<typeof inputs.scope>);
     case 'prices': return prices(client, input as z.infer<typeof inputs.prices>);
+    case 'tags': return tags(client, input as z.infer<typeof inputs.tags>);
     case 'receipt': return receipt(client, input as z.infer<typeof inputs.receipt>);
     case 'change': return change(client, input as z.infer<typeof inputs.change>);
     case 'command': return command(client, input as z.infer<typeof inputs.command>);

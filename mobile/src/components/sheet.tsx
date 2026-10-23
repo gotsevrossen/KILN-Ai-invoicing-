@@ -11,6 +11,7 @@ import { radius, space } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
 import { NewJobForm } from './new-job';
+import { sheetShown } from './sheet-state';
 import { Button, IconButton, ListRow, Row, T } from './ui';
 
 const ios = Platform.OS === 'ios';
@@ -52,6 +53,9 @@ export function Sheet({ open, onClose, title, children, scroll = true }: {
       }));
     }
   }, [open, slide]);
+
+  // counted while showing, so the page underneath leaves the keyboard to this sheet
+  useLayoutEffect(() => (shown ? sheetShown() : undefined), [shown]);
 
   // a layout effect, so the listener is on before the text box's own focus raises the keyboard
   useLayoutEffect(() => {

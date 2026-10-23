@@ -2,10 +2,11 @@ import * as Crypto from 'expo-crypto';
 
 import { db, ok } from './db-client';
 import { loadDocs, type LoadedDocs } from './db-docs';
+import { loadPhotos } from './db-photos';
 
 import type { PricingSettings, Profile, SetupInput } from './store';
 import type { TradeId } from './trades';
-import type { Customer, Job, PriceItem, Unit } from './types';
+import type { Customer, Job, Photo, PriceItem, Unit } from './types';
 
 // Reads and writes for the real database. Row Level Security on the server decides
 // what each signed-in user can see, so these queries never filter by user themselves.
@@ -71,6 +72,7 @@ export interface Loaded {
   jobs: Job[];
   /** Hours, notes, estimates, change orders, receipts, and invoices. */
   docs: LoadedDocs;
+  photos: Photo[];
 }
 
 const toPriceItem = (r: PriceRow): PriceItem => ({ id: r.catalog_id ?? r.id, dbId: r.id, name: r.name, unit: r.unit, unitCents: r.unit_cents });
@@ -120,6 +122,7 @@ export async function loadAll(): Promise<Loaded | null> {
     priceList: (ok(items) ?? []).map(toPriceItem),
     customers: (ok(customers) ?? []).map(toCustomer),
     jobs: (ok(jobs) ?? []).map(toJob),
+    photos: await loadPhotos(),
     docs: await loadDocs({
       skipped: (ok(jobs) ?? []).filter((j) => j.estimate_skipped).map((j) => j.id),
       reopened: (ok(jobs) ?? []).filter((j) => j.reopened).map((j) => j.id),

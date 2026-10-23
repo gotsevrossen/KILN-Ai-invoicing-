@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { CustomerPage } from '@/components/customer-page';
+import { ProofPhotos } from '@/components/job-photos';
 import { ScopeCard } from '@/components/job-scope';
 import { RecordGate } from '@/components/record-gate';
-import { Button, ButtonRow, Card, Hair, LineRow, Notice, PhotoTile, Row, T } from '@/components/ui';
+import { Button, ButtonRow, Card, Hair, LineRow, Notice, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { customerOf, hasInvoice, invoiceById, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, jobById, taxScope } from '@/data/selectors';
 import { useStore } from '@/data/store';
@@ -87,10 +88,7 @@ function CustomerInvoice() {
         excluded={issued ? issued.excludedScope : state.estimates[job.id]?.lines.filter((l) => l.excluded).map((l) => l.description)} t={tc} />
       <Card style={{ gap: 10 }}>
         <T v="eyebrow">{tc('customer.theWork')}</T>
-        <Row gap={8}>
-          <PhotoTile tag={tc('job.before')} height={120} />
-          <PhotoTile tag={tc('job.after')} height={120} />
-        </Row>
+        <ProofPhotos jobId={job.id} t={tc} showLocation={!!state.showLocation[invoice.id]} height={120} />
         <T v="body">{invoiceSummary(state, invoice)}</T>
       </Card>
     </CustomerPage>

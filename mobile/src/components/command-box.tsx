@@ -8,7 +8,6 @@ import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 import { lineTotal } from '@/lib/money';
-import { voiceAvailable } from '@/lib/voice';
 import { radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
@@ -102,7 +101,7 @@ export function CommandBox({ voiceOpen = false, onVoiceClose }: {
         <Field value={text} onChangeText={setText} placeholder={t('ai.cmdPlaceholder')} accessibilityLabel={t('ai.cmdTitle')}
           multiline maxLength={1000} editable={!reading} style={{ minHeight: 84, paddingTop: 14, textAlignVertical: 'top' }} />
         <ButtonRow gap={10}>
-          {voiceAvailable ? <Button label={t('voice.speak')} icon="mic" variant="outline" disabled={reading} onPress={() => setMicOpen(true)} /> : null}
+          <Button label={t('voice.speak')} icon="mic" variant="outline" disabled={reading} onPress={() => setMicOpen(true)} />
           <Button label={reading ? t('ai.cmdReading') : t('ai.cmdRead')} icon="zap" variant="dark" flex disabled={reading || !text.trim()} onPress={() => read()} />
         </ButtonRow>
         <T v="small" muted>{t('ai.cmdHelp')}</T>

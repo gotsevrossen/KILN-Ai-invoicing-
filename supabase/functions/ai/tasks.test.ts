@@ -3,7 +3,7 @@
 import { assertEquals, assertRejects } from 'jsr:@std/assert@1.0.13';
 import type Anthropic from '@anthropic-ai/sdk';
 
-import { AiError, checkInput, runTask, type Task } from './tasks.ts';
+import { AiError, checkInput, numbersIn, runTask, type Task } from './tasks.ts';
 
 /** A pretend Claude that gives `answer` back, after making sure the answer format builds. */
 function fake(answer: unknown, stop = 'end_turn') {
@@ -48,6 +48,17 @@ Deno.test('guess: drops made-up items, bad quantities, repeats, and unknown job 
     items: [{ itemId: 'gold-faucet', qty: 1 }, { itemId: 'paint-wall', qty: -5 }, { itemId: 'trip', qty: 1 }, { itemId: 'trip', qty: 2 }, { itemId: 'haul', qty: 0.001 }],
   });
   assertEquals(await run(client, 'guess', guessInput), { tradeId: null, jobTypeId: null, quantities: [{ itemId: 'trip', qtyHundredths: 100 }] });
+});
+
+Deno.test('guess: an area, length, or hours amount not written in the text is dropped', async () => {
+  const { client } = fake({ jobType: 'painting/interiorPaint', items: [{ itemId: 'paint-wall', qty: 1 }, { itemId: 'haul', qty: 1 }] });
+  assertEquals((await run(client, 'guess', guessInput) as { quantities: unknown }).quantities, [{ itemId: 'haul', qtyHundredths: 100 }]);
+});
+
+Deno.test('numbers the owner wrote, as digits or words, in English or Spanish', () => {
+  const said = numbersIn('About 1,200 sq ft, 2.5 hours, two doors, dos horas, 3,5 metros');
+  for (const n of [120000, 250, 200, 350]) assertEquals(said.has(n), true);
+  assertEquals(said.has(100), false);
 });
 
 Deno.test('guess: an unsure answer stays empty', async () => {
@@ -197,4 +208,10 @@ Deno.test('command: drops impossible hours, empty work, and empty notes', async 
     { ...action, type: 'note', jobId: 'smith', text: '' },
   ] });
   assertEquals(await run(client, 'command', commandInput), { actions: [] });
+});
+
+Deno.test('tags: one per photo, in order; a mismatched answer is not used', async () => {
+  const input = { title: 'Deck repair', images: [photo, photo] };
+  assertEquals(await run(fake({ tags: ['before', null] }).client, 'tags', input), { tags: ['before', null] });
+  assertEquals(await run(fake({ tags: ['after'] }).client, 'tags', input), { tags: [null, null] });
 });

@@ -164,7 +164,8 @@ export function invoiceSources(state: State, invoice: Invoice) {
   const jobId = invoice.jobId;
   const photos =
     sample.timeline.reduce((a, x) => (x.jobId === jobId && x.kind === 'photos' ? a + x.tags.length : a), 0) +
-    state.captures.filter((c) => c.jobId === jobId && c.kind === 'photo').length;
+    state.captures.filter((c) => c.jobId === jobId && c.kind === 'photo').length +
+    state.photos.filter((p) => p.jobId === jobId).length;
   const voice =
     sample.timeline.filter((x) => x.jobId === jobId && x.kind === 'voice').length +
     state.captures.filter((c) => c.jobId === jobId && c.kind === 'voice').length;
