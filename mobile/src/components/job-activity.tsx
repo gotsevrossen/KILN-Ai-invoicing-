@@ -7,6 +7,7 @@ import { receiptsOnJob } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
+import { lineTotal } from '@/lib/money';
 import { font } from '@/theme/tokens';
 
 import { Card, IconButton, ListRow, PhotoTile, Row, T } from './ui';
@@ -19,7 +20,7 @@ export interface ActivityItem {
 
 /**
  * Everything captured on a job, newest day first. Within a day, what the owner
- * just added (notes, photos, hours) comes before the rest.
+ * just added (notes, photos, work, hours) comes before the rest.
  */
 export function useJobActivity(jobId: string): ActivityItem[] {
   const { t } = useLang();
@@ -39,6 +40,18 @@ export function useJobActivity(jobId: string): ActivityItem[] {
       ) : (
         <Card key={c.id} style={{ paddingVertical: 8 }}>
           <ListRow icon={c.kind === 'voice' ? 'mic' : 'edit-3'} title={c.text || t('job.voiceNote', { length: '0:15' })} />
+        </Card>
+      ),
+    });
+  }
+  for (const w of state.workItems.filter((x) => x.jobId === jobId).reverse()) {
+    items.push({
+      key: w.id,
+      date: w.date,
+      node: (
+        <Card key={w.id} style={{ paddingVertical: 8 }}>
+          <ListRow icon="tool" title={w.description} sub={t('job.work')} right={<T v="money">{f.money(lineTotal(w.qtyHundredths, w.unitCents))}</T>}
+            onPress={() => router.push(`/job/${jobId}/costs`)} chevron={false} />
         </Card>
       ),
     });

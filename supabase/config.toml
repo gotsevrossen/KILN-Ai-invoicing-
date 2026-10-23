@@ -383,8 +383,13 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
-# [edge_runtime.secrets]
-# secret_key = "env(SECRET_VALUE)"
+# Server secrets come from supabase/.env (git-ignored; template in supabase/.env.example).
+[edge_runtime.secrets]
+ANTHROPIC_API_KEY = "env(ANTHROPIC_API_KEY)"
+
+# KILN's AI helpers: only signed-in users can call it (it also checks the business and daily limit).
+[functions.ai]
+verify_jwt = true
 
 [analytics]
 enabled = true

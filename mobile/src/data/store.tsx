@@ -2,15 +2,15 @@ import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNod
 import { AppState } from 'react-native';
 
 import type { Cents, TaxRule } from '@/lib/money';
-import { copyDocument, estimateReady, needsActualHours, receiptShares } from '@/lib/billing';
+import { copyDocument, estimateReady, needsActualHours, receiptShares, workItemValid } from '@/lib/billing';
 
 import * as dbApi from './db';
 import * as docsApi from './db-docs';
 import * as sample from './sample';
 import { business, customers, initialAssignments, initialEstimates, invoices, jobs, priceList, timeEntries } from './sample';
 import type { TradeId } from './trades';
-import type { Assignment, ChangeOrder, Customer, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, PriceItem, TimeEntry, Unit } from './types';
-import { canDeleteJob, changeOrderBase, hoursFor, invoiceBilling, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals } from './selectors';
+import type { Assignment, ChangeOrder, Customer, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, PriceItem, Receipt, TimeEntry, Unit, WorkItem } from './types';
+import { canDeleteJob, canDeleteReceipt, changeOrderBase, hoursFor, invoiceBilling, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, workLocked } from './selectors';
 
 export type { EstimateDraft, EstimateLine };
 
@@ -18,7 +18,8 @@ export type { EstimateDraft, EstimateLine };
 //  - example: no server set up; example data in memory, gone when the app restarts.
 //  - connected: signed in to Supabase; the business's own data is loaded at start and
 //    changes are saved as they happen: business, settings, price list, customers, jobs,
-//    hours, notes, estimates, change orders, receipt sorting, and invoices. (Photos and
+//    hours, notes, work done, estimates, change orders, typed-in receipts and their sorting,
+//    and invoices. (Photos and
 //    voice notes wait for the camera and microphone; until then they stay on screen only.)
 // Screens only use the actions below, so they work the same in both modes.
 
@@ -75,12 +76,23 @@ export interface NewJobInput {
   customer: { id: string } | { name: string; phone: string; lang: Customer['lang'] };
 }
 
+/** A receipt typed in by hand. Each item is its price before tax. */
+export interface NewReceiptInput {
+  store: string;
+  number: string;
+  date: string;
+  taxCents: Cents;
+  items: { name: string; costCents: Cents }[];
+}
+
 export interface State {
   assignments: Record<string, Assignment>;
   /** Receipt lines KILN couldn't read, after the owner typed what they were. */
   fixedNames: Record<string, string>;
   markupOff: Record<string, boolean>;
   timeEntries: TimeEntry[];
+  /** Work done, typed in on each job. */
+  workItems: WorkItem[];
   acceptedSuggestions: string[];
   dismissedSuggestions: string[];
   materialsMode: Record<string, 'items' | 'total'>;
@@ -102,6 +114,8 @@ export interface State {
   paidInvoices: string[];
   captures: Capture[];
   cardFee: boolean;
+  /** KILN writes the customer's job description from the job and its lines. Off until turned on. */
+  aiScope: boolean;
   settings: PricingSettings;
   profile: Profile;
   priceList: PriceItem[];
@@ -123,6 +137,7 @@ function initialState(): State {
     fixedNames: {},
     markupOff: {},
     timeEntries: [...timeEntries],
+    workItems: [],
     acceptedSuggestions: [],
     dismissedSuggestions: [],
     materialsMode: {},
@@ -141,6 +156,7 @@ function initialState(): State {
     paidInvoices: [],
     captures: [],
     cardFee: false,
+    aiScope: false,
     settings: { markupBps: business.markupBps, tax: { ...business.tax }, depositBps: business.depositBps, dueDays: business.dueDays },
     version: 0,
     // example business; setup replaces this
@@ -173,6 +189,7 @@ function connectedState(base: State): State {
     fixedNames: {},
     markupOff: {},
     timeEntries: [],
+    workItems: [],
     acceptedSuggestions: [],
     dismissedSuggestions: [],
     materialsMode: {},
@@ -272,6 +289,7 @@ function applyLoaded(loaded: dbApi.Loaded): void {
   set((s) => ({
     ...connectedState(s),
     timeEntries: d.timeEntries,
+    workItems: d.workItems,
     captures: d.notes.map((n) => ({ id: n.id, jobId: n.jobId, kind: 'note' as const, text: n.text, date: n.date })),
     estimates: d.estimates,
     skippedEstimates: d.skippedEstimates,
@@ -291,6 +309,7 @@ function applyLoaded(loaded: dbApi.Loaded): void {
     profile: loaded.profile,
     settings: loaded.settings,
     cardFee: loaded.cardFee,
+    aiScope: loaded.aiScope,
     priceList: loaded.priceList,
     version: s.version + 1,
   }));
@@ -332,6 +351,64 @@ function makeActions() {
       const entry: TimeEntry = { id: newId(), jobId, date: sample.TODAY, hundredths, note };
       set((s) => ({ ...s, timeEntries: [...s.timeEntries, entry] }));
       persist((bid) => docsApi.insertTimeEntry(bid, entry));
+    },
+    /** Work done on the job, priced. Returns false if it isn't complete or the invoice was sent. */
+    addWorkItem(jobId: string, input: Omit<WorkItem, 'id' | 'jobId' | 'date'>): boolean {
+      const item: WorkItem = { ...input, description: input.description.trim(), id: newId(), jobId, date: sample.TODAY };
+      if (!jobs.some((j) => j.id === jobId) || workLocked(get(), jobId) || !workItemValid(item)) return false;
+      set((s) => ({ ...s, workItems: [...s.workItems, item] }));
+      persist((bid) => docsApi.insertWorkItem(bid, item));
+      return true;
+    },
+    removeWorkItem(id: string) {
+      const item = get().workItems.find((w) => w.id === id);
+      if (!item || workLocked(get(), item.jobId)) return;
+      set((s) => ({ ...s, workItems: s.workItems.filter((w) => w.id !== id) }));
+      persist(() => docsApi.deleteWorkItem(id));
+    },
+    /**
+     * A receipt typed in by hand. With a job, every item goes to it (the owner can still
+     * re-sort on the receipt page); without one, the items wait in the Inbox. Returns its id.
+     */
+    addReceipt(input: NewReceiptInput, jobId: string | null): string | null {
+      const money = (c: number) => Number.isSafeInteger(c) && c >= 0 && c <= 100_000_000;
+      const items = input.items.map((i) => ({ name: i.name.trim(), costCents: i.costCents }));
+      if (!input.store.trim() || input.store.length > 120 || input.number.length > 60 || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
+        !money(input.taxCents) || items.length === 0 || items.length > 200 ||
+        items.some((i) => !i.name || i.name.length > 160 || !money(i.costCents)) ||
+        (jobId !== null && (!jobs.some((j) => j.id === jobId) || workLocked(get(), jobId)))) return null;
+      const receipt: Receipt = {
+        id: newId(), store: input.store.trim(), number: input.number.trim(), date: input.date, taxCents: input.taxCents,
+        items: items.map((i, index) => ({ id: newId(), line: index + 1, name: i.name, qtyLabel: '', costCents: i.costCents, likelyJobIds: jobId ? [jobId] : [] })),
+      };
+      sample.receipts.unshift(receipt);
+      set((s) => {
+        if (!jobId) return { ...s, version: s.version + 1 };
+        const assignments = { ...s.assignments };
+        for (const item of receipt.items) assignments[item.id] = { type: 'jobs', jobIds: [jobId] };
+        return { ...s, assignments, version: s.version + 1 };
+      });
+      persist((bid) => docsApi.insertReceipt(bid, receipt, jobId));
+      return receipt.id;
+    },
+    /** A receipt typed in with a mistake. Returns false if it's kept (see canDeleteReceipt). */
+    deleteReceipt(receiptId: string): boolean {
+      const receipt = sample.receipts.find((r) => r.id === receiptId);
+      if (!receipt || !canDeleteReceipt(get(), receipt)) return false;
+      sample.receipts.splice(sample.receipts.indexOf(receipt), 1);
+      set((s) => {
+        const assignments = { ...s.assignments };
+        const fixedNames = { ...s.fixedNames };
+        const markupOff = { ...s.markupOff };
+        for (const item of receipt.items) {
+          delete assignments[item.id];
+          delete fixedNames[item.id];
+          delete markupOff[item.id];
+        }
+        return { ...s, assignments, fixedNames, markupOff, version: s.version + 1 };
+      });
+      persist(() => docsApi.deleteReceipt(receiptId));
+      return true;
     },
     acceptSuggestion(id: string) {
       set((s) => ({ ...s, acceptedSuggestions: [...s.acceptedSuggestions, id] }));
@@ -408,6 +485,13 @@ function makeActions() {
     updateEstimate(jobId: string, patch: Partial<EstimateDraft>) {
       set((s) => withDraft(s, jobId, (d) => ({ ...d, ...patch })));
       saveEstimateSoon(jobId);
+    },
+    /** A customer description KILN drafted in the background. Kept only if the owner hasn't written one meanwhile. */
+    fillScopeNotes(jobId: string, notes: string): boolean {
+      if (get().estimates[jobId]?.scope?.notes?.trim()) return false;
+      set((s) => withDraft(s, jobId, (d) => ({ ...d, scope: { ...d.scope, notes } })));
+      saveEstimateSoon(jobId);
+      return true;
     },
     addLines(jobId: string, lines: Omit<EstimateLine, 'id'>[]) {
       set((s) => withDraft(s, jobId, (d) => ({ ...d, lines: [...d.lines, ...lines.map((l) => ({ ...l, id: newId() }))] })));
@@ -494,7 +578,7 @@ function makeActions() {
       return invoice.id;
     },
     /**
-     * Deletes a job made by accident, with its hours, notes, and drafts. Receipt items on it go
+     * Deletes a job made by accident, with its hours, work, notes, and drafts. Receipt items on it go
      * back to the inbox, or stay on the other jobs of a split. Returns false if the job is kept.
      */
     deleteJob(jobId: string): boolean {
@@ -525,6 +609,7 @@ function makeActions() {
           estimates,
           assignments,
           timeEntries: x.timeEntries.filter((e) => e.jobId !== jobId),
+          workItems: x.workItems.filter((w) => w.jobId !== jobId),
           captures: x.captures.filter((c) => c.jobId !== jobId),
           skippedEstimates: x.skippedEstimates.filter((id) => id !== jobId),
           reopenedJobs: x.reopenedJobs.filter((id) => id !== jobId),
@@ -550,7 +635,7 @@ function makeActions() {
     },
     updateSettings(patch: Partial<PricingSettings>) {
       set((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
-      persist((bid) => dbApi.saveSettings(bid, get().settings, get().cardFee));
+      persist((bid) => dbApi.saveSettings(bid, get().settings, get().cardFee, get().aiScope));
     },
     /**
      * Adds a job (and a new customer if needed) and returns the job id.
@@ -637,7 +722,11 @@ function makeActions() {
     },
     setCardFee(on: boolean) {
       set((s) => ({ ...s, cardFee: on }));
-      persist((bid) => dbApi.saveSettings(bid, get().settings, on));
+      persist((bid) => dbApi.saveSettings(bid, get().settings, on, get().aiScope));
+    },
+    setAiScope(on: boolean) {
+      set((s) => ({ ...s, aiScope: on }));
+      persist((bid) => dbApi.saveSettings(bid, get().settings, get().cardFee, on));
     },
     clearSyncError() {
       set((s) => ({ ...s, syncError: null }));
@@ -665,6 +754,9 @@ export type Actions = ReturnType<typeof makeActions>;
 
 /** The one set of actions. Also used outside React (sign-in, loading). */
 export const storeActions: Actions = makeActions();
+
+/** The latest state, for work that finishes after a screen has moved on (an AI answer arriving). */
+export const currentState = (): State => get();
 
 const Ctx = createContext<{ state: State; actions: Actions } | null>(null);
 

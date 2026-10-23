@@ -1,9 +1,9 @@
 import { applyMarkup, documentTotals, percentOf, splitByWeights, type Cents, type Totals } from '@/lib/money';
-import { composeInvoiceLines, defaultBilling, estimateLines, receiptShares } from '@/lib/billing';
+import { composeInvoiceLines, defaultBilling, estimateLines, receiptShares, workLines } from '@/lib/billing';
 
 import * as sample from './sample';
 import type { State } from './store';
-import type { ChangeOrder, Customer, DocLine, EstimateDraft, Invoice, Job, Receipt, ReceiptItem } from './types';
+import type { ChangeOrder, Customer, DocLine, EstimateDraft, Invoice, Job, Receipt, ReceiptItem, WorkItem } from './types';
 
 // Read-only views over the example data plus what the owner changed this session.
 
@@ -62,6 +62,18 @@ export const hasCustomerEstimate = (id: string): boolean => hasJob(sample.custom
 
 export function hoursFor(state: State, jobId: string): number {
   return state.timeEntries.filter((t) => t.jobId === jobId).reduce((a, t) => a + t.hundredths, 0);
+}
+
+export const workItemsFor = (state: State, jobId: string): WorkItem[] => state.workItems.filter((w) => w.jobId === jobId);
+
+/** What the work typed in on a job adds up to, before tax. */
+export function workTotal(state: State, jobId: string): Cents {
+  return documentTotals(workLines(workItemsFor(state, jobId)), { rateBps: 0, labor: false, materials: false }).subtotal;
+}
+
+/** Work can be added or removed until the job's invoice is sent. */
+export function workLocked(state: State, jobId: string): boolean {
+  return sample.invoices.some((i) => i.jobId === jobId && state.sentInvoices.includes(i.id));
 }
 
 /** What this job pays for an item: its even share if the item was split across jobs. */
@@ -130,7 +142,8 @@ export function invoiceLines(state: State, invoice: Invoice): DocLine[] {
     materials.push({ id, kind: 'material', description: state.fixedNames[id] ?? name, qtyHundredths: 100, unitCents: billedPrice(state, item, job.id) });
   }
   return composeInvoiceLines({ job, estimate: draft, billing: invoiceBilling(state, invoice),
-    hours: hoursFor(state, job.id), laborDescription: invoice.laborDescription, fees: invoice.fees, changes, materials });
+    hours: hoursFor(state, job.id), laborDescription: invoice.laborDescription, fees: invoice.fees, changes,
+    work: workLines(workItemsFor(state, job.id)), materials });
 }
 
 export function invoiceBilling(state: State, invoice: Invoice) {
@@ -179,7 +192,7 @@ export function changeOrderBase(state: State, job: Job): Cents {
   if (state.estimates[job.id]?.signed) return estimateTotals(state, job.id).subtotal + approved;
   const saved = sample.customerEstimates.find((estimate) => estimate.jobId === job.id);
   if (saved) return documentTotals(saved.lines, { rateBps: 0, labor: false, materials: false }).subtotal + approved;
-  return (changeOrdersForJob(job.id)[0]?.baseCents ?? job.amountCents ?? 0) + approved;
+  return (changeOrdersForJob(job.id)[0]?.baseCents ?? (job.amountCents ?? 0) + workTotal(state, job.id)) + approved;
 }
 
 export function estimateDraft(state: State, jobId: string): EstimateDraft {
@@ -264,7 +277,20 @@ export function jobAmount(state: State, job: Job): Cents {
   const est = sample.customerEstimates.find((e) => e.jobId === job.id);
   if (est) return documentTotals(est.lines, { rateBps: 0, labor: false, materials: false }).total;
   if (state.estimates[job.id]?.lines.length) return estimateTotals(state, job.id).total;
-  return job.amountCents ?? 0;
+  return (job.amountCents ?? 0) + workTotal(state, job.id);
+}
+
+/**
+ * A receipt typed in with a mistake can be deleted, unless an item on it went to a job whose
+ * invoice was sent, or an invoice draft points at one of its items.
+ */
+export function canDeleteReceipt(state: State, receipt: Receipt): boolean {
+  const ids = new Set(receipt.items.map((i) => i.id));
+  if (sample.invoices.some((i) => i.materialItemIds?.some((id) => ids.has(id)) || (i.suggestion && ids.has(i.suggestion.receiptItemId)))) return false;
+  return !receipt.items.some((item) => {
+    const a = state.assignments[item.id];
+    return a?.type === 'jobs' && a.jobIds.some((jobId) => workLocked(state, jobId));
+  });
 }
 
 export function unsortedItems(state: State, receipt: Receipt): ReceiptItem[] {

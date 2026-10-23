@@ -1,5 +1,5 @@
-import type { DocLine, EstimateDraft, InvoiceBilling, Job, Assignment } from '../data/types.ts';
-import { splitByWeights } from './money.ts';
+import type { DocLine, EstimateDraft, InvoiceBilling, Job, Assignment, PriceItem, WorkItem } from '../data/types.ts';
+import { splitByWeights, type Cents } from './money.ts';
 
 /** Every included item must be deliberate, valid and priced before issue/signing. */
 export function estimateReady(draft: EstimateDraft): boolean {
@@ -38,6 +38,8 @@ export function composeInvoiceLines(input: {
   laborDescription: string;
   fees: DocLine[];
   changes: DocLine[];
+  /** Work the owner typed in on the job; always billed, on top of any agreed price. */
+  work: DocLine[];
   materials: DocLine[];
 }): DocLine[] {
   const { job, estimate, billing } = input;
@@ -45,7 +47,7 @@ export function composeInvoiceLines(input: {
   const agreed = estimate?.signed ? estimateLines(estimate).filter((line) =>
     !(actual && line.kind === 'labor' && line.unit === 'hour'),
   ).map((line) => ({ ...line, id: `est-${line.id}` })) : [];
-  const lines: DocLine[] = [...agreed, ...input.changes];
+  const lines: DocLine[] = [...agreed, ...input.changes, ...input.work];
   if (actual && job.rateCents !== undefined && input.hours > 0) {
     lines.push({ id: 'labor', kind: 'labor', description: input.laborDescription,
       qtyHundredths: input.hours, unitCents: job.rateCents, unit: 'hour' });
@@ -58,6 +60,36 @@ export function composeInvoiceLines(input: {
     }
   }
   return lines;
+}
+
+/** A work item can be saved: a description, a quantity above zero, and a price (zero is fine). */
+export function workItemValid(item: Pick<WorkItem, 'description' | 'qtyHundredths' | 'unitCents'>): boolean {
+  const { description, qtyHundredths: qty, unitCents: cents } = item;
+  return description.trim().length > 0 && description.length <= 300 &&
+    Number.isSafeInteger(qty) && qty > 0 && qty <= 100_000_000 &&
+    Number.isSafeInteger(cents) && cents >= 0 && cents <= 100_000_000 &&
+    Number.isSafeInteger(qty * cents);
+}
+
+/** What the owner usually charges for this line: its price list item, or the item with the same name. */
+export function usualPrice(line: { priceItemId?: string; description: string }, priceList: PriceItem[]): Cents | null {
+  const name = line.description.trim().toLowerCase();
+  const item = priceList.find((p) => p.id === line.priceItemId) ?? (name ? priceList.find((p) => p.name.trim().toLowerCase() === name) : undefined);
+  return item?.unitCents ?? null;
+}
+
+/**
+ * Probably a typo: 5 times the usual price or more, or a fifth of it or less ($15 typed for $150).
+ * Free (zero) and unpriced lines aren't checked: zero is allowed on purpose.
+ */
+export function priceLooksOff(cents: Cents | null, usual: Cents | null): boolean {
+  if (cents === null || usual === null || cents <= 0 || usual <= 0) return false;
+  return cents >= usual * 5 || cents * 5 <= usual;
+}
+
+export function workLines(items: WorkItem[]): DocLine[] {
+  return items.map((w) => ({ id: `work-${w.id}`, kind: w.kind, description: w.description,
+    qtyHundredths: w.qtyHundredths, unitCents: w.unitCents, unit: w.unit }));
 }
 
 /** Quantity/ratio allocation, preserving every cent including receipt tax. */

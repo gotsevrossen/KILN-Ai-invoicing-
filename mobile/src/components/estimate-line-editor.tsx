@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { useStore } from '@/data/store';
 import type { EstimateLine } from '@/data/types';
 import { useLang } from '@/i18n';
+import { priceLooksOff, usualPrice } from '@/lib/billing';
 import { useFormat } from '@/lib/format';
 import { lineTotal } from '@/lib/money';
 import { usePalette } from '@/theme/use-palette';
@@ -14,11 +15,12 @@ export function EstimateLineEditor({ jobId, line }: { jobId: string; line: Estim
   const { t } = useLang();
   const f = useFormat();
   const p = usePalette();
-  const { actions } = useStore();
+  const { state, actions } = useStore();
   const [qty, setQty] = useState(String(line.qtyHundredths / 100));
   const [price, setPrice] = useState(line.unitCents === null ? '' : (line.unitCents / 100).toFixed(2));
   const q = /^\d{1,6}([.,]\d{1,2})?$/.test(qty) ? Math.round(Number(qty.replace(',', '.')) * 100) : 0;
   const cents = /^\d{1,6}([.,]\d{1,2})?$/.test(price) ? Math.round(Number(price.replace(',', '.')) * 100) : null;
+  const usual = usualPrice(line, state.priceList);
   return <>
     <Field label={t('estimate.description')} value={line.description} maxLength={300}
       onChangeText={(description) => actions.updateLine(jobId, line.id, { description })} />
@@ -41,6 +43,7 @@ export function EstimateLineEditor({ jobId, line }: { jobId: string; line: Estim
       </Row>
       {q <= 0 ? <T v="small" color={p.danger}>{t('review.qtyBad')}</T> : null}
       {cents === null ? <Notice text={t('estimate.noPriceGeneric')} tone="soft" /> : null}
+      {usual !== null && priceLooksOff(cents, usual) ? <Notice text={t('estimate.priceOff', { usual: f.money(usual) })} tone="flag" icon="alert-triangle" /> : null}
       <T v="small" muted>{t('review.kind')}</T>
       <Row style={{ flexWrap: 'wrap' }}>
         {(['labor', 'material', 'fee'] as const).map((kind) => <Chip key={kind} label={t(`review.${kind}`)}

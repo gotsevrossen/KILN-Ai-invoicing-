@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { DocLine, EstimateDraft } from '../data/types.ts';
-import { composeInvoiceLines, copyDocument, defaultBilling, estimateLines, estimateReady, needsActualHours, receiptShares } from './billing.ts';
+import type { DocLine, EstimateDraft, WorkItem } from '../data/types.ts';
+import { composeInvoiceLines, copyDocument, defaultBilling, estimateLines, estimateReady, needsActualHours, receiptShares, workItemValid, workLines } from './billing.ts';
 import { documentTotals } from './money.ts';
 
 const draft = (): EstimateDraft => ({ lines: [
@@ -11,7 +11,7 @@ const draft = (): EstimateDraft => ({ lines: [
 ], sent: true, signed: true, depositOn: true, depositBps: 3000 });
 const material: DocLine = { id: 'receipt', kind: 'material', description: 'Purchased faucet', qtyHundredths: 100, unitCents: 5000 };
 const invoiceInput = () => ({ job: { pricing: 'hourly' as const, rateCents: 8500 }, estimate: draft(),
-  billing: { ...defaultBilling(true), reviewed: true }, hours: 300, laborDescription: 'Actual labor', fees: [], changes: [], materials: [material] });
+  billing: { ...defaultBilling(true), reviewed: true }, hours: 300, laborDescription: 'Actual labor', fees: [], changes: [], work: [] as DocLine[], materials: [material] });
 const noTax = { rateBps: 0, labor: false, materials: false };
 
 describe('estimate scope before issue', () => {
@@ -86,6 +86,28 @@ describe('invoice billing reconciliation', () => {
   it('requires explicit billing review for an agreed price', () => {
     assert.equal(defaultBilling(true).reviewed, false);
     assert.equal(defaultBilling(true).materials, 'included');
+  });
+  it('bills typed-in work on a flat job with no estimate', () => {
+    const valve: WorkItem = { id: 'v', jobId: 'j', date: '2026-10-22', description: 'Replaced shutoff valve', unit: 'each', qtyHundredths: 150, unitCents: 8500, kind: 'labor' };
+    const input = { ...invoiceInput(), job: { pricing: 'flat' as const }, estimate: undefined, billing: defaultBilling(false), materials: [], work: workLines([valve]) };
+    const lines = composeInvoiceLines(input);
+    assert.deepEqual(lines.map((l) => l.id), ['work-v']);
+    assert.equal(documentTotals(lines, noTax).total, 12750);
+  });
+  it('adds typed-in work on top of a signed estimate, once', () => {
+    const input = invoiceInput();
+    input.work.push(...workLines([{ id: 'x', jobId: 'j', date: '2026-10-22', description: 'Extra trip', unit: 'flat', qtyHundredths: 100, unitCents: 4500, kind: 'fee' }]));
+    const lines = composeInvoiceLines(input);
+    assert.equal(lines.filter((l) => l.id === 'work-x').length, 1);
+    assert.equal(documentTotals(lines, noTax).total, 35000);
+  });
+  it('accepts only complete work items', () => {
+    const ok = { description: 'Patch drywall', qtyHundredths: 100, unitCents: 0 };
+    assert.equal(workItemValid(ok), true);
+    assert.equal(workItemValid({ ...ok, description: '  ' }), false);
+    assert.equal(workItemValid({ ...ok, qtyHundredths: 0 }), false);
+    assert.equal(workItemValid({ ...ok, unitCents: -1 }), false);
+    assert.equal(workItemValid({ ...ok, unitCents: 12.5 }), false);
   });
   it('blocks accidentally replacing quoted labor with no logged hours or no rate', () => {
     assert.equal(needsActualHours({ pricing: 'hourly', rateCents: 8500 }, draft(), defaultBilling(true), 0), true);

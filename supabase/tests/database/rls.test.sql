@@ -2,7 +2,7 @@
 -- Run with: npx supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(46);
+select plan(63);
 
 -- two owners, each with their own business
 insert into auth.users (id, email) values
@@ -113,6 +113,16 @@ insert into public.change_orders (business_id, job_id, number, description, amou
 update public.change_orders set signed_at = now();
 select throws_ok($$ update public.change_orders set amount_cents = 1 $$, 'P0001', 'this change order was answered and can''t be changed', 'a signed change order is frozen');
 
+-- work done, typed in on the job
+select lives_ok(
+  $$ insert into public.work_items (business_id, job_id, description, unit, qty_hundredths, unit_cents)
+     select business_id, id, 'Replaced shutoff valve', 'each', 100, 8500 from public.jobs $$,
+  'A adds work done to its job');
+select throws_ok(
+  $$ insert into public.work_items (business_id, job_id, description, qty_hundredths, unit_cents)
+     select business_id, id, '  ', 100, 8500 from public.jobs $$,
+  '23514', null, 'work done needs a description');
+
 -- an invoice: lines before sending, frozen once sent, paid only after sending
 insert into public.invoices (business_id, job_id, number) select ids.a, j.id, '1001' from ids, public.jobs j;
 select throws_ok($$ update public.invoices set paid_at = now() $$, 'P0001', 'only a sent invoice can be marked paid', 'an unsent invoice can''t be marked paid');
@@ -125,6 +135,11 @@ update public.invoices set sent_at = now(), tax_rate_bps = 0, tax_labor = false,
 select throws_ok($$ update public.invoice_lines set unit_cents = 1 $$, 'P0001', 'this document is signed or sent and can''t be changed', 'sent invoice lines are frozen');
 select throws_ok($$ update public.invoices set summary = 'changed' $$, 'P0001', 'this document is signed or sent and can''t be changed', 'a sent invoice can''t be edited');
 select lives_ok($$ update public.invoices set paid_at = now() $$, 'a sent invoice can be marked paid');
+select throws_ok(
+  $$ insert into public.work_items (business_id, job_id, description, qty_hundredths, unit_cents)
+     select business_id, id, 'Late extra', 100, 100 from public.jobs $$,
+  'P0001', 'this job''s invoice was sent; its work can''t be changed', 'no work can be added once the job''s invoice is sent');
+select throws_ok($$ delete from public.work_items $$, 'P0001', 'this job''s invoice was sent; its work can''t be changed', 'invoiced work can''t be removed');
 
 -- hours, notes, and payments stay inside the business
 select lives_ok($$ insert into public.time_entries (business_id, job_id, hundredths) select business_id, id, 250 from public.jobs $$, 'A logs hours on its job');
@@ -132,12 +147,16 @@ select lives_ok($$ insert into public.notes (business_id, job_id, body) select b
 select lives_ok($$ insert into public.payments (business_id, invoice_id, amount_cents, method) select business_id, id, 19000, 'cash' from public.invoices $$, 'A records a payment');
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
 select is((select count(*)::int from public.estimates) + (select count(*)::int from public.invoices) + (select count(*)::int from public.time_entries)
-  + (select count(*)::int from public.notes) + (select count(*)::int from public.signatures) + (select count(*)::int from public.payments),
-  0, 'B sees none of A''s estimates, invoices, hours, notes, signatures, or payments');
+  + (select count(*)::int from public.notes) + (select count(*)::int from public.signatures) + (select count(*)::int from public.payments)
+  + (select count(*)::int from public.work_items),
+  0, 'B sees none of A''s estimates, invoices, hours, notes, signatures, payments, or work');
 reset role;
 select throws_ok(
   $$ insert into public.payments (business_id, invoice_id, amount_cents, method) select ids.b, i.id, 100, 'cash' from ids, public.invoices i $$,
   'P0001', 'invoices must belong to the same business', 'a payment can''t point at another business''s invoice');
+select throws_ok(
+  $$ insert into public.work_items (business_id, job_id, description, qty_hundredths, unit_cents) select ids.b, j.id, 'Sneaky', 100, 100 from ids, public.jobs j $$,
+  'P0001', 'jobs must belong to the same business', 'work can''t be filed on another business''s job');
 
 -- a job made by accident can be deleted; one with a sent document is kept
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
@@ -145,7 +164,8 @@ select throws_ok($$ delete from public.jobs where title = 'Leak repair' $$, 'P00
 insert into public.jobs (business_id, customer_id, title)
   select ids.a, c.id, 'Oops' from ids, public.customers c where c.business_id = ids.a;
 insert into public.time_entries (business_id, job_id, hundredths) select business_id, id, 100 from public.jobs where title = 'Oops';
-select lives_ok($$ delete from public.jobs where title = 'Oops' $$, 'a fresh job can be deleted, with its hours');
+insert into public.work_items (business_id, job_id, description, qty_hundredths, unit_cents) select business_id, id, 'Oops work', 100, 100 from public.jobs where title = 'Oops';
+select lives_ok($$ delete from public.jobs where title = 'Oops' $$, 'a fresh job can be deleted, with its hours and work');
 select is((select count(*)::int from public.jobs where title = 'Oops'), 0, 'the deleted job is gone');
 reset role;
 
@@ -155,6 +175,27 @@ insert into public.audit_log (business_id, actor, action, entity) select a, '000
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 select lives_ok($$ update public.audit_log set action = 'edited' $$, 'updating the log runs but touches nothing');
 select is((select action from public.audit_log), 'invoice.sent', 'the activity log entry is unchanged');
+
+-- AI helpers: the owner's switch, and a daily limit only the server function's call can count
+select is((select ai_write_scope from public.businesses), false, 'writing customer descriptions is off until the owner turns it on');
+select lives_ok($$ update public.businesses set ai_write_scope = true $$, 'the owner can turn it on');
+select is((select ai_write_scope from public.businesses), true, 'the switch is saved');
+select is(public.use_ai_quota(), (select a from ids), 'an AI request counts toward the caller''s own business');
+select is((select requests from public.ai_usage), 1, 'one request counted today');
+select lives_ok($$ update public.ai_usage set requests = 0 $$, 'resetting the count runs but touches nothing');
+select is((select requests from public.ai_usage), 1, 'the owner can''t reset the count');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select is((select count(*)::int from public.ai_usage), 0, 'B can''t see A''s AI use');
+select throws_ok($$ insert into public.ai_usage (business_id, requests) select b, 0 from ids $$, '42501', null, 'counts can''t be written directly');
+reset role;
+update public.ai_usage set requests = 300;
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+select throws_ok($$ select public.use_ai_quota() $$, 'KL429', 'daily AI limit reached', 'the daily limit stops more requests');
+reset role;
+select is((select requests from public.ai_usage), 300, 'a refused request isn''t counted');
+set local role anon;
+select throws_ok($$ select public.use_ai_quota() $$, '42501', null, 'signed-out visitors can''t use AI');
+reset role;
 
 select * from finish();
 rollback;

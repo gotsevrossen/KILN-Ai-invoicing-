@@ -2,16 +2,20 @@ import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { aiErrorText } from '@/components/ai-parts';
 import { ActivityDays, useJobActivity } from '@/components/job-activity';
 import { useJobDocs, type DocStatus } from '@/components/job-docs';
 import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Stepper } from '@/components/stepper';
+import { WorkSheet } from '@/components/work-sheet';
 import { Button, Card, Field, Hair, Icon, IconButton, ListRow, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
+import { aiReady, draftChange, type ChangeDraft } from '@/data/ai';
 import * as sample from '@/data/sample';
-import { canDeleteJob, changeOrdersForJob, customerOf, hasJob, hoursFor, invoiceForJob, jobById, jobStage, partsCost, type Stage, unsortedItems } from '@/data/selectors';
+import { canDeleteJob, changeOrdersForJob, customerOf, hasJob, hoursFor, invoiceForJob, jobById, jobStage, partsCost, type Stage, workTotal } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { priceChange } from '@/lib/ai-check';
 import { callNumber, dialable, textNumber } from '@/lib/contact';
 import { useFormat } from '@/lib/format';
 import { usePalette } from '@/theme/use-palette';
@@ -49,12 +53,36 @@ function JobDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [photoAdded, setPhotoAdded] = useState(false);
-  const [receiptSoon, setReceiptSoon] = useState(false);
+  const [workOpen, setWorkOpen] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
   const [changeDescription, setChangeDescription] = useState('');
   const [changePrice, setChangePrice] = useState('');
   const changeCents = /^\d{1,6}([.,]\d{1,2})?$/.test(changePrice)
     ? Math.round(Number(changePrice.replace(',', '.')) * 100) : null;
+  // KILN writes up the owner's quick note for the customer and prices it from the owner's own list
+  const [changeDraft, setChangeDraft] = useState<ChangeDraft | null>(null);
+  const [changeDrafting, setChangeDrafting] = useState(false);
+  const [changeError, setChangeError] = useState<string | null>(null);
+  const draftWithKiln = () => {
+    setChangeDrafting(true);
+    setChangeError(null);
+    draftChange({
+      lang: customer.lang,
+      title: job.title.slice(0, 200),
+      note: changeDescription.slice(0, 2000),
+      agreed: (draft?.lines ?? []).filter((l) => !l.excluded).slice(0, 100).map((l) => l.description.slice(0, 300)),
+      items: state.priceList.slice(0, 400).map((i) => ({ id: i.id, name: i.name.slice(0, 160), unit: i.unit })),
+    })
+      .then((d) => {
+        setChangeDescription(d.description);
+        const { cents } = priceChange(d, state.priceList);
+        if (cents !== null) setChangePrice((cents / 100).toFixed(2));
+        setChangeDraft(d);
+      }, (e: unknown) => setChangeError(aiErrorText(t, e)))
+      .finally(() => setChangeDrafting(false));
+  };
+  const changePriced = changeDraft ? priceChange(changeDraft, state.priceList) : null;
+  const itemName = (itemId: string) => state.priceList.find((i) => i.id === itemId)?.name ?? itemId;
   const hoursValue = parseHours(hoursText);
   const canUnskip = state.skippedEstimates.includes(job.id) && !draft?.signed && !draft?.sent && !invoice && !co;
 
@@ -137,8 +165,11 @@ function JobDetail() {
     job.pricing === 'hourly' && job.rateCents ? t('job.perHour', { amount: f.money(job.rateCents) }) : t('job.flat'),
     job.pricing === 'hourly' || hours > 0 ? `${f.qty(hours)} h` : null,
     `${t('job.partsCost')} ${f.money(partsCost(state, job.id))}`,
+    state.workItems.some((w) => w.jobId === job.id) ? t('job.workTotal', { amount: f.money(workTotal(state, job.id)) }) : null,
   ].filter(Boolean).join(' · ');
+  // photos and notes help on a site visit; work, receipts, and hours wait for the Work step
   const canCapture = stage === 'estimate' || stage === 'work';
+  const canLogWork = stage === 'work';
 
   return (
     <Screen
@@ -184,15 +215,17 @@ function JobDetail() {
         {next.extra}
       </Card>
 
+      {canLogWork ? (
+        <Row gap={8}>
+          <Button label={t('flow.workDone')} icon="tool" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setWorkOpen(true)} />
+          <Button label={t('flow.receipt')} icon="file-text" variant="soft" stacked style={{ backgroundColor: p.card }}
+            onPress={() => router.push({ pathname: '/receipt/new', params: { job: job.id } })} />
+        </Row>
+      ) : null}
       {canCapture ? (
         <Row gap={8}>
-          <Button label={t('flow.receipt')} icon="file-text" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => {
-              const r = sample.receipts.find((x) => unsortedItems(state, x).length > 0) ?? sample.receipts[0];
-              if (r) router.push(`/receipt/${r.id}`);
-              else setReceiptSoon(true);
-            }} />
           {/* every job: hourly jobs bill these; flat-price jobs keep them for the owner's records */}
-          <Button label={t('job.logHours')} icon="clock" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setHoursOpen(true)} />
+          {canLogWork ? <Button label={t('job.logHours')} icon="clock" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setHoursOpen(true)} /> : null}
           <Button
             label={t('flow.photo')}
             icon="camera"
@@ -208,7 +241,6 @@ function JobDetail() {
         </Row>
       ) : null}
       {photoAdded ? <Notice text={t('flow.photoAdded')} icon="camera" /> : null}
-      {receiptSoon ? <Notice text={t('capture.receiptSoon')} icon="info" tone="soft" /> : null}
       {(stage === 'work' || detail === 'invoiceDraft') ? <Button label={t('review.newChange')} variant="outline" icon="plus"
         onPress={() => pendingChange ? router.push(`/change-order/${pendingChange.id}`) : setChangeOpen(true)} /> : null}
 
@@ -242,10 +274,29 @@ function JobDetail() {
       </Sheet>
 
       <Sheet open={changeOpen} onClose={() => setChangeOpen(false)} title={t('review.newChange')}>
-        <T muted>{t('review.changeHelp')}</T>
+        <T muted>{aiReady(state.mode) ? t('ai.changeHelp') : t('review.changeHelp')}</T>
         <Field label={t('review.changeDescription')} value={changeDescription} onChangeText={setChangeDescription}
           multiline maxLength={2000} style={{ minHeight: 100, paddingTop: 14, textAlignVertical: 'top' }} />
+        {aiReady(state.mode) ? (
+          <Button label={changeDrafting ? t('ai.writing') : t('ai.draftChange')} icon="zap" variant="outline"
+            disabled={changeDrafting || !changeDescription.trim()} onPress={draftWithKiln} />
+        ) : null}
+        {changeError ? <T v="small" color={p.danger}>{changeError}</T> : null}
         <Field label={t('review.changePrice')} value={changePrice} onChangeText={setChangePrice} keyboardType="decimal-pad" />
+        {changeDraft && changePriced ? (
+          <View style={{ gap: 4 }}>
+            {changeDraft.statedCents !== null ? <T v="small" muted>{t('ai.changeStated')}</T> : null}
+            {changeDraft.quantities.map((q) => {
+              const unitCents = state.priceList.find((i) => i.id === q.itemId)?.unitCents ?? null;
+              return <T key={q.itemId} v="small" muted>
+                {`${f.qty(q.qtyHundredths)} × ${itemName(q.itemId)} · ${unitCents === null ? t('estimate.needsPrice') : f.money(unitCents)}`}
+              </T>;
+            })}
+            {changePriced.unpriced.length ? (
+              <Notice text={t('ai.changeUnpriced', { items: changePriced.unpriced.map(itemName).join(', ') })} icon="alert-triangle" tone="flag" />
+            ) : changePriced.cents === null ? <Notice text={t('ai.changeNoPrice')} icon="info" tone="soft" /> : null}
+          </View>
+        ) : null}
         <Button label={t('review.changeCreate')} disabled={!changeDescription.trim() || changeCents === null} onPress={() => {
           if (changeCents === null) return;
           const changeId = actions.createChangeOrder(job.id, changeDescription, changeCents);
@@ -253,9 +304,12 @@ function JobDetail() {
           setChangeOpen(false);
           setChangeDescription('');
           setChangePrice('');
+          setChangeDraft(null);
           setTimeout(() => router.push(`/change-order/${changeId}`), 400);
         }} />
       </Sheet>
+
+      <WorkSheet jobId={job.id} open={workOpen} onClose={() => setWorkOpen(false)} onEstimate={!!draft?.signed} />
 
       <Sheet open={hoursOpen} onClose={() => setHoursOpen(false)} title={t('logHours.title')}>
         {job.pricing === 'flat' ? <T v="small" muted>{t('logHours.flatNote')}</T> : null}

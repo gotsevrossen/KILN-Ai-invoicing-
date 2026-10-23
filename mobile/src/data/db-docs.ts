@@ -7,10 +7,10 @@ import type { LineKind, TaxRule } from '@/lib/money';
 import { db, ok, one } from './db-client';
 import type {
   Assignment, ChangeOrder, DocLine, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot,
-  JobScope, Receipt, ReceiptItem, TimeEntry, Unit,
+  JobScope, Receipt, ReceiptItem, TimeEntry, Unit, WorkItem,
 } from './types';
 
-// Hours, notes, estimates, change orders, receipts, and invoices. Row Level Security on the
+// Hours, notes, work done, estimates, change orders, receipts, and invoices. Row Level Security on the
 // server keeps every query inside the signed-in owner's business, and the server's checks
 // refuse edits to sent or signed documents even if the app tried.
 
@@ -56,6 +56,10 @@ const taxFrom = (r: { tax_rate_bps: number | null; tax_labor: boolean | null; ta
 
 interface TimeRow { id: string; job_id: string; worked_on: string; hundredths: number; note: string }
 interface NoteRow { id: string; job_id: string; body: string; created_at: string }
+interface WorkRow {
+  id: string; job_id: string; worked_on: string; price_item_ref: string | null; description: string; unit: Unit;
+  qty_hundredths: number; unit_cents: number; kind: LineKind;
+}
 interface EstimateRow {
   id: string; job_id: string; number: string; deposit_on: boolean; deposit_bps: number; sent_at: string | null; signed_at: string | null;
   scope: unknown; tax_rate_bps: number | null; tax_labor: boolean | null; tax_materials: boolean | null;
@@ -88,6 +92,7 @@ interface ItemJobRow { receipt_item_id: string; job_id: string; weight: number }
 export interface LoadedDocs {
   timeEntries: TimeEntry[];
   notes: { id: string; jobId: string; text: string; date: string }[];
+  workItems: WorkItem[];
   estimates: Record<string, EstimateDraft>;
   skippedEstimates: string[];
   reopenedJobs: string[];
@@ -109,9 +114,10 @@ export interface LoadedDocs {
 
 /** Everything saved on the business's jobs. Job flags (skipped, reopened) come with the jobs. */
 export async function loadDocs(flags: { skipped: string[]; reopened: string[] }): Promise<LoadedDocs> {
-  const [times, notes, estimates, estLines, changes, signatures, invoices, invLines, receipts, items, itemJobs] = await Promise.all([
+  const [times, notes, work, estimates, estLines, changes, signatures, invoices, invLines, receipts, items, itemJobs] = await Promise.all([
     db().from('time_entries').select('id, job_id, worked_on, hundredths, note').order('created_at').returns<TimeRow[]>(),
     db().from('notes').select('id, job_id, body, created_at').order('created_at').returns<NoteRow[]>(),
+    db().from('work_items').select('id, job_id, worked_on, price_item_ref, description, unit, qty_hundredths, unit_cents, kind').order('created_at').returns<WorkRow[]>(),
     db().from('estimates').select('id, job_id, number, deposit_on, deposit_bps, sent_at, signed_at, scope, tax_rate_bps, tax_labor, tax_materials').returns<EstimateRow[]>(),
     db().from('estimate_lines').select('id, estimate_id, price_item_ref, description, unit, qty_hundredths, unit_cents, from_voice, kind, excluded').order('position').returns<EstimateLineRow[]>(),
     db().from('change_orders').select('id, job_id, number, description, amount_cents, base_cents, signed_at, declined_at').order('number').returns<ChangeRow[]>(),
@@ -126,6 +132,10 @@ export async function loadDocs(flags: { skipped: string[]; reopened: string[] })
   const docs: LoadedDocs = {
     timeEntries: (ok(times) ?? []).map((r) => ({ id: r.id, jobId: r.job_id, date: r.worked_on, hundredths: r.hundredths, note: r.note })),
     notes: (ok(notes) ?? []).map((r) => ({ id: r.id, jobId: r.job_id, text: r.body, date: localDate(r.created_at) })),
+    workItems: (ok(work) ?? []).map((r) => ({
+      id: r.id, jobId: r.job_id, date: r.worked_on, priceItemId: r.price_item_ref ?? undefined, description: r.description,
+      unit: r.unit, qtyHundredths: r.qty_hundredths, unitCents: r.unit_cents, kind: r.kind,
+    })),
     estimates: {},
     skippedEstimates: flags.skipped,
     reopenedJobs: flags.reopened,
@@ -256,6 +266,18 @@ export async function insertTimeEntry(businessId: string, e: TimeEntry): Promise
 
 export async function insertNote(businessId: string, n: { id: string; jobId: string; text: string }): Promise<void> {
   ok(await db().from('notes').insert({ id: n.id, business_id: businessId, job_id: n.jobId, body: n.text.slice(0, 4000) }));
+}
+
+/** The server refuses work on a job whose invoice was sent. */
+export async function insertWorkItem(businessId: string, w: WorkItem): Promise<void> {
+  ok(await db().from('work_items').insert({
+    id: w.id, business_id: businessId, job_id: w.jobId, worked_on: w.date, price_item_ref: w.priceItemId ?? null,
+    description: w.description.slice(0, 300), unit: w.unit, qty_hundredths: w.qtyHundredths, unit_cents: w.unitCents, kind: w.kind,
+  }));
+}
+
+export async function deleteWorkItem(id: string): Promise<void> {
+  ok(await db().from('work_items').delete().eq('id', id));
 }
 
 // ---------------------------------------------------------------- estimates
@@ -403,6 +425,26 @@ export async function markInvoicePaid(businessId: string, invoiceId: string, amo
 }
 
 // ---------------------------------------------------------------- receipts
+
+/** A receipt the owner typed in: the receipt, its items, and the job each item went to (if one). */
+export async function insertReceipt(businessId: string, r: Receipt, jobId: string | null): Promise<void> {
+  ok(await db().from('receipts').insert({
+    id: r.id, business_id: businessId, store: r.store.slice(0, 120), receipt_number: r.number.slice(0, 60), purchased_on: r.date,
+    tax_cents: r.taxCents, total_cents: r.items.reduce((a, i) => a + i.costCents, 0) + r.taxCents, status: 'ready',
+  }));
+  ok(await db().from('receipt_items').insert(r.items.map((i) => ({
+    id: i.id, business_id: businessId, receipt_id: r.id, line: i.line, name: i.name.slice(0, 160), qty_label: i.qtyLabel,
+    cost_cents: i.costCents, assignment: jobId ? 'jobs' : null,
+  }))));
+  if (jobId) {
+    ok(await db().from('receipt_item_jobs').insert(r.items.map((i) => ({ receipt_item_id: i.id, job_id: jobId, business_id: businessId }))));
+  }
+}
+
+/** Removes a receipt and its items (they cascade). */
+export async function deleteReceipt(receiptId: string): Promise<void> {
+  ok(await db().from('receipts').delete().eq('id', receiptId));
+}
 
 /** Which job(s) an item went to, or personal/overhead, or back to the inbox (null). */
 export async function assignReceiptItem(businessId: string, itemId: string, a: Assignment | null): Promise<void> {

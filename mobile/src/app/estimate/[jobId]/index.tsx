@@ -2,12 +2,14 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { MissedItems } from '@/components/ai-parts';
 import { EstimateLineRow, parseDollars, pickJobType, useEstimate, useLineMaker } from '@/components/estimate-parts';
 import { FixList } from '@/components/fix-list';
 import { PriceItemPicker } from '@/components/price-item-picker';
 import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Button, ButtonRow, Card, Field, Hair, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
+import { aiReady } from '@/data/ai';
 import { hasJob } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
@@ -104,6 +106,9 @@ function EstimateBuilder() {
         </Card>
       )}
       <FixList items={fixes} />
+      {aiReady(state.mode) ? (
+        <MissedItems jobId={job.id} leaveOut={optionalFees} onAdd={(id) => actions.addLines(job.id, [fromItem(priceItem(id))])} />
+      ) : null}
       {optionalFees.length ? <Card style={{ gap: 10 }}>
         <T v="eyebrow">{t('review.optionalFees')}</T>
         {optionalFees.map((id) =>

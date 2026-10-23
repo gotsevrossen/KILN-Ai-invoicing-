@@ -28,6 +28,7 @@ interface BusinessRow {
   deposit_bps: number;
   due_days: number;
   card_fee: boolean;
+  ai_write_scope: boolean;
 }
 
 interface PriceRow {
@@ -63,6 +64,8 @@ export interface Loaded {
   profile: Profile;
   settings: PricingSettings;
   cardFee: boolean;
+  /** KILN writes the customer's job description (Settings switch). */
+  aiScope: boolean;
   priceList: PriceItem[];
   customers: Customer[];
   jobs: Job[];
@@ -113,6 +116,7 @@ export async function loadAll(): Promise<Loaded | null> {
       dueDays: b.due_days,
     },
     cardFee: b.card_fee,
+    aiScope: b.ai_write_scope,
     priceList: (ok(items) ?? []).map(toPriceItem),
     customers: (ok(customers) ?? []).map(toCustomer),
     jobs: (ok(jobs) ?? []).map(toJob),
@@ -152,7 +156,7 @@ export async function createBusiness(input: SetupInput): Promise<void> {
   }
 }
 
-export async function saveSettings(businessId: string, s: PricingSettings, cardFee: boolean): Promise<void> {
+export async function saveSettings(businessId: string, s: PricingSettings, cardFee: boolean, aiScope: boolean): Promise<void> {
   ok(
     await db()
       .from('businesses')
@@ -164,6 +168,7 @@ export async function saveSettings(businessId: string, s: PricingSettings, cardF
         deposit_bps: s.depositBps,
         due_days: s.dueDays,
         card_fee: cardFee,
+        ai_write_scope: aiScope,
       })
       .eq('id', businessId),
   );

@@ -1,9 +1,12 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 
-import { Button, Card, Hair, ListRow, Notice, PageHeader, Screen, Segmented, T } from '@/components/ui';
+import { Button, Card, Hair, ListRow, Notice, PageHeader, Screen, Segmented, SwitchRow, T } from '@/components/ui';
+import { aiReady } from '@/data/ai';
 import { useAuth } from '@/data/auth';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { loadVoiceLang, saveVoiceLang, type VoiceLang } from '@/lib/voice';
 import { useThemeMode } from '@/theme/theme-mode';
 
 /** Settings home: language right here, everything else one tap away on its own page. */
@@ -13,6 +16,7 @@ export default function Settings() {
   const auth = useAuth();
   const theme = useThemeMode();
   const s = state.settings;
+  const [voiceLang, setVoiceLang] = useState<VoiceLang>(loadVoiceLang);
   const unpriced = state.priceList.filter((i) => i.unitCents === null).length;
 
   return (
@@ -33,6 +37,21 @@ export default function Settings() {
           ]}
         />
         <T v="small" muted>{t('settings.languageHelp')}</T>
+        <T v="label" style={{ marginTop: 4 }}>{t('voice.langSetting')}</T>
+        <Segmented
+          label={t('voice.langSetting')}
+          value={voiceLang}
+          onChange={(v) => {
+            setVoiceLang(v);
+            saveVoiceLang(v);
+          }}
+          options={[
+            { key: 'app', label: t('voice.sameAsApp') },
+            { key: 'en', label: 'English' },
+            { key: 'es', label: 'Español' },
+          ]}
+        />
+        <T v="small" muted>{t('voice.langHelp')}</T>
       </Card>
 
       <Card style={{ gap: 12 }}>
@@ -79,6 +98,14 @@ export default function Settings() {
           onPress={() => router.push('/settings/payments')}
         />
       </Card>
+
+      {aiReady(state.mode) ? (
+        <Card style={{ gap: 12 }}>
+          <T v="eyebrow">{t('ai.settingsTitle')}</T>
+          <SwitchRow label={t('ai.scopeSetting')} help={t('ai.scopeSettingHelp')} value={state.aiScope} onChange={actions.setAiScope} />
+          <T v="small" muted>{t('ai.settingsHelp')}</T>
+        </Card>
+      ) : null}
 
       <Card style={{ gap: 8 }}>
         <T v="eyebrow">{t('settings.business')}</T>

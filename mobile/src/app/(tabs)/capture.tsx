@@ -3,13 +3,17 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { CommandBox } from '@/components/command-box';
 import { JobPicker, Sheet } from '@/components/sheet';
+import { VoiceSheet } from '@/components/voice-sheet';
 import { Button, ButtonRow, Card, Field, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
+import { aiReady } from '@/data/ai';
 import * as sample from '@/data/sample';
-import { jobById, unsortedItems } from '@/data/selectors';
+import { jobById } from '@/data/selectors';
 import { useStore, type CaptureKind } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
+import { voiceAvailable } from '@/lib/voice';
 import { font, radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
@@ -46,6 +50,11 @@ export default function Capture() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  // with the phone's speech recognition (not in Expo Go): signed in, KILN checks what was said
+  // for hours and work; otherwise the words are saved as a note on the job picked next
+  const ai = aiReady(state.mode);
+  const startVoice = () => (voiceAvailable ? setVoiceOpen(true) : setMode('voice'));
 
   const pick = (jobId: string) => {
     if (!mode) return;
@@ -57,9 +66,6 @@ export default function Capture() {
 
   // example voice command: only in example mode (the Park job doesn't exist in a real account)
   const parkJob = sample.jobs.find((j) => j.id === 'park');
-  // a receipt still waiting to be sorted; real receipt scanning (camera + AI) comes next
-  const receiptToSort = sample.receipts.find((r) => unsortedItems(state, r).length > 0) ?? sample.receipts[0];
-  const [receiptSoon, setReceiptSoon] = useState(false);
 
   return (
     <Screen
@@ -69,8 +75,9 @@ export default function Capture() {
 
       {/* same order as a job's capture buttons, with Voice in Log hours' place */}
       <Row gap={12}>
-        <Tile icon="file-text" label={t('capture.receipt')} accent onPress={() => (receiptToSort ? router.push(`/receipt/${receiptToSort.id}`) : setReceiptSoon(true))} />
-        <Tile icon="mic" label={t('capture.voice')} onPress={() => setMode('voice')} />
+        {/* scanned or typed in on the form; it links to receipts waiting to sort */}
+        <Tile icon="file-text" label={t('capture.receipt')} accent onPress={() => router.push('/receipt/new')} />
+        <Tile icon="mic" label={t('capture.voice')} onPress={startVoice} />
       </Row>
       <Row gap={12}>
         <Tile icon="camera" label={t('capture.photo')} onPress={() => setMode('photo')} />
@@ -78,7 +85,15 @@ export default function Capture() {
       </Row>
 
       {saved ? <Notice text={t('common.savedTo', { job: saved })} /> : null}
-      {receiptSoon ? <Notice text={t('capture.receiptSoon')} icon="info" tone="soft" /> : null}
+
+      {ai ? <CommandBox voiceOpen={voiceOpen} onVoiceClose={() => setVoiceOpen(false)} /> : (
+        <VoiceSheet open={voiceOpen} onClose={() => setVoiceOpen(false)} onDone={(heard) => {
+          setVoiceOpen(false);
+          setNote(heard);
+          // let the voice sheet finish closing before the job sheet opens (iOS shows one modal at a time)
+          setTimeout(() => setMode('note'), 400);
+        }} />
+      )}
 
       {parkJob ? (
       <Card tone="inverse" style={{ gap: 12, marginTop: 6 }}>

@@ -9,6 +9,7 @@ import { ITEM_UNITS, tradeById, type TradeId } from '@/data/trades';
 import type { JobScope, PriceItem, Unit } from '@/data/types';
 import { useLang, useTFor, type Lang } from '@/i18n';
 import { useFormat } from '@/lib/format';
+import { priceLooksOff, usualPrice } from '@/lib/billing';
 import { lineTotal } from '@/lib/money';
 import { usePalette } from '@/theme/use-palette';
 
@@ -108,11 +109,14 @@ export function EstimateLineRow({ line, unitLabel, first, onPress }: {
   const p = usePalette();
   const { t } = useLang();
   const f = useFormat();
+  const { state } = useStore();
   const kind = line.kind ?? 'labor';
   const unit = unitLabel(line.unit);
   const qty = `${f.qty(line.qtyHundredths)}${unit ? ` ${unit}` : ''}`;
   const priced = line.unitCents !== null;
   const needsFix = !line.excluded && (!priced || line.qtyHundredths <= 0 || !line.description.trim());
+  // a likely typo ($15 for a $150 item); the owner can keep it
+  const checkPrice = !line.excluded && priceLooksOff(line.unitCents, usualPrice(line, state.priceList));
   const sub = [
     kind !== 'labor' ? t(`review.${kind}`) : null,
     line.unitCents !== null ? `${qty} × ${f.money(line.unitCents)}` : qty,
@@ -145,7 +149,10 @@ export function EstimateLineRow({ line, unitLabel, first, onPress }: {
       ) : needsFix ? (
         <Pill label={priced ? t('estimate.needsFix') : t('estimate.needsPrice')} tone="flag" />
       ) : (
-        <T v="money">{f.money(lineTotal(line.qtyHundredths, line.unitCents ?? 0))}</T>
+        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+          {checkPrice ? <Pill label={t('estimate.priceOffShort')} tone="flag" /> : null}
+          <T v="money">{f.money(lineTotal(line.qtyHundredths, line.unitCents ?? 0))}</T>
+        </View>
       )}
       <Icon name="chevron-right" size={22} color={p.muted} />
     </Pressable>

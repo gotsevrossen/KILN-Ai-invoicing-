@@ -38,7 +38,21 @@
       "expo-image",
       "expo-status-bar",
       "expo-web-browser",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "KILN reads your old invoices or price sheets to fill in your price list.",
+          "cameraPermission": "KILN takes photos of receipts, old invoices, and price sheets to fill them in for you."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "KILN listens while you record a voice note, to turn it into text.",
+          "speechRecognitionPermission": "KILN turns your voice notes into text with your phone's speech recognition."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -52,6 +52,19 @@ export interface TimeEntry {
   note: string;
 }
 
+/** Work done on a job, typed in by the owner. Each one is its own invoice line. */
+export interface WorkItem {
+  id: string;
+  jobId: string;
+  date: string;
+  priceItemId?: string;
+  description: string;
+  unit: Unit;
+  qtyHundredths: number;
+  unitCents: Cents;
+  kind: LineKind;
+}
+
 export type PhotoTag = 'before' | 'during' | 'after';
 
 export type TimelineItem =

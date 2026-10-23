@@ -6,7 +6,7 @@ import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Button, ButtonRow, Card, Field, Hair, PageHeader, Pill, Row, Screen, T, type Tone } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, hasReceipt, itemCostWithTax, jobById, receiptById } from '@/data/selectors';
+import { canDeleteReceipt, customerOf, hasReceipt, itemCostWithTax, jobById, receiptById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import type { ReceiptItem } from '@/data/types';
 import { useLang } from '@/i18n';
@@ -26,6 +26,7 @@ function SortReceipt() {
 
   const [fixOpen, setFixOpen] = useState(false);
   const [fixText, setFixText] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
   // the full list stays folded while sorting: the current item is what matters
   const [listOpen, setListOpen] = useState(false);
 
@@ -168,6 +169,22 @@ function SortReceipt() {
       <Pressable onPress={() => router.back()} accessibilityRole="link" style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center' }}>
         <T v="label" style={{ textDecorationLine: 'underline' }}>{t('receipt.finishLater')}</T>
       </Pressable>
+
+      {canDeleteReceipt(state, receipt) ? (
+        <Button label={t('receipt.delete')} icon="trash-2" variant="outline" style={{ marginTop: 16 }} onPress={() => setDeleteOpen(true)} />
+      ) : null}
+
+      <Sheet open={deleteOpen} onClose={() => setDeleteOpen(false)} title={t('receipt.deleteTitle')}>
+        <T v="body">{t('receipt.deleteBody')}</T>
+        <Button label={t('receipt.delete')} icon="trash-2" variant="danger" big onPress={() => {
+          setDeleteOpen(false);
+          if (router.canGoBack()) router.back();
+          else router.replace('/');
+          // once this screen has closed, so it never shows a receipt that's gone
+          setTimeout(() => actions.deleteReceipt(receipt.id), 400);
+        }} />
+        <Button label={t('common.cancel')} variant="outline" onPress={() => setDeleteOpen(false)} />
+      </Sheet>
 
       <Sheet open={fixOpen} onClose={() => setFixOpen(false)} title={flagged ? t('receipt.fixLine', { n: flagged.line }) : ''}>
         <Field value={fixText} onChangeText={setFixText} placeholder={t('capture.notePlaceholder')} autoFocus />
