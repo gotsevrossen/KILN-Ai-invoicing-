@@ -159,9 +159,15 @@ export function VoiceSheet({ open, onClose, onDone }: { open: boolean; onClose: 
     reset();
     onClose();
   };
+  // while recording, a tap beside the pop-up, the back gesture, or the X only stops it: the pop-up
+  // stays so the owner sees what was heard (Cancel still throws it away)
+  const dismiss = () => {
+    if (listening) stop();
+    else if (!starting) cancel();
+  };
 
   return (
-    <Sheet open={open} onClose={cancel} title={t('voice.title')}>
+    <Sheet open={open} onClose={dismiss} title={t('voice.title')}>
       <Row gap={8} style={{ alignItems: 'center' }}>
         <Icon name={listening ? 'radio' : 'mic'} size={18} color={listening ? p.danger : p.muted} />
         <T v="small" muted={!listening} style={{ flex: 1 }}>
