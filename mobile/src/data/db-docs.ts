@@ -3,6 +3,7 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 
 import type { LineKind, TaxRule } from '@/lib/money';
+import { localDate } from '@/lib/invoice-aging';
 
 import { db, ok, one } from './db-client';
 import type {
@@ -16,12 +17,7 @@ import type {
 
 // ---------------------------------------------------------------- helpers
 
-const pad = (n: number) => String(n).padStart(2, '0');
-/** The phone's calendar date (YYYY-MM-DD) for a timestamp. */
-export function localDate(ts: string | Date = new Date()): string {
-  const d = typeof ts === 'string' ? new Date(ts) : ts;
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+export { localDate };
 
 /** SHA-256 of exactly what was signed, so the signed version can be proven later. */
 const sha256 = (text: string) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text);

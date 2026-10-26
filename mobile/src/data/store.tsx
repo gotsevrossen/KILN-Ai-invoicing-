@@ -3,6 +3,7 @@ import { AppState, Platform } from 'react-native';
 
 import type { Cents, TaxRule } from '@/lib/money';
 import { copyDocument, estimateReady, needsActualHours, receiptShares, workItemValid } from '@/lib/billing';
+import { businessDate } from '@/lib/invoice-aging';
 import type { NewPhoto } from '@/lib/job-photos';
 import { defaultTag } from '@/lib/photo-facts';
 import { removeFromPhone, stillOnPhone } from '@/lib/photo-file';
@@ -279,6 +280,8 @@ function flushSoon(key: string): void {
 // leaving the app (home button, switching apps) saves anything still waiting
 AppState.addEventListener('change', (next) => {
   if (next !== 'active') for (const key of [...soon.keys()]) flushSoon(key);
+  // Refresh date-dependent lists after returning to the app, including after midnight.
+  else if (get().mode === 'connected') set((s) => ({ ...s, version: s.version + 1 }));
 });
 const saveEstimateSoon = (jobId: string) => persistSoon(`estimate:${jobId}`, (bid) => {
   const draft = get().estimates[jobId];
@@ -584,7 +587,7 @@ function makeActions() {
       const snapshot: InvoiceSnapshot = copyDocument({ lines, tax: invoiceTax(s, invoice), summary: invoiceSummary(s, invoice),
         scope: s.estimates[job.id]?.scope, excludedScope: s.estimates[job.id]?.lines.filter((l) => l.excluded).map((l) => l.description),
         materialsMode: s.materialsMode[invoiceId] ?? 'items', dueDays: s.settings.dueDays,
-        issuedOn: sample.TODAY, address: job.address, workOrder: job.workOrder });
+        issuedOn: businessDate(s.mode, sample.TODAY), address: job.address, workOrder: job.workOrder });
       set((x) => ({ ...x, issuedInvoices: { ...x.issuedInvoices, [invoiceId]: snapshot }, sentInvoices: [...x.sentInvoices, invoiceId] }));
       // the summary being typed is saved first; then the lines and frozen copy
       flushSoon(`summary:${invoiceId}`);

@@ -1,10 +1,9 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
 import { View } from 'react-native';
 
-import { Button, Card, Icon, IconButton, ListRow, Notice, Pill, Row, Screen, T } from '@/components/ui';
+import { Card, Icon, IconButton, ListRow, Notice, Pill, Row, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { changeOrderTotal, homeSummary, invoiceTotals, jobById, unsortedItems } from '@/data/selectors';
+import { changeOrderTotal, homeSummary, invoiceForJob, invoiceTotals, jobAmount, jobById, jobOverdueDays, jobStatus, unsortedItems } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -16,7 +15,6 @@ export default function Home() {
   const { t } = useLang();
   const f = useFormat();
   const { state } = useStore();
-  const [reminded, setReminded] = useState(false);
 
   const summary = homeSummary(state);
   // each card shows only when there's something for it (a new account has none of these)
@@ -24,7 +22,7 @@ export default function Home() {
   const unsorted = receipt ? unsortedItems(state, receipt) : [];
   const invoice = sample.invoices.find((i) => !state.sentInvoices.includes(i.id));
   const co = sample.changeOrders.find((c) => !state.signed[c.id] && !state.declinedChanges.includes(c.id));
-  const overdueJobs = sample.jobs.filter((j) => j.baseStatus === 'overdue');
+  const overdueJobs = sample.jobs.filter((j) => jobStatus(state, j) === 'overdue');
   const pendingUploads = state.mode === 'example' ? sample.business.pendingUploads : 0;
   const nothing = !receipt && !invoice && !co && overdueJobs.length === 0;
 
@@ -101,19 +99,19 @@ export default function Home() {
       ) : null}
 
       {overdueJobs.map((job) => (
-        <Card key={job.id} style={{ paddingVertical: 10 }}>
+        <Card key={job.id} label={job.title} style={{ paddingVertical: 10 }} onPress={() => {
+          const bill = invoiceForJob(job.id);
+          router.push(bill ? `/invoice/${bill.id}` : `/job/${job.id}`);
+        }}>
           <ListRow
             icon="clock"
             iconTone="danger"
-            title={t('home.overdueDays', { count: job.overdueDays ?? 0 })}
-            sub={`${job.title} · ${f.money(job.amountCents ?? 0)}`}
-            chevron={false}
-            right={<Button label={t('home.remind')} icon="send" variant="dark" onPress={() => setReminded(true)} style={{ minHeight: 48, paddingHorizontal: 14 }} />}
+            title={t('home.overdueDays', { count: jobOverdueDays(state, job) })}
+            sub={`${job.title} · ${f.money(jobAmount(state, job))}`}
+            chevron
           />
         </Card>
       ))}
-
-      {reminded ? <Notice text={t('home.reminderReady')} icon="message-square" /> : null}
 
       <Row style={{ justifyContent: 'center', marginTop: 12 }} gap={6}>
         <Icon name="info" size={14} color={p.muted} />

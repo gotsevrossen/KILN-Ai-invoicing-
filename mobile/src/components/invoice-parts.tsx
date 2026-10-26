@@ -7,6 +7,7 @@ import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { needsActualHours } from '@/lib/billing';
 import { addDays } from '@/lib/format';
+import { businessDate } from '@/lib/invoice-aging';
 
 import type { Fix } from './fix-list';
 import { Notice, PageHeader, Screen } from './ui';
@@ -52,7 +53,7 @@ export function useInvoice() {
     fixes,
     mode: issued?.materialsMode ?? state.materialsMode[invoice.id] ?? 'items',
     dueDays,
-    dueDate: addDays(issued?.issuedOn ?? sample.TODAY, dueDays),
+    dueDate: addDays(issued?.issuedOn ?? businessDate(state.mode, sample.TODAY), dueDays),
   };
 }
 

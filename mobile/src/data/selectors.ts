@@ -1,7 +1,8 @@
-import { applyMarkup, documentTotals, percentOf, splitByWeights, type Cents, type Totals } from '@/lib/money';
-import { composeInvoiceLines, defaultBilling, estimateLines, receiptShares, workLines } from '@/lib/billing';
+import { applyMarkup, documentTotals, percentOf, splitByWeights, type Cents, type Totals } from '../lib/money.ts';
+import { composeInvoiceLines, defaultBilling, estimateLines, receiptShares, workLines } from '../lib/billing.ts';
+import { businessDate, invoiceDaysPastDue } from '../lib/invoice-aging.ts';
 
-import * as sample from './sample';
+import * as sample from './sample.ts';
 import type { State } from './store';
 import type { ChangeOrder, Customer, DocLine, EstimateDraft, Invoice, Job, Receipt, ReceiptItem, WorkItem } from './types';
 
@@ -247,12 +248,22 @@ export function jobStage(state: State, job: Job): { stage: Stage; detail: StageD
   return { stage: 'estimate', detail: draft?.sent ? 'estimateWaiting' : 'estimateDraft' };
 }
 
+/** Saved invoice dates/terms drive aging; example-only jobs retain their fixed status. */
+export function jobOverdueDays(state: State, job: Job, today = businessDate(state.mode, sample.TODAY)): number {
+  if (job.baseStatus === 'paid') return 0;
+  const invoice = invoiceForJob(job.id);
+  if (!invoice) return job.baseStatus === 'overdue' ? job.overdueDays ?? 0 : 0;
+  return invoiceDaysPastDue({ issued: state.issuedInvoices[invoice.id],
+    sent: state.sentInvoices.includes(invoice.id), paid: state.paidInvoices.includes(invoice.id),
+    dueCents: invoiceTotals(state, invoice).due }, today);
+}
+
 export function jobStatus(state: State, job: Job): JobStatus {
   if (job.baseStatus !== 'live') return job.baseStatus;
   const invoice = invoiceForJob(job.id);
   if (invoice) {
     if (state.paidInvoices.includes(invoice.id)) return 'paid';
-    if (state.sentInvoices.includes(invoice.id)) return 'sent';
+    if (state.sentInvoices.includes(invoice.id)) return jobOverdueDays(state, job) > 0 ? 'overdue' : 'sent';
     if (!state.reopenedJobs.includes(job.id)) return 'invoiceReady';
   }
   if (changeOrdersForJob(job.id).some((co) => !state.signed[co.id] && !state.declinedChanges.includes(co.id))) return 'needsSignature';

@@ -4,7 +4,7 @@ import { View } from 'react-native';
 
 import { Card, Field, Hair, IconButton, Notice, PageHeader, Pill, Row, Screen, Segmented, T, type Tone } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, hoursFor, jobAmount, jobGroup, jobStatus, type JobStatus } from '@/data/selectors';
+import { customerOf, hoursFor, jobAmount, jobGroup, jobOverdueDays, jobStatus, type JobStatus } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import type { Job, JobGroup } from '@/data/types';
 import { useLang } from '@/i18n';
@@ -45,7 +45,7 @@ export default function Jobs() {
   };
 
   const statusLabel = (job: Job, status: JobStatus) =>
-    status === 'overdue' ? t('home.overdueDays', { count: job.overdueDays ?? 0 }) : t(`jobs.status.${status}`);
+    status === 'overdue' ? t('home.overdueDays', { count: jobOverdueDays(state, job) }) : t(`jobs.status.${status}`);
 
   return (
     <Screen

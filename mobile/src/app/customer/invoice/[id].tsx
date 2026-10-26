@@ -12,6 +12,7 @@ import { customerOf, hasInvoice, invoiceById, invoiceLines, invoiceSummary, invo
 import { useStore } from '@/data/store';
 import { useTFor } from '@/i18n';
 import { addDays, formatters } from '@/lib/format';
+import { businessDate } from '@/lib/invoice-aging';
 import { lineTotal } from '@/lib/money';
 import { radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -30,6 +31,7 @@ function CustomerInvoice() {
   const lines = invoiceLines(state, invoice);
   const totals = invoiceTotals(state, invoice);
   const issued = state.issuedInvoices[invoice.id];
+  const issuedOn = issued?.issuedOn ?? businessDate(state.mode, sample.TODAY);
   const itemized = (issued?.materialsMode ?? state.materialsMode[invoice.id] ?? 'items') === 'items';
   const shown = itemized ? lines : lines.filter((l) => l.kind !== 'material');
   const pay = () => setPayTapped(true);
@@ -47,8 +49,8 @@ function CustomerInvoice() {
           {(issued ? issued.workOrder : job.workOrder) ? <T v="small" muted>{issued ? issued.workOrder : job.workOrder}</T> : null}
         </View>
         <View style={{ gap: 2, alignItems: 'flex-end' }}>
-          <T v="small" muted>{tc('customer.sent', { date: fc.date(issued?.issuedOn ?? sample.TODAY) })}</T>
-          <T v="label">{tc('customer.due', { date: fc.date(addDays(issued?.issuedOn ?? sample.TODAY, issued?.dueDays ?? state.settings.dueDays)) })}</T>
+          <T v="small" muted>{tc('customer.sent', { date: fc.date(issuedOn) })}</T>
+          <T v="label">{tc('customer.due', { date: fc.date(addDays(issuedOn, issued?.dueDays ?? state.settings.dueDays)) })}</T>
         </View>
       </Row>
 

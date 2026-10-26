@@ -2,6 +2,8 @@
 
 October 21, 2026
 
+Later follow-up: [overdue invoice visibility and saved payment terms, October 26](overdue-invoices-2026-10-26.md). The verification and limitations below describe the original October 21 changes.
+
 This implements a focused group of the [review panels' recommendations](trade-review-2026-10-21.md) within the current app. It adds no dependencies, paid services, or database schema changes.
 
 ## Trade-specific scope and content
