@@ -723,6 +723,7 @@ const en = {
     cmdFailed: 'Couldn’t add %{items}: that job’s invoice was already sent.',
     errors: {
       not_set_up: 'KILN’s AI isn’t set up on the server yet.',
+      key_refused: 'Claude refused the server’s AI key. Put a new key in supabase/.env and restart the server.',
       limit: 'You’ve reached today’s AI limit. It resets tomorrow.',
       busy: 'KILN is busy. Try again in a minute.',
       signed_out: 'Sign in again to use this.',

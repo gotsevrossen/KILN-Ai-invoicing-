@@ -724,6 +724,7 @@ const es: Dict = {
     cmdFailed: 'No se pudo agregar %{items}: la factura de ese trabajo ya se envió.',
     errors: {
       not_set_up: 'La IA de KILN todavía no está configurada en el servidor.',
+      key_refused: 'Claude rechazó la clave de IA del servidor. Pon una clave nueva en supabase/.env y reinicia el servidor.',
       limit: 'Llegaste al límite de IA de hoy. Se renueva mañana.',
       busy: 'KILN está ocupado. Intenta de nuevo en un minuto.',
       signed_out: 'Vuelve a iniciar sesión para usar esto.',

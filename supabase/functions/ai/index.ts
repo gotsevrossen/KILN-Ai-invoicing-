@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     if (e instanceof Anthropic.RateLimitError) return reply(429, { error: 'busy' });
     if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
       console.error('ai: the Claude key was refused');
-      return reply(503, { error: 'not_set_up' });
+      return reply(503, { error: 'key_refused' });
     }
     if (e instanceof Anthropic.APIError) {
       console.error(`ai: Claude error ${e.status}`);

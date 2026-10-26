@@ -1,2 +1,5 @@
 # Local service process records and logs; never application data.
 .kiln-runtime/
+
+# Android test builds (APK files) live here, not in git
+builds/

@@ -51,3 +51,21 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-services.
 The execution-policy override applies only to that PowerShell process; it does not change your machine's permanent execution policy. Docker Desktop, Node, cloudflared, and the installed mobile dependencies must already be available. The scripts resume the existing containers for `project_id = "kiln"`; they do not download or install new dependencies. If those containers were manually removed, initialize the backend once with `npx supabase start` from the repository before using the launcher again.
 
 If port 8081 belongs to another program, Start reports the conflict rather than stopping it. If a KILN tunnel or preview is already running, Start reports that rather than launching duplicates; use Stop followed by Start for a clean restart. A failed startup attempts to stop only processes and containers it started, leaving already-running backend containers alone.
+
+## Android builds (APK)
+
+Build the Android test app on this computer:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-android.ps1
+```
+
+- The result is `builds/android/kiln-preview.apk` (the previous one is kept next to it with its date). A cloud build saved by hand goes next to it as `kiln-preview-cloud.apk`. `builds/` is not in git.
+- Run **Start KILN** first: the current server address from `mobile/.env.local` is built into the app, and the temporary Cloudflare address changes on every restart. After a restart, build again.
+- Java 17 and the Android SDK live in `%LOCALAPPDATA%\KILN-build`. Nothing is installed system-wide and no environment variables are changed; delete that folder to remove them.
+- Only modern 64-bit phones (arm64-v8a) are built for, which is nearly every Android phone in use.
+- The first build downloads Android parts and is slow; later builds reuse them.
+- The script runs `expo prebuild`, which makes `mobile/android` from `app.json`. That folder is not in git and is never edited by hand.
+- A local APK is signed with this computer's test key, and one from Expo's cloud (`npx eas-cli build -p android --profile preview` in `mobile/`) with the key Expo stores. Android won't install one over the other: uninstall KILN from the phone first.
+
+To install: copy the APK to the phone (USB, Google Drive, or email), open it, and allow installing apps from that source when Android asks.
