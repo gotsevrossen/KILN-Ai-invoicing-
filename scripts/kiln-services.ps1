@@ -13,6 +13,87 @@ $StatePath = Join-Path $RuntimePath 'processes.json'
 $ProjectId = 'kiln'
 $ContainerPattern = '^supabase_.+_' + [regex]::Escape($ProjectId) + '$'
 $TunnelPattern = '(?i)--url(?:=|\s+)["'']?http://(?:localhost|127\.0\.0\.1):54321(?:[\s/"'']|$)'
+$SupabaseEnvPath = Join-Path $RepoRoot 'supabase\.env'
+# Supabase's local defaults: the same on every computer and published online, so anyone who
+# finds the tunnel address could use them to skip every permission rule.
+$DefaultPublishableKey = 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'
+$DefaultJwtSecret = 'super-secret-jwt-token-with-at-least-32-characters-long'
+
+function ConvertTo-Base64Url([byte[]]$Bytes) {
+    return [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+function New-RandomText([int]$Bytes) {
+    $buffer = [byte[]]::new($Bytes)
+    $random = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $random.GetBytes($buffer) } finally { $random.Dispose() }
+    return ConvertTo-Base64Url $buffer
+}
+
+# Gives this computer its own server keys, kept in supabase/.env (git ignores it). The Supabase
+# CLI reads them when it creates the containers, so they take effect after one
+# "npx supabase stop" and "npx supabase start" (data is kept).
+function Initialize-KilnServerKeys {
+    $content = if (Test-Path -LiteralPath $SupabaseEnvPath) { [IO.File]::ReadAllText($SupabaseEnvPath) } else { '' }
+    $added = @()
+    foreach ($name in @('SUPABASE_AUTH_JWT_SECRET', 'SUPABASE_AUTH_SECRET_KEY')) {
+        if ($content -match "(?m)^[ \t]*$name[ \t]*=[ \t]*\S") { continue }
+        $value = if ($name -eq 'SUPABASE_AUTH_SECRET_KEY') { 'sb_secret_' + (New-RandomText 24) } else { New-RandomText 48 }
+        $empty = "(?m)^[ \t]*$name[ \t]*=[ \t]*(?=\r?$)"
+        if ($content -match $empty) {
+            $content = [regex]::Replace($content, $empty, "$name=$value")
+        } else {
+            if ($content.Length -gt 0 -and !$content.EndsWith("`n")) { $content += "`r`n" }
+            $content += "$name=$value`r`n"
+        }
+        $added += $name
+    }
+    if ($added.Count -gt 0) {
+        [IO.File]::WriteAllText($SupabaseEnvPath, $content, [Text.UTF8Encoding]::new($false))
+        Write-Host "Created this computer's own server keys in supabase/.env ($($added -join ', '))." -ForegroundColor Yellow
+    }
+}
+
+function Get-HttpStatus([string]$Uri, [hashtable]$Headers) {
+    try {
+        return [int](Invoke-WebRequest -Uri $Uri -Headers $Headers -UseBasicParsing -TimeoutSec 10).StatusCode
+    } catch {
+        if ($_.Exception.Response) { return [int]$_.Exception.Response.StatusCode }
+        throw
+    }
+}
+
+# The old-style admin token every local Supabase accepts until it has its own secret.
+function New-DefaultServiceToken {
+    $utf8 = [Text.Encoding]::UTF8
+    $unsigned = (ConvertTo-Base64Url $utf8.GetBytes('{"alg":"HS256","typ":"JWT"}')) + '.' +
+        (ConvertTo-Base64Url $utf8.GetBytes('{"iss":"supabase-demo","role":"service_role","exp":1983812996}'))
+    $hmac = [Security.Cryptography.HMACSHA256]::new($utf8.GetBytes($DefaultJwtSecret))
+    try { return $unsigned + '.' + (ConvertTo-Base64Url $hmac.ComputeHash($utf8.GetBytes($unsigned))) } finally { $hmac.Dispose() }
+}
+
+# The phone connection puts the server on the internet: only open it once the public
+# default keys are refused. (Asks for the user list, which only an admin key can see.)
+# Initialize-KilnServerKeys always writes both keys together and the CLI reads both when it
+# creates the containers, so a refused default signing secret means the default secret key is gone too.
+function Assert-PrivateServerKeys {
+    $envFile = Join-Path $MobilePath '.env.local'
+    $content = if (Test-Path -LiteralPath $envFile) { [IO.File]::ReadAllText($envFile) } else { '' }
+    $publishable = if ($content -match '(?m)^[ \t]*EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY[ \t]*=[ \t]*(\S+)') { $Matches[1] } else { $DefaultPublishableKey }
+    $admin = 'http://localhost:54321/auth/v1/admin/users?per_page=1'
+    $headers = @{ apikey = $publishable; Authorization = "Bearer $(New-DefaultServiceToken)" }
+    $status = $null
+    $until = (Get-Date).AddSeconds(30)
+    do {
+        try { $status = Get-HttpStatus $admin $headers } catch { Start-Sleep -Seconds 1 }
+    } while ($null -eq $status -and (Get-Date) -lt $until)
+    if ($null -eq $status) { throw 'The backend did not answer, so the phone connection was not opened.' }
+    if ($status -eq 200) {
+        throw ("The backend still accepts Supabase's public default keys, so the phone connection was not opened " +
+            '(anyone with the address could read every business). Fix once: npx supabase stop, then npx supabase start ' +
+            '(data is kept), then Start KILN again. Testers sign in again afterwards; the app itself needs no rebuild.')
+    }
+}
 
 function Test-KilnExpoProcess($Process) {
     # A working-directory argument alone does NOT establish ownership (e.g. Codex).
@@ -166,6 +247,7 @@ function Start-Kiln {
         throw 'Port 8081 is occupied. This script will not stop an unrelated process.'
     }
     New-Item -ItemType Directory -Path $RuntimePath -Force | Out-Null
+    Initialize-KilnServerKeys
     $dockerWasRunning = Test-DockerReady
     $newContainers = @()
     $newProcesses = @()
@@ -195,6 +277,7 @@ function Start-Kiln {
         }
         Wait-Containers $wanted
         if ($BackendOnly) { Write-Host 'KILN backend is running.' -ForegroundColor Green; return }
+        Assert-PrivateServerKeys
 
         Write-Host 'Starting the phone connection...'
         $tunnelLog = Join-Path $RuntimePath 'tunnel-error.log'

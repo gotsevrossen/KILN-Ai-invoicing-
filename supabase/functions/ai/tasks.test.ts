@@ -3,7 +3,7 @@
 import { assertEquals, assertRejects } from 'jsr:@std/assert@1.0.13';
 import type Anthropic from '@anthropic-ai/sdk';
 
-import { AiError, checkInput, numbersIn, runTask, type Task } from './tasks.ts';
+import { AiError, checkInput, isTask, numbersIn, runTask, type Task } from './tasks.ts';
 
 /** A pretend Claude that gives `answer` back, after making sure the answer format builds. */
 function fake(answer: unknown, stop = 'end_turn') {
@@ -214,4 +214,9 @@ Deno.test('tags: one per photo, in order; a mismatched answer is not used', asyn
   const input = { title: 'Deck repair', images: [photo, photo] };
   assertEquals(await run(fake({ tags: ['before', null] }).client, 'tags', input), { tags: ['before', null] });
   assertEquals(await run(fake({ tags: ['after'] }).client, 'tags', input), { tags: [null, null] });
+});
+
+Deno.test('only KILN’s own task names are tasks', () => {
+  assertEquals(isTask('receipt'), true);
+  for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'nope', 1]) assertEquals(isTask(name), false);
 });

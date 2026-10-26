@@ -2,7 +2,7 @@
 -- Run with: npx supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(72);
+select plan(95);
 
 -- two owners, each with their own business
 insert into auth.users (id, email) values
@@ -229,6 +229,92 @@ reset role;
 select is((select requests from public.ai_usage), 300, 'a refused request isn''t counted');
 set local role anon;
 select throws_ok($$ select public.use_ai_quota() $$, '42501', null, 'signed-out visitors can''t use AI');
+reset role;
+
+-- business records stay put: no deleting them, no moving their lines out
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+select throws_ok($$ delete from public.estimates $$, 'P0001', 'a sent or signed document can''t be deleted', 'a signed estimate can''t be deleted');
+select throws_ok($$ delete from public.invoices $$, 'P0001', 'a sent or signed document can''t be deleted', 'a sent invoice can''t be deleted');
+select throws_ok($$ delete from public.change_orders $$, 'P0001', 'a sent or signed document can''t be deleted', 'a signed change order can''t be deleted');
+insert into public.jobs (business_id, customer_id, title)
+  select ids.a, c.id, 'Second job' from ids, public.customers c where c.business_id = ids.a;
+insert into public.estimates (business_id, job_id, number) select business_id, id, 'E-2' from public.jobs where title = 'Second job';
+insert into public.invoices (business_id, job_id, number) select business_id, id, '1002' from public.jobs where title = 'Second job';
+select throws_ok(
+  $$ update public.estimate_lines set estimate_id = (select e.id from public.estimates e where e.number = 'E-2') $$,
+  'P0001', 'this document is signed or sent and can''t be changed', 'a signed estimate''s lines can''t be moved to a draft');
+select throws_ok(
+  $$ update public.invoice_lines set invoice_id = (select i.id from public.invoices i where i.number = '1002') $$,
+  'P0001', 'this document is signed or sent and can''t be changed', 'a sent invoice''s lines can''t be moved to a draft');
+select throws_ok(
+  $$ insert into public.change_orders (business_id, job_id, number, description, amount_cents, signed_at)
+     select business_id, id, 1, 'Pre-signed', 100, now() from public.jobs where title = 'Second job' $$,
+  'P0001', 'a change order starts unanswered', 'a change order can''t be created already signed');
+
+-- signatures: only on a signed document, one each, filed together with the signing
+select throws_ok(
+  $$ insert into public.signatures (business_id, document_type, document_id, signer_name, document_hash)
+     select business_id, 'estimate', id, 'Pat Doe', repeat('a', 64) from public.estimates where number = 'E-2' $$,
+  'P0001', 'only a signed document gets a signature', 'a draft estimate can''t get a signature');
+select throws_ok(
+  $$ insert into public.signatures (business_id, document_type, document_id, signer_name, document_hash)
+     select business_id, 'estimate', id, 'Pat Doe', repeat('b', 64) from public.estimates where number = 'E-1' $$,
+  '23505', null, 'a document has one signature');
+insert into public.estimate_lines (business_id, estimate_id, description, unit, qty_hundredths, unit_cents)
+  select business_id, id, 'Drywall patch', 'each', 100, 12500 from public.estimates where number = 'E-2';
+update public.estimates set sent_at = now(), tax_rate_bps = 700, tax_labor = false, tax_materials = true where number = 'E-2';
+select throws_ok(
+  $$ do $d$ begin
+       update public.estimates set signed_at = now() where number = 'E-2';
+       set constraints public.estimates_signature immediate;
+     end $d$ $$,
+  'P0001', 'a signed document needs its signature', 'an estimate can''t be marked signed without its signature');
+select lives_ok($$ select public.sign_estimate((select id from public.jobs where title = 'Second job'), 'Pat Doe', 'test phone') $$,
+  'signing an estimate files the signature in the same step');
+select lives_ok($$ set constraints public.estimates_signature immediate $$, 'every signed estimate has its signature');
+select is((select document_hash from public.signatures s join public.estimates e on e.id = s.document_id where e.number = 'E-2'),
+  public.document_fingerprint('estimate', (select id from public.estimates where number = 'E-2')),
+  'the server works out the signed estimate''s fingerprint');
+select is((select public.signature_matches(s.id) from public.signatures s join public.estimates e on e.id = s.document_id where e.number = 'E-2'),
+  true, 'the signature can be checked against the saved estimate');
+insert into public.change_orders (business_id, job_id, number, description, amount_cents, base_cents)
+  select business_id, id, 1, 'Add a towel bar', 4000, 12500 from public.jobs where title = 'Second job';
+select lives_ok($$ select public.sign_change_order((select c.id from public.change_orders c where c.description = 'Add a towel bar'), 'Pat Doe', 'test phone') $$,
+  'signing a change order files the signature in the same step');
+select is((select public.signature_matches(s.id) from public.signatures s join public.change_orders c on c.id = s.document_id where c.description = 'Add a towel bar'),
+  true, 'the change order signature can be checked');
+
+-- sending and paying are one step each; a retry never doubles the lines
+insert into public.invoice_lines (business_id, invoice_id, kind, description, qty_hundredths, unit_cents)
+  select business_id, id, 'labor', 'Left from an earlier try', 100, 12500 from public.invoices where number = '1002';
+select lives_ok(
+  $$ select public.send_invoice((select id from public.invoices where number = '1002'),
+       '[{"kind":"labor","description":"Drywall patch","qty_hundredths":100,"unit_cents":12500,"unit":"each"},
+         {"kind":"material","description":"Joint compound","qty_hundredths":100,"unit_cents":1800,"unit":null}]',
+       '{"summary":"Patched the hallway wall","materials_mode":"items","show_location":false,"tax_rate_bps":700,"tax_labor":false,
+         "tax_materials":true,"issued_scope":null,"excluded_scope":[],"due_days":15,"issued_on":"2026-10-26","issued_address":"12 Elm St"}') $$,
+  'an invoice is sent in one step');
+select is((select count(*)::int from public.invoice_lines l join public.invoices i on i.id = l.invoice_id where i.number = '1002'), 2,
+  'the sent invoice has exactly the lines sent, not the leftovers');
+select is((select sent_at is not null and due_days = 15 and summary = 'Patched the hallway wall' from public.invoices where number = '1002'), true,
+  'the frozen copy is saved with the lines');
+select lives_ok($$ select public.mark_invoice_paid((select id from public.invoices where number = '1002'), 14426) $$, 'marking paid records the payment too');
+select is((select sum(p.amount_cents)::int from public.payments p join public.invoices i on i.id = p.invoice_id where i.number = '1002'), 14426,
+  'the payment is on the invoice');
+reset role;
+create temp table a_change as select id from public.change_orders where description = 'Replace shutoff valve';
+grant select on a_change to authenticated;
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select throws_ok($$ select public.sign_change_order((select id from a_change), 'Sneaky', '') $$,
+  'P0001', 'The record was not found on the server', 'B can''t sign a document it can''t see');
+select is((select count(*)::int from public.signatures), 0, 'B still sees none of A''s signatures');
+
+-- one person with many accounts still stops at KILN's daily limit
+reset role;
+update public.ai_usage set requests = 0;
+insert into public.ai_usage (business_id, requests) select b, 2000 from ids;
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+select throws_ok($$ select public.use_ai_quota() $$, 'KL429', 'KILN''s daily AI limit reached', 'all businesses together have a daily limit');
 reset role;
 
 select * from finish();

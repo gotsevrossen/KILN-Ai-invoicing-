@@ -591,7 +591,7 @@ function makeActions() {
       set((x) => ({ ...x, issuedInvoices: { ...x.issuedInvoices, [invoiceId]: snapshot }, sentInvoices: [...x.sentInvoices, invoiceId] }));
       // the summary being typed is saved first; then the lines and frozen copy
       flushSoon(`summary:${invoiceId}`);
-      persist((bid) => docsApi.sendInvoice(bid, invoiceId, snapshot, !!s.showLocation[invoiceId]));
+      persist(() => docsApi.sendInvoice(invoiceId, snapshot, !!s.showLocation[invoiceId]));
     },
     setInvoiceBilling(invoiceId: string, patch: Partial<InvoiceBilling>) {
       const s = get();
@@ -612,9 +612,15 @@ function makeActions() {
         invoices.some((invoice) => invoice.jobId === jobId && s.sentInvoices.includes(invoice.id))) return;
       const issued = copyDocument({ ...draft, sent: true, tax: s.settings.tax });
       set((x) => ({ ...x, estimates: { ...x.estimates, [jobId]: issued } }));
-      // the last edits are saved first, so the server checks and freezes the latest version
-      flushSoon(`estimate:${jobId}`);
-      persist((bid) => docsApi.sendEstimate(bid, jobId, s.settings.tax));
+      // The latest draft is saved first, in the same step, so the server checks and freezes exactly
+      // what the owner sees. (A save still waiting on typing would now find it marked sent and skip.)
+      const waiting = soon.get(`estimate:${jobId}`);
+      if (waiting) clearTimeout(waiting.timer);
+      soon.delete(`estimate:${jobId}`);
+      persist(async (bid) => {
+        await docsApi.saveEstimate(bid, jobId, draft);
+        await docsApi.sendEstimate(bid, jobId, s.settings.tax);
+      });
     },
     confirmVoice() {
       set((s) => ({ ...s, voiceConfirmed: true }));
@@ -624,7 +630,7 @@ function makeActions() {
       if (!co || !name.trim() || get().signed[changeOrderId] || get().declinedChanges.includes(changeOrderId) ||
         sample.invoices.some((invoice) => invoice.jobId === co.jobId && get().sentInvoices.includes(invoice.id))) return;
       set((s) => ({ ...s, signed: { ...s.signed, [changeOrderId]: { name, at: new Date().toISOString() } } }));
-      persist((bid) => docsApi.signChangeOrder(bid, co, name));
+      persist(() => docsApi.signChangeOrder(co.id, name));
     },
     declineChange(changeOrderId: string) {
       if (get().signed[changeOrderId] || get().declinedChanges.includes(changeOrderId)) return;
@@ -681,7 +687,7 @@ function makeActions() {
       const draft = get().estimates[jobId];
       if (!draft?.sent || draft.signed || !estimateReady(draft) || signer.trim().length < 2) return;
       set((s) => ({ ...s, estimates: { ...s.estimates, [jobId]: { ...draft, signed: true } } }));
-      persist((bid) => docsApi.signEstimate(bid, jobId, draft, signer.trim()));
+      persist(() => docsApi.signEstimate(jobId, signer.trim()));
     },
     createChangeOrder(jobId: string, description: string, amountCents: number): string | null {
       const s = get();
@@ -785,7 +791,7 @@ function makeActions() {
       const invoice = invoices.find((i) => i.id === invoiceId);
       if (!invoice || s.paidInvoices.includes(invoiceId) || !s.sentInvoices.includes(invoiceId)) return;
       set((x) => ({ ...x, paidInvoices: [...x.paidInvoices, invoiceId] }));
-      persist((bid) => docsApi.markInvoicePaid(bid, invoiceId, invoiceTotals(get(), invoice).total));
+      persist(() => docsApi.markInvoicePaid(invoiceId, invoiceTotals(get(), invoice).total));
     },
     updateSettings(patch: Partial<PricingSettings>) {
       set((s) => ({ ...s, settings: { ...s.settings, ...patch } }));

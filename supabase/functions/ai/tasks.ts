@@ -85,7 +85,8 @@ export const inputs = {
 };
 
 export type Task = keyof typeof inputs;
-export const isTask = (t: unknown): t is Task => typeof t === 'string' && t in inputs;
+// own keys only: 'constructor' or 'toString' are "in" every object
+export const isTask = (t: unknown): t is Task => typeof t === 'string' && Object.hasOwn(inputs, t);
 
 // ---------------------------------------------------------------- asking Claude
 

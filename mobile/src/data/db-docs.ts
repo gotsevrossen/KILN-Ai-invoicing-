@@ -1,4 +1,3 @@
-import * as Crypto from 'expo-crypto';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 
@@ -13,16 +12,15 @@ import type {
 
 // Hours, notes, work done, estimates, change orders, receipts, and invoices. Row Level Security on the
 // server keeps every query inside the signed-in owner's business, and the server's checks
-// refuse edits to sent or signed documents even if the app tried.
+// refuse edits to sent or signed documents even if the app tried. Signing, sending an invoice,
+// and marking it paid are each one server step (migration 20261026120000_lock_records.sql):
+// all of it is saved or none of it is.
 
 // ---------------------------------------------------------------- helpers
 
 export { localDate };
 
-/** SHA-256 of exactly what was signed, so the signed version can be proven later. */
-const sha256 = (text: string) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text);
-
-/** Recorded with a signature. (The signer's network address is added once customer links run on the server.) */
+/** Recorded with a signature. The server adds the network address and the signed document's fingerprint. */
 function deviceInfo(): string {
   return [Platform.OS, Device.osVersion, Device.modelName].filter(Boolean).join(' · ').slice(0, 200);
 }
@@ -323,16 +321,9 @@ export async function sendEstimate(businessId: string, jobId: string, tax: TaxRu
   await audit(businessId, 'estimate.sent', 'estimate', est.id);
 }
 
-export async function signEstimate(businessId: string, jobId: string, draft: EstimateDraft, signer: string): Promise<void> {
-  const hash = await sha256(JSON.stringify({
-    type: 'estimate', jobId, number: draft.number, lines: draft.lines, depositOn: draft.depositOn,
-    depositBps: draft.depositBps, scope: draft.scope ?? {}, tax: draft.tax,
-  }));
-  const est = one(await db().from('estimates').update({ signed_at: new Date().toISOString() }).eq('job_id', jobId).select('id').single<{ id: string }>());
-  ok(await db().from('signatures').insert({
-    business_id: businessId, document_type: 'estimate', document_id: est.id, signer_name: signer.slice(0, 120), document_hash: hash, user_agent: deviceInfo(),
-  }));
-  await audit(businessId, 'estimate.signed', 'estimate', est.id);
+/** Signed, with the signature and its fingerprint of the saved estimate, in one step. */
+export async function signEstimate(jobId: string, signer: string): Promise<void> {
+  ok(await db().rpc('sign_estimate', { p_job_id: jobId, p_signer: signer.slice(0, 120), p_device: deviceInfo() }));
 }
 
 // ---------------------------------------------------------------- change orders
@@ -345,15 +336,8 @@ export async function insertChangeOrder(businessId: string, co: ChangeOrder): Pr
   await audit(businessId, 'change_order.created', 'change_order', co.id);
 }
 
-export async function signChangeOrder(businessId: string, co: ChangeOrder, signer: string): Promise<void> {
-  const hash = await sha256(JSON.stringify({
-    type: 'change_order', jobId: co.jobId, number: co.number, description: co.description, amountCents: co.amountCents, baseCents: co.baseCents,
-  }));
-  ok(await db().from('change_orders').update({ signed_at: new Date().toISOString() }).eq('id', co.id));
-  ok(await db().from('signatures').insert({
-    business_id: businessId, document_type: 'change_order', document_id: co.id, signer_name: signer.slice(0, 120), document_hash: hash, user_agent: deviceInfo(),
-  }));
-  await audit(businessId, 'change_order.signed', 'change_order', co.id);
+export async function signChangeOrder(changeOrderId: string, signer: string): Promise<void> {
+  ok(await db().rpc('sign_change_order', { p_id: changeOrderId, p_signer: signer.slice(0, 120), p_device: deviceInfo() }));
 }
 
 export async function declineChangeOrder(businessId: string, changeOrderId: string): Promise<void> {
@@ -387,37 +371,33 @@ export async function updateInvoice(invoiceId: string, patch: {
   ok(await db().from('invoices').update(row).eq('id', invoiceId));
 }
 
-/** Sends it: the lines exactly as sent, then the frozen copy of tax, scope, and due date. */
-export async function sendInvoice(businessId: string, invoiceId: string, s: InvoiceSnapshot, showLocation: boolean): Promise<void> {
-  ok(await db().from('invoice_lines').insert(s.lines.map((l, position) => ({
-    business_id: businessId, invoice_id: invoiceId, kind: l.kind, description: l.description,
-    qty_hundredths: l.qtyHundredths, unit_cents: l.unitCents, unit: l.unit ?? null, position,
-  }))));
-  ok(await db().from('invoices').update({
-    sent_at: new Date().toISOString(),
-    summary: s.summary.slice(0, 4000),
-    materials_mode: s.materialsMode,
-    show_location: showLocation,
-    tax_rate_bps: s.tax.rateBps,
-    tax_labor: s.tax.labor,
-    tax_materials: s.tax.materials,
-    issued_scope: s.scope ?? null,
-    excluded_scope: s.excludedScope ?? [],
-    due_days: s.dueDays,
-    issued_on: s.issuedOn,
-    issued_address: s.address.slice(0, 300),
-    issued_work_order: s.workOrder?.slice(0, 60) ?? null,
-  }).eq('id', invoiceId));
-  await audit(businessId, 'invoice.sent', 'invoice', invoiceId);
+/** Sends it in one step: the lines exactly as sent, and the frozen copy of tax, scope, and due date. */
+export async function sendInvoice(invoiceId: string, s: InvoiceSnapshot, showLocation: boolean): Promise<void> {
+  ok(await db().rpc('send_invoice', {
+    p_invoice_id: invoiceId,
+    p_lines: s.lines.map((l) => ({
+      kind: l.kind, description: l.description, qty_hundredths: l.qtyHundredths, unit_cents: l.unitCents, unit: l.unit ?? null,
+    })),
+    p_issued: {
+      summary: s.summary.slice(0, 4000),
+      materials_mode: s.materialsMode,
+      show_location: showLocation,
+      tax_rate_bps: s.tax.rateBps,
+      tax_labor: s.tax.labor,
+      tax_materials: s.tax.materials,
+      issued_scope: s.scope ?? null,
+      excluded_scope: s.excludedScope ?? [],
+      due_days: s.dueDays,
+      issued_on: s.issuedOn,
+      issued_address: s.address.slice(0, 300),
+      issued_work_order: s.workOrder?.slice(0, 60) ?? null,
+    },
+  }));
 }
 
-/** Paid in cash or by check, marked by the owner. Card and bank payments come with Stripe. */
-export async function markInvoicePaid(businessId: string, invoiceId: string, amountCents: number): Promise<void> {
-  ok(await db().from('invoices').update({ paid_at: new Date().toISOString() }).eq('id', invoiceId));
-  if (amountCents > 0) {
-    ok(await db().from('payments').insert({ business_id: businessId, invoice_id: invoiceId, amount_cents: amountCents, method: 'other' }));
-  }
-  await audit(businessId, 'invoice.paid', 'invoice', invoiceId);
+/** Paid in cash or by check, marked by the owner, with its payment. Card and bank payments come with Stripe. */
+export async function markInvoicePaid(invoiceId: string, amountCents: number): Promise<void> {
+  ok(await db().rpc('mark_invoice_paid', { p_invoice_id: invoiceId, p_amount_cents: amountCents }));
 }
 
 // ---------------------------------------------------------------- receipts

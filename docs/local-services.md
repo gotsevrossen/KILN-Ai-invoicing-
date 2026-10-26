@@ -21,6 +21,8 @@ Your database containers and Docker volumes are preserved. These scripts do not 
 
 The temporary Cloudflare backend address changes on restart. Start automatically updates only `EXPO_PUBLIC_SUPABASE_URL` in `mobile/.env.local` before launching Expo; the publishable key and other settings are retained. It does not create a new permanent tunnel or change firewall settings. The preview/tunnel must stay running for a phone to use them.
 
+**Server keys (Oct 26).** The tunnel puts the local Supabase server on the internet. Supabase's default local keys are the same on every computer and published online, so Start gives this computer its own keys in `supabase/.env` (`SUPABASE_AUTH_JWT_SECRET`, `SUPABASE_AUTH_SECRET_KEY`, random, git-ignored) and refuses to open the tunnel while the backend still accepts the defaults. The keys take effect when the containers are created: after they're first added, run `npx supabase stop` then `npx supabase start` once (data is kept), then Start again. The publishable key doesn't change, so phones and APKs keep working; testers sign in again.
+
 Expo runs in LAN/offline-CLI mode to avoid startup delays from Expo's remote checks. This does not disable your app's backend connection or the separate Cloudflare tunnel. Expo Go must be on the laptop's network for the Expo preview address.
 
 Logs and process records live in the ignored `.kiln-runtime/` folder. For startup problems, check `expo.log`, `expo-error.log`, and `tunnel-error.log` there. Logs may contain temporary connection URLs; keep them local.
