@@ -45,8 +45,9 @@ export function CustomerPage({
       </SafeAreaView>
       <Screen noTopInset scrollEnabled={scrollEnabled}>
         <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: p.ground, borderWidth: 1.5, borderStyle: 'dashed', borderColor: p.muted, alignItems: 'center', justifyContent: 'center' }}>
-            <T v="small" muted>Logo</T>
+          {/* the business's first letter until logo upload exists */}
+          <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: p.accent, alignItems: 'center', justifyContent: 'center' }}>
+            <T v="h3" color={p.onAccent}>{state.profile.businessName.trim().charAt(0).toUpperCase() || 'K'}</T>
           </View>
           <View style={{ flex: 1 }}>
             <T v="h3">{state.profile.businessName}</T>
@@ -54,10 +55,6 @@ export function CustomerPage({
           </View>
         </Card>
         {children}
-        <Card tone="soft" style={{ gap: 6, paddingHorizontal: 0 }}>
-          <T v="label">{tc('customer.terms')}</T>
-          <T v="small" muted>{tc('customer.termsPlaceholder')}</T>
-        </Card>
         <Hair />
         <View style={{ alignItems: 'center', gap: 4 }}>
           <Row gap={6}>

@@ -126,8 +126,10 @@ export default function Settings() {
         )}
       </Card>
 
-      <Hair />
-      <Notice text={t('settings.about')} icon="info" tone="soft" />
+      {state.mode === 'example' ? <>
+        <Hair />
+        <Notice text={t('settings.about')} icon="info" tone="soft" />
+      </> : null}
     </Screen>
   );
 }

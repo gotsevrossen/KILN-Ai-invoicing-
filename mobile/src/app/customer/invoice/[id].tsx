@@ -1,24 +1,25 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { CustomerPage } from '@/components/customer-page';
 import { ProofPhotos } from '@/components/job-photos';
 import { ScopeCard } from '@/components/job-scope';
 import { RecordGate } from '@/components/record-gate';
-import { Button, ButtonRow, Card, Hair, LineRow, Notice, Row, T } from '@/components/ui';
+import { Button, Card, Hair, LineRow, Notice, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { customerOf, hasInvoice, invoiceById, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, jobById, taxScope } from '@/data/selectors';
 import { useStore } from '@/data/store';
-import { useTFor } from '@/i18n';
+import { useLang, useTFor } from '@/i18n';
 import { addDays, formatters } from '@/lib/format';
 import { businessDate } from '@/lib/invoice-aging';
 import { lineTotal } from '@/lib/money';
-import { radius, tap } from '@/theme/tokens';
+import { radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
 function CustomerInvoice() {
   const p = usePalette();
+  const { t } = useLang();
   const { state } = useStore();
   const { id } = useLocalSearchParams<{ id: string }>();
   const invoice = invoiceById(id)!;
@@ -40,7 +41,8 @@ function CustomerInvoice() {
   const taxKey = scope === 'all' ? 'customer.taxAll' : scope === 'labor' ? 'customer.taxLabor' : scope === 'materials' ? 'customer.taxMaterials' : null;
 
   return (
-    <CustomerPage who={customer.firstName} tc={tc} expires={fc.date(addDays(sample.TODAY, 45))}>
+    // customer links last 90 days from when they're made (supabase/functions/payments)
+    <CustomerPage who={customer.firstName} tc={tc} expires={fc.date(addDays(issuedOn, 90))}>
       <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ gap: 2 }}>
           <T v="label">{tc('customer.invoiceNo', { n: invoice.number })}</T>
@@ -57,16 +59,11 @@ function CustomerInvoice() {
       <Card tone="accent" style={{ gap: 10, padding: 22, borderRadius: radius.lg }}>
         <T v="eyebrow" color={p.onAccent}>{tc('customer.amountDue')}</T>
         <T v="moneyBig" color={p.onAccent}>{fc.money(totals.due)}</T>
+        {/* the same two ways the real pay page offers */}
         <Button label={tc('customer.wallet')} variant="dark" big onPress={pay} />
-        <ButtonRow>
-          <Button label={tc('customer.card')} variant="soft" flex style={{ backgroundColor: p.card }} onPress={pay} />
-          <Button label={tc('customer.bank')} variant="soft" flex style={{ backgroundColor: p.card }} onPress={pay} />
-        </ButtonRow>
-        <Pressable onPress={pay} accessibilityRole="button" style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center' }}>
-          <T v="label" color={p.onAccent} style={{ textDecorationLine: 'underline' }}>{tc('customer.payPart')}</T>
-        </Pressable>
+        <Button label={tc('customer.bank')} variant="soft" style={{ backgroundColor: p.card }} onPress={pay} />
       </Card>
-      {payTapped ? <Notice text={tc('customer.payDemo')} icon="credit-card" /> : null}
+      {payTapped ? <Notice text={t('customer.previewPay', { name: customer.firstName })} icon="eye" /> : null}
 
       <Card style={{ gap: 6 }}>
         <T v="eyebrow">{tc('customer.payingFor')}</T>

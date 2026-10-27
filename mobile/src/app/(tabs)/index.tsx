@@ -114,10 +114,12 @@ export default function Home() {
         </Card>
       ))}
 
-      <Row style={{ justifyContent: 'center', marginTop: 12 }} gap={6}>
-        <Icon name="info" size={14} color={p.muted} />
-        <T v="small" muted>{t('common.exampleData')}</T>
-      </Row>
+      {state.mode === 'example' ? (
+        <Row style={{ justifyContent: 'center', marginTop: 12 }} gap={6}>
+          <Icon name="info" size={14} color={p.muted} />
+          <T v="small" muted>{t('common.exampleData')}</T>
+        </Row>
+      ) : null}
     </Screen>
   );
 }

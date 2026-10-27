@@ -40,7 +40,7 @@ function CustomerEstimate() {
   const totals = documentTotals(lines, tax);
   const total = totals.total;
   const askDeposit = draft ? draft.depositOn : true;
-  const depositBps = draft ? draft.depositBps : sample.business.depositBps;
+  const depositBps = draft ? draft.depositBps : state.settings.depositBps;
   const deposit = askDeposit ? percentOf(total, depositBps) : 0;
 
   const [name, setName] = useState('');
@@ -94,7 +94,7 @@ function CustomerEstimate() {
       ) : null}
 
       {done ? (
-        <Notice text={tc('customer.payDemo')} icon="credit-card" />
+        <Notice text={askDeposit ? tc('customer.signedDeposit', { business: state.profile.businessName }) : tc('customer.signed')} icon="check-circle" />
       ) : canAccept ? (
         <>
           <Field label={tc('customer.yourName')} value={name} onChangeText={setName} placeholder={tc('customer.namePlaceholder')} autoComplete="name" />
