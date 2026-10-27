@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
-import { View } from 'react-native';
 
+import { LogoMark } from '@/components/logo';
 import { Card, Icon, IconButton, ListRow, Notice, Pill, Row, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { changeOrderTotal, homeSummary, invoiceForJob, invoiceTotals, jobAmount, jobById, jobOverdueDays, jobStatus, unsortedItems } from '@/data/selectors';
@@ -32,8 +32,9 @@ export default function Home() {
       header={
         <Row style={{ justifyContent: 'space-between' }}>
           <Row gap={10}>
-            <View style={{ width: 16, height: 16, borderRadius: 5, backgroundColor: p.accent }} />
-            <T style={{ fontFamily: font.black, fontSize: 26, letterSpacing: 4 }}>KILN</T>
+            <LogoMark size={34} />
+            {/* line height matches the font's own, so the capitals sit level with the logo's middle */}
+            <T style={{ fontFamily: font.black, fontSize: 26, lineHeight: 28, letterSpacing: 4, includeFontPadding: false }}>KILN</T>
           </Row>
           <Row>
             {pendingUploads ? <Pill label={t('home.upload', { count: pendingUploads })} tone="plain" /> : null}

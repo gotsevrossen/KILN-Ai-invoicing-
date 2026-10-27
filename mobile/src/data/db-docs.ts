@@ -411,11 +411,11 @@ export async function sendInvoice(businessId: string, invoiceId: string, s: Invo
   await audit(businessId, 'invoice.sent', 'invoice', invoiceId);
 }
 
-/** Paid in cash or by check, marked by the owner. Card and bank payments come with Stripe. */
+/** Paid in cash, marked by the owner. Apple Pay, Google Pay, and bank payments are saved by the server. */
 export async function markInvoicePaid(businessId: string, invoiceId: string, amountCents: number): Promise<void> {
   ok(await db().from('invoices').update({ paid_at: new Date().toISOString() }).eq('id', invoiceId));
   if (amountCents > 0) {
-    ok(await db().from('payments').insert({ business_id: businessId, invoice_id: invoiceId, amount_cents: amountCents, method: 'other' }));
+    ok(await db().from('payments').insert({ business_id: businessId, invoice_id: invoiceId, amount_cents: amountCents, method: 'cash' }));
   }
   await audit(businessId, 'invoice.paid', 'invoice', invoiceId);
 }

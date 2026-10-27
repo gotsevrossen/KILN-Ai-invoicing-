@@ -11,12 +11,13 @@ import { removeFromPhone, stillOnPhone } from '@/lib/photo-file';
 import { aiReady, guessTags } from './ai';
 import * as dbApi from './db';
 import * as docsApi from './db-docs';
+import * as payApi from './db-pay';
 import * as photosApi from './db-photos';
 import * as sample from './sample';
 import { business, customers, initialAssignments, initialEstimates, invoices, jobs, priceList, timeEntries } from './sample';
 import type { TradeId } from './trades';
 import type { Assignment, ChangeOrder, Customer, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, Photo, PhotoTag, PriceItem, Receipt, TimeEntry, Unit, WorkItem } from './types';
-import { canDeleteJob, canDeleteReceipt, changeOrderBase, hoursFor, invoiceBilling, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, jobStage, receiptsOnJob, workLocked } from './selectors';
+import { canDeleteJob, canDeleteReceipt, changeOrderBase, hoursFor, invoiceBilling, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, jobStage, paidOnline, receiptsOnJob, workLocked } from './selectors';
 
 export type { EstimateDraft, EstimateLine };
 
@@ -118,6 +119,12 @@ export interface State {
   /** Jobs taken back from an unsent invoice draft to the Work step (the draft is kept). */
   reopenedJobs: string[];
   paidInvoices: string[];
+  /** Payments saved on the server: cash marked by the owner, and Apple Pay, Google Pay, and bank payments from Stripe. */
+  payments: payApi.PaymentRecord[];
+  /** When the customer first opened each invoice's link (invoice id -> time). */
+  opened: Record<string, string>;
+  /** What the owner's Stripe account can take. */
+  online: payApi.OnlinePay;
   captures: Capture[];
   /** Job photos: saved ones, and ones on this phone waiting for signal to upload. */
   photos: Photo[];
@@ -162,6 +169,9 @@ function initialState(): State {
     skippedEstimates: [],
     reopenedJobs: [],
     paidInvoices: [],
+    payments: [],
+    opened: {},
+    online: { connected: false, walletReady: false, bankReady: false },
     captures: [],
     photos: [],
     cardFee: false,
@@ -214,8 +224,13 @@ function connectedState(base: State): State {
     skippedEstimates: [],
     reopenedJobs: [],
     paidInvoices: [],
+    payments: [],
+    opened: {},
+    online: { connected: false, walletReady: false, bankReady: false },
     captures: [],
     photos: [],
+    // the example business's prices never carry into a real account
+    priceList: [],
     mode: 'connected',
     syncError: null,
   };
@@ -424,16 +439,46 @@ function applyLoaded(loaded: dbApi.Loaded): void {
     version: s.version + 1,
   }));
   void flushPhotos();
+  void refreshPay();
+}
+
+/**
+ * Picks up what happened outside the app: the customer opened the link, or paid by Apple Pay,
+ * Google Pay, or bank (Stripe tells the server). A paid invoice never goes back to unpaid here.
+ */
+async function refreshPay(): Promise<void> {
+  if (get().mode !== 'connected') return;
+  try {
+    const pay = await payApi.loadPayState();
+    if (get().mode !== 'connected') return;
+    set((s) => ({
+      ...s,
+      payments: pay.payments,
+      opened: pay.opened,
+      online: pay.online,
+      paidInvoices: [...new Set([...s.paidInvoices, ...pay.paidInvoices])],
+    }));
+  } catch {
+    // no signal: the next refresh tries again
+  }
 }
 
 function makeActions() {
   return {
     assign(itemId: string, assignment: Assignment) {
+      // a sent invoice's materials stay put, and nothing new goes onto it
+      const before = get().assignments[itemId];
+      if (before?.type === 'jobs' && before.jobIds.some((jobId) => workLocked(get(), jobId))) return;
+      if (assignment.type === 'jobs' && assignment.jobIds.some((jobId) => workLocked(get(), jobId))) return;
       if (assignment.type === 'jobs') receiptShares(0, assignment);
       set((s) => ({ ...s, assignments: { ...s.assignments, [itemId]: assignment } }));
       persist((bid) => docsApi.assignReceiptItem(bid, itemId, assignment));
     },
-    resetReceipt(itemIds: string[]) {
+    resetReceipt(allIds: string[]) {
+      const itemIds = allIds.filter((id) => {
+        const a = get().assignments[id];
+        return !(a?.type === 'jobs' && a.jobIds.some((jobId) => workLocked(get(), jobId)));
+      });
       set((s) => {
         const assignments = { ...s.assignments };
         const fixedNames = { ...s.fixedNames };
@@ -459,6 +504,7 @@ function makeActions() {
       persist(() => docsApi.updateReceiptItem(itemId, { markupOff: !!get().markupOff[itemId] }));
     },
     logHours(jobId: string, hundredths: number, note: string) {
+      if (workLocked(get(), jobId)) return;
       const entry: TimeEntry = { id: newId(), jobId, date: sample.TODAY, hundredths, note };
       set((s) => ({ ...s, timeEntries: [...s.timeEntries, entry] }));
       persist((bid) => docsApi.insertTimeEntry(bid, entry));
@@ -655,6 +701,7 @@ function makeActions() {
       saveEstimateSoon(jobId);
     },
     addCapture(jobId: string, kind: CaptureKind, text?: string) {
+      if (workLocked(get(), jobId)) return;
       const capture: Capture = { id: newId(), jobId, kind, text, date: sample.TODAY };
       set((s) => ({ ...s, captures: [...s.captures, capture] }));
       if (kind === 'note' && text?.trim()) persist((bid) => docsApi.insertNote(bid, { id: capture.id, jobId, text: text.trim() }));
@@ -780,12 +827,30 @@ function makeActions() {
       savePhotoQueue();
       return true;
     },
+    /** Paid in cash: records what's left after any online payment. */
     markPaid(invoiceId: string) {
       const s = get();
       const invoice = invoices.find((i) => i.id === invoiceId);
       if (!invoice || s.paidInvoices.includes(invoiceId) || !s.sentInvoices.includes(invoiceId)) return;
+      const left = Math.max(0, invoiceTotals(s, invoice).total - paidOnline(s, invoiceId).paid);
       set((x) => ({ ...x, paidInvoices: [...x.paidInvoices, invoiceId] }));
-      persist((bid) => docsApi.markInvoicePaid(bid, invoiceId, invoiceTotals(get(), invoice).total));
+      persist((bid) => docsApi.markInvoicePaid(bid, invoiceId, left));
+    },
+    refreshPay,
+    /**
+     * The customer's link for a sent invoice. Waits for the send itself to reach the server first,
+     * since a link only ever opens a sent invoice.
+     */
+    async invoiceLink(invoiceId: string): Promise<string> {
+      await saveQueue;
+      return payApi.invoiceLink(invoiceId);
+    },
+    stripeSetupUrl: payApi.stripeSetupUrl,
+    /** Asks Stripe what the owner's account can take now, and keeps the answer. */
+    async checkStripe(): Promise<void> {
+      if (get().mode !== 'connected') return;
+      const online = await payApi.checkStripe();
+      set((s) => ({ ...s, online }));
     },
     updateSettings(patch: Partial<PricingSettings>) {
       set((s) => ({ ...s, settings: { ...s.settings, ...patch } }));

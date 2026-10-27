@@ -81,6 +81,15 @@ export const ITEM_UNITS: Record<string, Unit> = {
   'bed-prep': 'sq_ft',
 };
 
+/** Starter prices in cents (Rossen's call, Oct 27). Every other starter item begins empty for the owner to fill in. */
+const STARTER_CENTS: Record<string, number> = { trip: 2000 };
+
+/** A new starter item's price: hourly owners' labor is their rate, the trip fee is $20, the rest is empty. */
+export function starterCents(itemId: string, pricing: 'hourly' | 'flat', rateCents: number | null): number | null {
+  if (itemId === 'labor') return pricing === 'hourly' ? rateCents : null;
+  return STARTER_CENTS[itemId] ?? null;
+}
+
 export const TRADES: TradeDef[] = [
   {
     id: 'plumbing',

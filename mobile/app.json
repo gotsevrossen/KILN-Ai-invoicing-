@@ -8,7 +8,6 @@
     "scheme": "kiln",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.rosseng.kiln"
     },
     "android": {
@@ -32,7 +31,7 @@
         {
           "backgroundColor": "#E9E9E9",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 120
         }
       ],
       "expo-localization",

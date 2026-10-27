@@ -77,6 +77,26 @@ export function workLocked(state: State, jobId: string): boolean {
   return sample.invoices.some((i) => i.jobId === jobId && state.sentInvoices.includes(i.id));
 }
 
+/**
+ * Money from the customer for one invoice: paid (Apple Pay, Google Pay, bank that went through, or
+ * cash) and a bank payment still on its way. How it was paid is the latest successful payment's.
+ */
+export function paidOnline(state: State, invoiceId: string) {
+  const mine = state.payments.filter((p) => p.invoiceId === invoiceId);
+  const paid = mine.filter((p) => p.status === 'succeeded');
+  return {
+    paid: paid.reduce((a, p) => a + p.amountCents, 0),
+    pending: mine.filter((p) => p.status === 'processing').reduce((a, p) => a + p.amountCents, 0),
+    method: paid.length ? paid[paid.length - 1].method : null,
+    failed: mine.some((p) => p.status === 'failed') && !paid.length,
+  };
+}
+
+/** Active jobs that can still take hours, notes, photos and receipt items: their invoice isn't sent. */
+export function openJobs(state: State): Job[] {
+  return sample.jobs.filter((j) => j.group === 'active' && !workLocked(state, j.id));
+}
+
 /** What this job pays for an item: its even share if the item was split across jobs. */
 /**
  * What an item really cost: its price plus its share of the receipt's tax.

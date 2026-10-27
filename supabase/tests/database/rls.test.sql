@@ -1,8 +1,10 @@
 -- Permission rules: a business only ever sees and changes its own data.
--- Run with: npx supabase test db
+-- Run with: npx supabase test db (hosted project: npx supabase test db --linked)
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(72);
+-- The hosted database doesn't search the extensions schema by default.
+set local search_path to "$user", public, extensions;
+select plan(86);
 
 -- two owners, each with their own business
 insert into auth.users (id, email) values
@@ -222,14 +224,53 @@ select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
 select is((select count(*)::int from public.ai_usage), 0, 'B can''t see A''s AI use');
 select throws_ok($$ insert into public.ai_usage (business_id, requests) select b, 0 from ids $$, '42501', null, 'counts can''t be written directly');
 reset role;
-update public.ai_usage set requests = 300;
+update public.ai_usage set requests = 300 where business_id = (select a from ids);
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 select throws_ok($$ select public.use_ai_quota() $$, 'KL429', 'daily AI limit reached', 'the daily limit stops more requests');
 reset role;
-select is((select requests from public.ai_usage), 300, 'a refused request isn''t counted');
+select is((select requests from public.ai_usage where business_id = (select a from ids)), 300, 'a refused request isn''t counted');
 set local role anon;
 select throws_ok($$ select public.use_ai_quota() $$, '42501', null, 'signed-out visitors can''t use AI');
 reset role;
+
+-- online payments: only Stripe (through the server) records them; the owner adds cash, and no
+-- payment can be changed or removed from the app. Links and Stripe accounts are server-made too.
+insert into public.jobs (business_id, customer_id, title)
+  select ids.a, c.id, 'Online job' from ids, public.customers c where c.business_id = ids.a;
+insert into public.invoices (business_id, job_id, number) select business_id, id, 'I-2' from public.jobs where title = 'Online job';
+insert into public.invoice_lines (business_id, invoice_id, kind, description, qty_hundredths, unit_cents)
+  select business_id, id, 'labor', 'Online work', 100, 10000 from public.invoices where number = 'I-2';
+update public.invoices set sent_at = now(), tax_rate_bps = 0, tax_labor = false, tax_materials = false, issued_on = current_date, due_days = 15 where number = 'I-2';
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+select throws_ok(
+  $$ insert into public.payments (business_id, invoice_id, amount_cents, method, stripe_payment_intent) select business_id, id, 10000, 'wallet', 'pi_fake12345' from public.invoices where number = 'I-2' $$,
+  '42501', null, 'an owner can''t record an online payment themselves');
+select lives_ok($$ update public.payments set amount_cents = 1 $$, 'changing a payment runs but touches nothing');
+select lives_ok($$ delete from public.payments $$, 'deleting a payment runs but touches nothing');
+select is((select amount_cents from public.payments where method = 'cash'), 19000, 'the cash payment is unchanged and still there');
+select throws_ok($$ select public.record_stripe_payment((select a from ids), null, 'pi_fake12345', 1, 'wallet', 'succeeded', 1) $$,
+  '42501', null, 'an owner can''t call the server''s payment recorder');
+select throws_ok($$ insert into public.share_links (business_id, token_hash, document_type, document_id, expires_at) select business_id, 'x', 'invoice', id, now() + interval '1 day' from public.invoices where number = 'I-2' $$,
+  '42501', null, 'an owner can''t make a customer link directly');
+select throws_ok($$ insert into public.stripe_accounts (business_id, account_id) select a, 'acct_sneaky123' from ids $$,
+  '42501', null, 'an owner can''t point the business at a Stripe account directly');
+reset role;
+insert into public.stripe_accounts (business_id, account_id) select a, 'acct_test123456' from ids;
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+select is((select account_id from public.stripe_accounts), 'acct_test123456', 'the owner sees their Stripe account');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select is((select count(*)::int from public.stripe_accounts), 0, 'B can''t see A''s Stripe account');
+reset role;
+select throws_ok(
+  $$ insert into public.payments (business_id, invoice_id, amount_cents, method) select business_id, id, 100, 'bank' from public.invoices where number = 'I-2' $$,
+  '23514', null, 'an online payment always names its Stripe payment');
+select public.record_stripe_payment((select a from ids), (select id from public.invoices where number = 'I-2'), 'pi_bank123456', 10000, 'bank', 'processing', 10000);
+select is((select paid_at from public.invoices where number = 'I-2'), null, 'a bank payment on its way doesn''t mark the invoice paid');
+select public.record_stripe_payment((select a from ids), (select id from public.invoices where number = 'I-2'), 'pi_bank123456', 10000, 'bank', 'succeeded', 10000);
+select isnt((select paid_at from public.invoices where number = 'I-2'), null, 'when it goes through, the invoice is paid');
+select public.record_stripe_payment((select a from ids), (select id from public.invoices where number = 'I-2'), 'pi_bank123456', 10000, 'bank', 'processing', 10000);
+select is((select status from public.payments where stripe_payment_intent = 'pi_bank123456'), 'succeeded', 'a late "on its way" notice never undoes a payment');
+select is((select count(*)::int from public.payments where stripe_payment_intent = 'pi_bank123456'), 1, 'the same payment reported twice is saved once');
 
 select * from finish();
 rollback;

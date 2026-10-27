@@ -24,17 +24,31 @@ Assert-Check ('supabase_db_kiln' -match $ContainerPattern) 'Should match KILN co
 Assert-Check ('supabase_db_other' -notmatch $ContainerPattern) 'Must preserve another Supabase project.'
 Assert-Check ('supabase_db_kiln2' -notmatch $ContainerPattern) 'Must not match another project suffix.'
 
+$gate = 'node "' + $GateScript + '" 54330 54321'
+Assert-Check (Test-KilnGateProcess (Fake-Process 'node.exe' $gate)) 'Should recognize the gatekeeper.'
+Assert-Check (!(Test-KilnGateProcess (Fake-Process 'node.exe' 'node C:Otherscriptskiln-gate.mjs'))) 'Must not kill another copy of the gatekeeper.'
+Assert-Check (Test-KilnTunnelProcess (Fake-Process 'tailscale.exe' '"C:Program FilesTailscale	ailscale.exe" funnel 54330')) 'Should recognize the Funnel.'
+Assert-Check (!(Test-KilnTunnelProcess (Fake-Process 'tailscale.exe' 'tailscale.exe funnel 3000'))) 'Must preserve another Funnel.'
+Assert-Check (!(Test-KilnTunnelProcess (Fake-Process 'tailscale.exe' 'tailscale.exe funnel 543300'))) 'Funnel port prefix is not an exact match.'
+Assert-Check (!(Test-KilnTunnelProcess (Fake-Process 'tailscale-ipn.exe' 'tailscale-ipn.exe'))) 'Must not stop the Tailscale app.'
+
 $fixture = "# Keep this comment`r`nEXPO_PUBLIC_SUPABASE_URL=https://old.trycloudflare.com`r`nEXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=test-key`r`nOTHER_SETTING=keep-me`r`n"
-$updated = Update-KilnEnvContent $fixture 'https://new-test.trycloudflare.com'
-Assert-Check ($updated.Contains('EXPO_PUBLIC_SUPABASE_URL=https://new-test.trycloudflare.com')) 'Should refresh the temporary backend URL.'
+$updated = Update-KilnEnvContent $fixture @{ EXPO_PUBLIC_SUPABASE_URL = 'https://kiln-pc.tail1234.ts.net'; KILN_SERVER = 'Laptop' }
+Assert-Check ($updated.Contains('EXPO_PUBLIC_SUPABASE_URL=https://kiln-pc.tail1234.ts.net') -and $updated.Contains('KILN_SERVER=Laptop')) 'Should set the server address and choice.'
 Assert-Check ($updated.Contains('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=test-key') -and $updated.Contains('OTHER_SETTING=keep-me') -and $updated.Contains('# Keep this comment')) 'Must retain keys and other settings.'
-Assert-Check ((Update-KilnEnvContent '' 'https://new-test.trycloudflare.com').Contains('EXPO_PUBLIC_SUPABASE_URL=')) 'Should create a missing URL entry.'
+Assert-Check ((Update-KilnEnvContent '' @{ EXPO_PUBLIC_SUPABASE_URL = 'https://abcdefghijklmnopqrst.supabase.co' }).Contains('EXPO_PUBLIC_SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co')) 'Should accept a hosted project and create a missing entry.'
+Assert-Check ((Get-EnvValue $updated 'KILN_SERVER') -eq 'Laptop' -and (Get-EnvValue $updated 'MISSING') -eq '') 'Should read settings.'
+foreach ($bad in @('https://new-test.trycloudflare.com', 'http://kiln-pc.tail1234.ts.net', 'https://evil.com/x.ts.net', 'https://x.supabase.co.evil.com')) {
+    $rejected = $false
+    try { Update-KilnEnvContent $fixture @{ EXPO_PUBLIC_SUPABASE_URL = $bad } | Out-Null } catch { $rejected = $true }
+    Assert-Check $rejected "Must reject server address $bad."
+}
 $rejected = $false
-try { Update-KilnEnvContent ($fixture + "EXPO_PUBLIC_SUPABASE_URL=duplicate`r`n") 'https://new-test.trycloudflare.com' | Out-Null } catch { $rejected = $true }
+try { Update-KilnEnvContent ($fixture + "EXPO_PUBLIC_SUPABASE_URL=duplicate`r`n") @{ EXPO_PUBLIC_SUPABASE_URL = 'https://kiln-pc.tail1234.ts.net' } | Out-Null } catch { $rejected = $true }
 Assert-Check $rejected 'Must reject duplicate URL entries.'
 $rejected = $false
-try { Update-KilnEnvContent $fixture 'https://api.trycloudflare.com' | Out-Null } catch { $rejected = $true }
-Assert-Check $rejected 'Must not mistake the Cloudflare API for a phone connection URL.'
+try { Update-KilnEnvContent $fixture @{ KILN_SERVER = "Laptop`nEXPO_PUBLIC_SUPABASE_URL=https://evil" } | Out-Null } catch { $rejected = $true }
+Assert-Check $rejected 'Must reject values that add extra lines.'
 
 # Stub Docker before testing shutdown policy: these tests never operate real services.
 $script:mockOther = $true

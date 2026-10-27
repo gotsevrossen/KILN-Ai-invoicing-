@@ -164,6 +164,10 @@ site_url = "http://127.0.0.1:3000"
 additional_redirect_urls = ["https://127.0.0.1:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
+# KILN: private signing secret and admin key from supabase/.env. Supabase's built-in local ones are
+# public, and the server is reachable from phones, so anyone could forge logins with them.
+jwt_secret = "env(KILN_JWT_SECRET)"
+secret_key = "env(KILN_SECRET_KEY)"
 # JWT issuer URL. If not set, defaults to auth.external_url.
 # jwt_issuer = ""
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
@@ -228,7 +232,7 @@ enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+max_frequency = "1m"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
@@ -243,6 +247,12 @@ otp_expiry = 3600
 # pass = "env(SENDGRID_API_KEY)"
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
+
+# Password reset email: carries only the 6-digit code ({{ .Token }}, length from otp_length), no link,
+# so the owner types it into the app and never leaves it.
+[auth.email.template.recovery]
+subject = "Your KILN password reset code"
+content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
@@ -386,10 +396,27 @@ deno_version = 2
 # Server secrets come from supabase/.env (git-ignored; template in supabase/.env.example).
 [edge_runtime.secrets]
 ANTHROPIC_API_KEY = "env(ANTHROPIC_API_KEY)"
+# Online payments (see supabase/.env.example). Left out of supabase/.env = invoices send, no online payment.
+STRIPE_SECRET_KEY = "env(STRIPE_SECRET_KEY)"
+STRIPE_PUBLISHABLE_KEY = "env(STRIPE_PUBLISHABLE_KEY)"
+STRIPE_WEBHOOK_SECRET = "env(STRIPE_WEBHOOK_SECRET)"
+KILN_PAY_URL = "env(KILN_PAY_URL)"
 
 # KILN's AI helpers: only signed-in users can call it (it also checks the business and daily limit).
 [functions.ai]
 verify_jwt = true
+
+# The customer's invoice page: no sign-in, the link's code is checked inside the function.
+[functions.pay]
+verify_jwt = false
+
+# The owner's Stripe setup and invoice links: signed in only.
+[functions.payments]
+verify_jwt = true
+
+# Stripe's payment notices: no sign-in, Stripe's signature is checked inside the function.
+[functions.stripe-webhook]
+verify_jwt = false
 
 [analytics]
 enabled = true

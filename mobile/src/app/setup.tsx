@@ -7,7 +7,7 @@ import { TradePicker } from '@/components/trade-picker';
 import { Button, Field, IconButton, Notice, Row, Screen, Segmented, T } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import { useStore } from '@/data/store';
-import { ITEM_UNITS, starterItemIds, suggestedPricing, type TradeId } from '@/data/trades';
+import { ITEM_UNITS, starterCents, starterItemIds, suggestedPricing, type TradeId } from '@/data/trades';
 import type { PriceItem } from '@/data/types';
 import { useLang } from '@/i18n';
 import { radius } from '@/theme/tokens';
@@ -33,7 +33,8 @@ export default function Setup() {
   const [phone, setPhone] = useState('');
   const [trades, setTrades] = useState<TradeId[]>([]);
   const [pricing, setPricing] = useState<'hourly' | 'flat'>(state.profile.pricing);
-  const [rateText, setRateText] = useState((state.profile.rateCents / 100).toFixed(0));
+  // starts empty: the owner types their own rate
+  const [rateText, setRateText] = useState('');
   const [items, setItems] = useState<PriceItem[]>([]);
   const rateCents = parseDollars(rateText);
   const auth = useAuth();
@@ -45,12 +46,17 @@ export default function Setup() {
   /** The starter price list for the chosen trades, keeping any price the owner already has. */
   const buildItems = (): PriceItem[] => {
     const have = new Map(state.priceList.map((i) => [i.id, i]));
-    const starter = starterItemIds(trades).map((id) => ({
-      id,
-      name: have.get(id)?.name ?? t(`items.${id}` as `items.trip`),
-      unit: ITEM_UNITS[id],
-      unitCents: have.get(id)?.unitCents ?? (id === 'labor' && pricing === 'hourly' ? rateCents : null),
-    }));
+    const starter = starterItemIds(trades).map((id) => {
+      const had = have.get(id);
+      // the rate typed on the page before always becomes the labor price
+      const typedRate = id === 'labor' && pricing === 'hourly';
+      return {
+        id,
+        name: had?.name ?? t(`items.${id}` as `items.trip`),
+        unit: ITEM_UNITS[id],
+        unitCents: had && !typedRate ? had.unitCents : starterCents(id, pricing, rateCents),
+      };
+    });
     // keep the owner's own custom items too
     const custom = state.priceList.filter((i) => !(i.id in ITEM_UNITS));
     return [...starter, ...custom];
@@ -147,8 +153,8 @@ export default function Setup() {
           />
           {pricing === 'hourly' ? (
             <View style={{ gap: 6 }}>
-              <Field label={t('setup.rate')} value={rateText} onChangeText={setRateText} keyboardType="decimal-pad" placeholder="85" />
-              {rateCents === null ? <T v="small" color={p.danger}>{t('estimate.priceBad')}</T> : null}
+              <Field label={t('setup.rate')} value={rateText} onChangeText={setRateText} keyboardType="decimal-pad" />
+              {rateCents === null && rateText.trim() ? <T v="small" color={p.danger}>{t('estimate.priceBad')}</T> : null}
             </View>
           ) : null}
         </>

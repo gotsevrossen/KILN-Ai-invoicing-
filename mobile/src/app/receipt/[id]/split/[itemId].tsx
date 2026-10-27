@@ -4,8 +4,7 @@ import { View } from 'react-native';
 
 import { RecordGate } from '@/components/record-gate';
 import { Button, Card, Checkbox, Field, Hair, Notice, PageHeader, Row, Screen, Segmented, T } from '@/components/ui';
-import * as sample from '@/data/sample';
-import { hasReceipt, itemCostWithTax, receiptById } from '@/data/selectors';
+import { hasReceipt, itemCostWithTax, openJobs, receiptById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -19,7 +18,7 @@ function SplitItem() {
   const { id, itemId } = useLocalSearchParams<{ id: string; itemId: string }>();
   const receipt = receiptById(id);
   const item = receipt.items.find((i) => i.id === itemId);
-  const activeJobs = sample.jobs.filter((j) => j.group === 'active');
+  const activeJobs = openJobs(state);
 
   const [splitJobs, setSplitJobs] = useState<string[]>([]);
   const [splitMode, setSplitMode] = useState<'equal' | 'quantity'>('equal');

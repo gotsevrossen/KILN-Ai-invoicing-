@@ -6,7 +6,7 @@ import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Button, ButtonRow, Card, Field, Hair, PageHeader, Pill, Row, Screen, T, type Tone } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { canDeleteReceipt, customerOf, hasReceipt, itemCostWithTax, jobById, receiptById } from '@/data/selectors';
+import { canDeleteReceipt, customerOf, hasReceipt, itemCostWithTax, jobById, openJobs, receiptById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import type { ReceiptItem } from '@/data/types';
 import { useLang } from '@/i18n';
@@ -22,7 +22,7 @@ function SortReceipt() {
   const { state, actions } = useStore();
   const { id } = useLocalSearchParams<{ id: string }>();
   const receipt = receiptById(id);
-  const activeJobs = sample.jobs.filter((j) => j.group === 'active');
+  const activeJobs = openJobs(state);
 
   const [fixOpen, setFixOpen] = useState(false);
   const [fixText, setFixText] = useState('');
@@ -137,7 +137,8 @@ function SortReceipt() {
               <Button label={t('receipt.fixLine', { n: flagged.line })} icon="edit-3" onPress={() => setFixOpen(true)} />
             </>
           ) : null}
-          <Button label={t('receipt.startOver')} variant="outline" style={{ borderColor: p.onInverse }} onPress={() => actions.resetReceipt(receipt.items.map((i) => i.id))} />
+          {flagged ? null : <Button label={t('receipt.done')} icon="check" big onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />}
+          <Button label={t('receipt.startOver')} variant="outlineInverse" onPress={() => actions.resetReceipt(receipt.items.map((i) => i.id))} />
         </Card>
       )}
 
@@ -166,9 +167,11 @@ function SortReceipt() {
         </Card>
       ) : null}
 
-      <Pressable onPress={() => router.back()} accessibilityRole="link" style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center' }}>
-        <T v="label" style={{ textDecorationLine: 'underline' }}>{t('receipt.finishLater')}</T>
-      </Pressable>
+      {current || flagged ? (
+        <Pressable onPress={() => router.back()} accessibilityRole="link" style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center' }}>
+          <T v="label" style={{ textDecorationLine: 'underline' }}>{t('receipt.finishLater')}</T>
+        </Pressable>
+      ) : null}
 
       {canDeleteReceipt(state, receipt) ? (
         <Button label={t('receipt.delete')} icon="trash-2" variant="outline" style={{ marginTop: 16 }} onPress={() => setDeleteOpen(true)} />

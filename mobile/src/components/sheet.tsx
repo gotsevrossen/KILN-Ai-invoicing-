@@ -4,8 +4,8 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import * as sample from '@/data/sample';
-import { customerOf } from '@/data/selectors';
+import { customerOf, openJobs } from '@/data/selectors';
+import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { radius, space } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -111,11 +111,12 @@ export function Sheet({ open, onClose, title, children, scroll = true }: {
   );
 }
 
-/** "Which job?" list of active jobs, with New job at the top. */
+/** "Which job?" list of active jobs whose invoice isn't sent, with New job at the top. */
 export function JobPicker({ open, onClose, onPick, title }: { open: boolean; onClose: () => void; onPick: (jobId: string) => void; title?: string }) {
   const { t } = useLang();
+  const { state } = useStore();
   const [creating, setCreating] = useState(false);
-  const active = sample.jobs.filter((j) => j.group === 'active');
+  const active = openJobs(state);
   const close = () => {
     setCreating(false);
     onClose();

@@ -2,7 +2,10 @@
 param(
     [ValidateSet('Start', 'Stop', 'Status')][string]$Action = 'Status',
     [switch]$KeepDocker,
-    [switch]$BackendOnly
+    [switch]$BackendOnly,
+    # Which server the app uses: Laptop (this computer, reached through Tailscale Funnel) or Hosted
+    # (Supabase's cloud). Empty keeps the last choice, saved as KILN_SERVER in mobile/.env.local.
+    [ValidateSet('', 'Laptop', 'Hosted')][string]$Server = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,7 +15,16 @@ $RuntimePath = Join-Path $RepoRoot '.kiln-runtime'
 $StatePath = Join-Path $RuntimePath 'processes.json'
 $ProjectId = 'kiln'
 $ContainerPattern = '^supabase_.+_' + [regex]::Escape($ProjectId) + '$'
+$EnvFile = Join-Path $MobilePath '.env.local'
+$HostedEnvFile = Join-Path $MobilePath '.env.hosted.local'
+$GateScript = Join-Path $PSScriptRoot 'kiln-gate.mjs'
+$GatePort = 54330
+# Old Cloudflare quick tunnels are still recognized so Stop can clean them up.
 $TunnelPattern = '(?i)--url(?:=|\s+)["'']?http://(?:localhost|127\.0\.0\.1):54321(?:[\s/"'']|$)'
+$FunnelPattern = '(?i)(?:^|\s)funnel\s+(?:--\S+\s+)*' + $GatePort + '(?:\s|$)'
+# Supabase's built-in local keys are public; the phone address must never open with them in use.
+# (The second is split in two so GitHub's secret scanner doesn't mistake this published default for a real key.)
+$PublicDefaultKeys = @('super-secret-jwt-token-with-at-least-32-characters-long', ('sb_secret_' + 'N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz'))
 
 function Test-KilnExpoProcess($Process) {
     # A working-directory argument alone does NOT establish ownership (e.g. Codex).
@@ -25,7 +37,13 @@ function Test-KilnExpoProcess($Process) {
 }
 
 function Test-KilnTunnelProcess($Process) {
-    return $Process.Name -eq 'cloudflared.exe' -and [string]$Process.CommandLine -match $TunnelPattern
+    $command = [string]$Process.CommandLine
+    return ($Process.Name -eq 'cloudflared.exe' -and $command -match $TunnelPattern) -or
+        ($Process.Name -eq 'tailscale.exe' -and $command -match $FunnelPattern)
+}
+
+function Test-KilnGateProcess($Process) {
+    return $Process.Name -eq 'node.exe' -and [string]$Process.CommandLine -match ([regex]::Escape($GateScript) + '(?:["\s]|$)')
 }
 
 function Test-DockerReady {
@@ -48,7 +66,7 @@ function Get-KilnContainers([switch]$All) {
 
 function Get-AppProcesses {
     return @(Get-CimInstance Win32_Process | Where-Object {
-        (Test-KilnExpoProcess $_) -or (Test-KilnTunnelProcess $_)
+        (Test-KilnExpoProcess $_) -or (Test-KilnTunnelProcess $_) -or (Test-KilnGateProcess $_)
     })
 }
 
@@ -68,7 +86,7 @@ function Stop-VerifiedProcessTree($RootProcess) {
     # Recheck identity before acting; never kill all node.exe processes or a shell parent.
     $live = Get-CimInstance Win32_Process -Filter "ProcessId=$($RootProcess.ProcessId)"
     if (!$live -or $live.CreationDate -ne $RootProcess.CreationDate) { return }
-    if (!(Test-KilnExpoProcess $live) -and !(Test-KilnTunnelProcess $live)) { return }
+    if (!(Test-KilnExpoProcess $live) -and !(Test-KilnTunnelProcess $live) -and !(Test-KilnGateProcess $live)) { return }
     $all = @(Get-CimInstance Win32_Process)
     $descendants = [Collections.Generic.List[object]]::new()
     $parents = @($live)
@@ -103,8 +121,11 @@ function Stop-IdleDocker {
 }
 
 function Stop-Kiln {
-    foreach ($process in @(Get-AppProcesses)) { Stop-VerifiedProcessTree $process }
-    if (@(Get-AppProcesses).Count -gt 0) { throw 'Some KILN preview or tunnel processes could not be stopped.' }
+    # Close the public address first, then what's behind it.
+    foreach ($process in @(Get-AppProcesses | Sort-Object { if (Test-KilnTunnelProcess $_) { 0 } else { 1 } })) { Stop-VerifiedProcessTree $process }
+    $until = (Get-Date).AddSeconds(15)
+    while (@(Get-AppProcesses).Count -gt 0 -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 500 }
+    if (@(Get-AppProcesses).Count -gt 0) { throw 'Some KILN preview or phone connection processes could not be stopped.' }
     if (Test-DockerReady) {
         $names = @(Get-KilnContainers)
         if ($names.Count -gt 0) {
@@ -118,26 +139,92 @@ function Stop-Kiln {
     Write-Host 'KILN is off. Database containers and saved volumes were kept.' -ForegroundColor Green
 }
 
-function Find-Cloudflared {
-    $found = Get-Command cloudflared.exe -ErrorAction SilentlyContinue
+function Find-Tailscale {
+    $found = Get-Command tailscale.exe -ErrorAction SilentlyContinue
     if ($found) { return $found.Source }
-    foreach ($base in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
-        if ($base) {
-            $candidate = Join-Path $base 'cloudflared\cloudflared.exe'
-            if (Test-Path -LiteralPath $candidate) { return $candidate }
-        }
-    }
-    throw 'cloudflared.exe was not found. Install Cloudflare Tunnel or add it to PATH.'
+    $candidate = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
+    throw 'Tailscale was not found. Install it (winget install Tailscale.Tailscale) and sign in once.'
 }
 
-function Update-KilnEnvContent([string]$Content, [string]$Url) {
-    if ($Url -notmatch '^https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com$') { throw 'Invalid temporary backend address.' }
-    $pattern = '(?m)^\s*EXPO_PUBLIC_SUPABASE_URL\s*='
-    if ([regex]::Matches($Content, $pattern).Count -gt 1) { throw 'Duplicate Supabase URL settings found in mobile/.env.local.' }
-    if ($Content -match $pattern) {
-        return [regex]::Replace($Content, '(?m)^\s*EXPO_PUBLIC_SUPABASE_URL\s*=.*$', "EXPO_PUBLIC_SUPABASE_URL=$Url")
+function Test-ServerUrl([string]$Url) {
+    # A Tailscale Funnel address (machine.tailnet.ts.net) or a hosted Supabase project.
+    return $Url -match '^https://[a-z0-9-]+\.[a-z0-9-]+\.ts\.net$' -or $Url -match '^https://[a-z0-9]{20}\.supabase\.co$'
+}
+
+function Get-EnvValue([string]$Content, [string]$Name) {
+    $found = [regex]::Matches($Content, '(?m)^\s*' + [regex]::Escape($Name) + '\s*=(.*)$')
+    if ($found.Count -gt 1) { throw "Duplicate $Name settings found." }
+    if ($found.Count -eq 0) { return '' }
+    return $found[0].Groups[1].Value.Trim().Trim('"')
+}
+
+function Update-KilnEnvContent([string]$Content, [hashtable]$Values) {
+    if ($Values.ContainsKey('EXPO_PUBLIC_SUPABASE_URL') -and !(Test-ServerUrl $Values['EXPO_PUBLIC_SUPABASE_URL'])) {
+        throw 'Invalid server address.'
     }
-    return $Content + "`r`nEXPO_PUBLIC_SUPABASE_URL=$Url`r`n"
+    foreach ($name in @($Values.Keys | Sort-Object)) {
+        $value = [string]$Values[$name]
+        if ($value -match '[\r\n]') { throw "Invalid $name value." }
+        $pattern = '(?m)^\s*' + [regex]::Escape($name) + '\s*=.*$'
+        $count = [regex]::Matches($Content, $pattern).Count
+        if ($count -gt 1) { throw "Duplicate $name settings found in mobile/.env.local." }
+        if ($count -eq 1) {
+            $Content = [regex]::Replace($Content, $pattern, { param($m) "$name=$value" })
+        } else {
+            if ($Content -ne '' -and !$Content.EndsWith("`n")) { $Content += "`r`n" }
+            $Content += "$name=$value`r`n"
+        }
+    }
+    return $Content
+}
+
+function Get-ServerChoice {
+    if ($Server) { return $Server }
+    $content = if (Test-Path -LiteralPath $EnvFile) { [IO.File]::ReadAllText($EnvFile) } else { '' }
+    if ((Get-EnvValue $content 'KILN_SERVER') -eq 'Hosted') { return 'Hosted' }
+    return 'Laptop'
+}
+
+function Assert-PrivateServerKeys {
+    # The phone address is public, so refuse to open it while the server uses Supabase's published keys.
+    $secrets = Join-Path $RepoRoot 'supabase\.env'
+    $content = if (Test-Path -LiteralPath $secrets) { [IO.File]::ReadAllText($secrets) } else { '' }
+    foreach ($name in @('KILN_JWT_SECRET', 'KILN_SECRET_KEY')) {
+        if ((Get-EnvValue $content $name).Length -lt 32) { throw "$name is missing from supabase/.env. See supabase/.env.example." }
+    }
+    $names = @(Get-KilnContainers)
+    $settings = @(& docker.exe inspect --format '{{range .Config.Env}}{{println .}}{{end}}' @names)
+    if ($LASTEXITCODE -ne 0) { throw 'Could not check the server keys.' }
+    foreach ($key in $PublicDefaultKeys) {
+        if (@($settings | Where-Object { $_.Contains($key) }).Count -gt 0) {
+            throw 'The local server still uses Supabase''s public built-in keys. Run npx supabase stop, then npx supabase start, once from the repository.'
+        }
+    }
+}
+
+function Get-LocalPublishableKey {
+    $savedPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'SilentlyContinue'
+        $status = @(& npx.cmd --no-install supabase status -o env --workdir $RepoRoot 2>$null)
+    } finally { $ErrorActionPreference = $savedPreference }
+    $key = Get-EnvValue ($status -join "`n") 'PUBLISHABLE_KEY'
+    if ($key -notmatch '^sb_publishable_[A-Za-z0-9_-]+$') { throw 'Could not read the local server''s public key (npx supabase status).' }
+    return $key
+}
+
+function Wait-Url([string]$Url, [int]$Expected, [int]$Seconds) {
+    $until = (Get-Date).AddSeconds($Seconds)
+    do {
+        $code = 0
+        try { $code = [int](Invoke-WebRequest -Uri $Url -Method Post -Body '{}' -UseBasicParsing -TimeoutSec 5).StatusCode }
+        catch { if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode } }
+        if ($code -eq $Expected) { return $true }
+        if ($code -ne 0 -and $code -ne 502 -and $code -ne 503) { return $false }
+        Start-Sleep -Seconds 2
+    } while ((Get-Date) -lt $until)
+    return $false
 }
 
 function Wait-Containers([string[]]$Names) {
@@ -151,14 +238,67 @@ function Wait-Containers([string[]]$Names) {
     throw 'KILN backend did not become healthy within 90 seconds. Run KILN Status.cmd and inspect Docker Desktop.'
 }
 
+function Start-AppProcess([string]$Name, [string]$FilePath, [string[]]$Arguments, [string]$WorkingDirectory) {
+    $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -WorkingDirectory $WorkingDirectory -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput (Join-Path $RuntimePath "$Name.log") -RedirectStandardError (Join-Path $RuntimePath "$Name-error.log")
+    Save-ProcessRecord $Name $process.Id
+    return $process
+}
+
+function Start-PhoneAddress([string]$Node, [string]$Tailscale) {
+    # Phones reach the laptop server only through the gatekeeper (scripts/kiln-gate.mjs), never directly.
+    Write-Host 'Starting the phone connection...'
+    $state = & $Tailscale status --json | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or $state.BackendState -ne 'Running') {
+        throw 'Tailscale is not signed in or is turned off. Open Tailscale from the Start menu and sign in, then try again.'
+    }
+    $url = 'https://' + ([string]$state.Self.DNSName).TrimEnd('.')
+    if (!(Test-ServerUrl $url)) { throw 'Tailscale did not report this computer''s address.' }
+
+    $gate = Start-AppProcess 'gate' $Node @(('"' + $GateScript + '"'), $GatePort, '54321') $RepoRoot
+    $script:newProcesses += $gate.Id
+    if (!(Wait-Url "http://127.0.0.1:$GatePort/mcp" 404 15)) { throw 'The gatekeeper did not start. See .kiln-runtime/gate-error.log.' }
+
+    $funnel = Start-AppProcess 'funnel' $Tailscale @('funnel', $GatePort) $RepoRoot
+    $script:newProcesses += $funnel.Id
+    $until = (Get-Date).AddSeconds(30)
+    do {
+        if (!(Get-Process -Id $funnel.Id -ErrorAction SilentlyContinue)) { throw 'Tailscale Funnel exited. See .kiln-runtime/funnel-error.log and funnel.log.' }
+        $text = (Get-Content -LiteralPath (Join-Path $RuntimePath 'funnel.log') -Raw -ErrorAction SilentlyContinue) + ''
+        if ($text -match 'https://login\.tailscale\.com\S*') {
+            throw "Funnel isn't turned on for your Tailscale account yet. Open this link, allow it, then start again: $($Matches[0])"
+        }
+        if ($text.Contains($url)) { break }
+        Start-Sleep -Seconds 1
+    } while ((Get-Date) -lt $until)
+    if (!$text.Contains($url)) { throw 'Tailscale Funnel did not start within 30 seconds. See .kiln-runtime/funnel.log.' }
+
+    # Check from the internet side that the database's developer tools stay closed.
+    if (!(Wait-Url "$url/mcp" 404 90)) { throw 'The public address did not answer as expected, so it was closed again. See .kiln-runtime/.' }
+    return $url
+}
+
 function Start-Kiln {
     $expoCli = Join-Path $MobilePath 'node_modules\expo\bin\cli'
     if (!(Test-Path -LiteralPath $expoCli)) { throw 'Install the mobile dependencies first: cd mobile; npm install' }
-    if (!$BackendOnly) { $cloudflared = Find-Cloudflared }
+    $choice = Get-ServerChoice
+    $hosted = $choice -eq 'Hosted' -and !$BackendOnly
+    if ($hosted) {
+        $saved = if (Test-Path -LiteralPath $HostedEnvFile) { [IO.File]::ReadAllText($HostedEnvFile) } else { '' }
+        $hostedValues = @{
+            EXPO_PUBLIC_SUPABASE_URL = Get-EnvValue $saved 'EXPO_PUBLIC_SUPABASE_URL'
+            EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY = Get-EnvValue $saved 'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY'
+            KILN_SERVER = 'Hosted'
+        }
+        if ($hostedValues.EXPO_PUBLIC_SUPABASE_URL -notmatch '\.supabase\.co$' -or $hostedValues.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY -notmatch '^sb_publishable_') {
+            throw 'Put the hosted project''s address and publishable key in mobile/.env.hosted.local first (see docs/local-services.md).'
+        }
+    }
+    if (!$BackendOnly -and !$hosted) { $tailscale = Find-Tailscale }
     $node = (Get-Command node.exe -ErrorAction Stop).Source
     $existing = @(Get-AppProcesses)
     if ($existing.Count -gt 0) {
-        Write-Host 'A KILN preview or tunnel is already running. Use Stop KILN before a clean restart.'
+        Write-Host 'A KILN preview or phone connection is already running. Use Stop KILN before a clean restart.'
         Show-KilnStatus
         return
     }
@@ -166,62 +306,52 @@ function Start-Kiln {
         throw 'Port 8081 is occupied. This script will not stop an unrelated process.'
     }
     New-Item -ItemType Directory -Path $RuntimePath -Force | Out-Null
-    $dockerWasRunning = Test-DockerReady
+    $dockerWasRunning = $hosted -or (Test-DockerReady)
     $newContainers = @()
-    $newProcesses = @()
+    $script:newProcesses = @()
     try {
-        if (!$dockerWasRunning) {
-            Write-Host 'Starting Docker Desktop...'
-            & docker.exe desktop start --timeout 60
-            if ($LASTEXITCODE -ne 0 -or !(Test-DockerReady)) { throw 'Docker Desktop did not start.' }
+        if ($hosted) {
+            Write-Host 'Using the hosted server; the laptop server stays off.'
+            $values = $hostedValues
+        } else {
+            if (!$dockerWasRunning) {
+                Write-Host 'Starting Docker Desktop...'
+                & docker.exe desktop start --timeout 60
+                if ($LASTEXITCODE -ne 0 -or !(Test-DockerReady)) { throw 'Docker Desktop did not start.' }
+            }
+            $all = @(Get-KilnContainers -All)
+            if ($all -notcontains 'supabase_db_kiln') {
+                throw 'Existing KILN containers were not found. Initialize them once with npx supabase start from the repository, then use this launcher.'
+            }
+            # The unused analytics stack consumed considerable RAM and its log collector was restarting.
+            $wanted = @($all | Where-Object { $_ -notmatch '^supabase_(analytics|vector)_kiln$' })
+            $running = @(Get-KilnContainers)
+            $newContainers = @($wanted | Where-Object { $_ -notin $running })
+            if ($running -notcontains 'supabase_db_kiln') {
+                & docker.exe start supabase_db_kiln
+                if ($LASTEXITCODE -ne 0) { throw 'Database could not start.' }
+                Wait-Containers @('supabase_db_kiln')
+            }
+            $remaining = @($newContainers | Where-Object { $_ -ne 'supabase_db_kiln' })
+            if ($remaining.Count -gt 0) {
+                & docker.exe start @remaining
+                if ($LASTEXITCODE -ne 0) { throw 'Some backend containers could not start.' }
+            }
+            Wait-Containers $wanted
+            if ($BackendOnly) { Write-Host 'KILN backend is running.' -ForegroundColor Green; return }
+            Assert-PrivateServerKeys
+            $values = @{
+                EXPO_PUBLIC_SUPABASE_URL = Start-PhoneAddress $node $tailscale
+                EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY = Get-LocalPublishableKey
+                KILN_SERVER = 'Laptop'
+            }
         }
-        $all = @(Get-KilnContainers -All)
-        if ($all -notcontains 'supabase_db_kiln') {
-            throw 'Existing KILN containers were not found. Initialize them once with npx supabase start from the repository, then use this launcher.'
-        }
-        # The unused analytics stack consumed considerable RAM and its log collector was restarting.
-        $wanted = @($all | Where-Object { $_ -notmatch '^supabase_(analytics|vector)_kiln$' })
-        $running = @(Get-KilnContainers)
-        $newContainers = @($wanted | Where-Object { $_ -notin $running })
-        if ($running -notcontains 'supabase_db_kiln') {
-            & docker.exe start supabase_db_kiln
-            if ($LASTEXITCODE -ne 0) { throw 'Database could not start.' }
-            Wait-Containers @('supabase_db_kiln')
-        }
-        $remaining = @($newContainers | Where-Object { $_ -ne 'supabase_db_kiln' })
-        if ($remaining.Count -gt 0) {
-            & docker.exe start @remaining
-            if ($LASTEXITCODE -ne 0) { throw 'Some backend containers could not start.' }
-        }
-        Wait-Containers $wanted
-        if ($BackendOnly) { Write-Host 'KILN backend is running.' -ForegroundColor Green; return }
+        $content = if (Test-Path -LiteralPath $EnvFile) { [IO.File]::ReadAllText($EnvFile) } else { '' }
+        [IO.File]::WriteAllText($EnvFile, (Update-KilnEnvContent $content $values), [Text.UTF8Encoding]::new($false))
+        Write-Host "The app uses the $($choice.ToLower()) server: $($values.EXPO_PUBLIC_SUPABASE_URL)"
 
-        Write-Host 'Starting the phone connection...'
-        $tunnelLog = Join-Path $RuntimePath 'tunnel-error.log'
-        $tunnel = Start-Process -FilePath $cloudflared -ArgumentList @('tunnel', '--no-autoupdate', '--url', 'http://localhost:54321') -WindowStyle Hidden -PassThru `
-            -RedirectStandardOutput (Join-Path $RuntimePath 'tunnel.log') -RedirectStandardError $tunnelLog
-        $newProcesses += $tunnel.Id
-        Save-ProcessRecord 'tunnel' $tunnel.Id
-        $until = (Get-Date).AddSeconds(45)
-        $url = $null
-        do {
-            if (!(Get-Process -Id $tunnel.Id -ErrorAction SilentlyContinue)) { throw 'Cloudflare Tunnel exited. See .kiln-runtime/tunnel-error.log.' }
-            $text = if (Test-Path -LiteralPath $tunnelLog) { Get-Content -LiteralPath $tunnelLog -Raw } else { '' }
-            if ($text -match 'https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com') { $url = $Matches[0]; break }
-            Start-Sleep -Seconds 1
-        } while ((Get-Date) -lt $until)
-        if (!$url) { throw 'Cloudflare did not provide a preview address within 45 seconds.' }
-        $envFile = Join-Path $MobilePath '.env.local'
-        $content = if (Test-Path -LiteralPath $envFile) { [IO.File]::ReadAllText($envFile) } else { '' }
-        $content = Update-KilnEnvContent $content $url
-        [IO.File]::WriteAllText($envFile, $content, [Text.UTF8Encoding]::new($false))
-        Write-Host 'Updated the phone backend address in mobile/.env.local; other settings were retained.'
-
-        $expo = Start-Process -FilePath $node -ArgumentList @(('"' + $expoCli + '"'), 'start', '--offline', '--port', '8081') `
-            -WorkingDirectory $MobilePath -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $RuntimePath 'expo.log') `
-            -RedirectStandardError (Join-Path $RuntimePath 'expo-error.log')
-        $newProcesses += $expo.Id
-        Save-ProcessRecord 'expo' $expo.Id
+        $expo = Start-AppProcess 'expo' $node @(('"' + $expoCli + '"'), 'start', '--offline', '--port', '8081') $MobilePath
+        $script:newProcesses += $expo.Id
         $until = (Get-Date).AddSeconds(120)
         $ready = $false
         do {
@@ -235,18 +365,18 @@ function Start-Kiln {
         } while ((Get-Date) -lt $until)
         if (!$ready) { throw 'Expo did not become ready within 120 seconds.' }
         Write-Host 'KILN is running. Browser preview: http://localhost:8081' -ForegroundColor Green
-        Write-Host 'Database dashboard: http://localhost:54323'
-        Write-Host 'Logs: .kiln-runtime/expo.log and tunnel-error.log'
+        if (!$hosted) { Write-Host 'Database dashboard: http://localhost:54323' }
+        Write-Host 'Logs: .kiln-runtime/'
         $network = Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway -and $_.IPv4Address } | Select-Object -First 1
         if ($network) { Write-Host "Expo Go on the same network: exp://$($network.IPv4Address[0].IPAddress):8081" }
     } catch {
         $reason = $_
-        foreach ($processId in $newProcesses) {
+        foreach ($processId in $script:newProcesses) {
             $process = Get-CimInstance Win32_Process -Filter "ProcessId=$processId"
             if ($process) { Stop-VerifiedProcessTree $process }
         }
         if (Test-Path -LiteralPath $StatePath) { Remove-Item -LiteralPath $StatePath }
-        if (Test-DockerReady) {
+        if (!$hosted -and (Test-DockerReady)) {
             if ($newContainers.Count -gt 0) { & docker.exe stop --timeout 20 @newContainers | Out-Null }
             if (!$dockerWasRunning) { Stop-IdleDocker }
         }
@@ -255,8 +385,10 @@ function Start-Kiln {
 }
 
 function Show-KilnStatus {
+    $content = if (Test-Path -LiteralPath $EnvFile) { [IO.File]::ReadAllText($EnvFile) } else { '' }
+    Write-Host "The app uses the $((Get-ServerChoice).ToLower()) server: $(Get-EnvValue $content 'EXPO_PUBLIC_SUPABASE_URL')"
     $processes = @(Get-AppProcesses)
-    Write-Host "KILN preview/tunnel processes: $($processes.Count)"
+    Write-Host "KILN preview/phone connection processes: $($processes.Count)"
     $processes | Select-Object Name, ProcessId | Format-Table -AutoSize
     if (Test-DockerReady) {
         $names = @(Get-KilnContainers)

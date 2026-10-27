@@ -1,16 +1,16 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 
 import { FixList } from '@/components/fix-list';
 import { useInvoice } from '@/components/invoice-parts';
 import { RecordGate } from '@/components/record-gate';
-import { Sheet } from '@/components/sheet';
-import { Button, ButtonRow, Card, Checkbox, Hair, Icon, IconButton, LineRow, ListRow, Notice, PageHeader, Pill, Row, Screen, T } from '@/components/ui';
-import { billedPrice, hasInvoice, hoursFor, invoiceSources, invoiceSummary, invoiceTax, invoiceTotals, receiptItemById, suggestionOpen, taxScope } from '@/data/selectors';
+import { SendInvoiceSheet } from '@/components/send-invoice';
+import { Button, ButtonRow, Card, Hair, Icon, IconButton, LineRow, ListRow, Notice, PageHeader, Pill, Row, Screen, T } from '@/components/ui';
+import { billedPrice, hasInvoice, hoursFor, invoiceSources, invoiceSummary, invoiceTax, invoiceTotals, paidOnline, receiptItemById, suggestionOpen, taxScope } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
+import { localDate } from '@/lib/invoice-aging';
 import { lineTotal } from '@/lib/money';
 import { font, radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -33,8 +33,18 @@ function InvoiceDraft() {
   const { invoice, job, customer, sent, paid, billing, agreed, lines, fixes, mode, dueDays, dueDate } = useInvoice();
   const sources = invoiceSources(state, invoice);
   const [sendOpen, setSendOpen] = useState(false);
-  const [byText, setByText] = useState(true);
-  const [byEmail, setByEmail] = useState(true);
+  const online = paidOnline(state, invoice.id);
+  const opened = state.opened[invoice.id];
+  const waiting = sent && !paid && state.mode === 'connected';
+
+  // the customer opens and pays outside the app: check now, then every 15 seconds while it's open here
+  const { refreshPay } = actions;
+  useFocusEffect(useCallback(() => {
+    if (!waiting) return;
+    void refreshPay();
+    const timer = setInterval(() => void refreshPay(), 15_000);
+    return () => clearInterval(timer);
+  }, [waiting, refreshPay]));
 
   const totals = invoiceTotals(state, invoice);
   const labor = lines.filter((l) => l.kind !== 'material');
@@ -53,6 +63,12 @@ function InvoiceDraft() {
     billing.materials === 'included' ? t('invoice.materialsIncluded') : t('invoice.materialsExtra'),
   ].filter(Boolean).join(' · ');
   const dueText = dueDays === 0 ? t('invoice.dueOnReceipt') : t('invoice.dueIn', { days: dueDays });
+  const paidHow = online.method === 'wallet' || online.method === 'card' ? t('invoice.paidWallet') : online.method === 'bank' ? t('invoice.paidBank')
+    : online.method === 'cash' ? t('invoice.paidCash') : t('invoice.paidOther');
+  const sentStatus = online.pending > 0 ? t('invoice.bankOnWay', { amount: f.money(online.pending) })
+    : online.failed ? t('invoice.payFailed')
+      : opened ? t('invoice.openedOn', { name: customer.firstName, date: f.date(localDate(opened)) })
+        : t('invoice.sentDone', { name: customer.firstName });
 
   return (
     <Screen
@@ -66,14 +82,15 @@ function InvoiceDraft() {
       }
       footer={
         paid ? (
-          <Notice text={t('flow.paidDone')} icon="check-circle" tone="accent" />
+          <Notice text={`${t('flow.paidDone')} ${paidHow}`} icon="check-circle" tone="accent" />
         ) : sent ? (
           <>
-            <Notice text={t('invoice.sentDone', { name: customer.firstName })} icon="send" />
-            <ButtonRow gap={10}>
-              <Button label={t('invoice.seeAsCustomer', { name: customer.firstName })} variant="outline" icon="eye" flex onPress={seeAsCustomer} />
-              <Button label={t('flow.markPaid')} icon="dollar-sign" variant="dark" flex onPress={() => actions.markPaid(invoice.id)} />
-            </ButtonRow>
+            <Notice text={sentStatus} icon={online.pending > 0 ? 'clock' : online.failed ? 'alert-circle' : opened ? 'eye' : 'send'} />
+            <Row gap={10}>
+              <IconButton icon="eye" label={t('invoice.seeAsCustomer', { name: customer.firstName })} onPress={seeAsCustomer} />
+              {state.mode === 'connected' ? <Button label={t('invoice.sendAgain')} variant="outline" icon="send" flex onPress={() => setSendOpen(true)} /> : null}
+              <Button label={t('invoice.markPaidCash')} icon="dollar-sign" variant="dark" flex onPress={() => actions.markPaid(invoice.id)} />
+            </Row>
           </>
         ) : (
           <Row gap={10}>
@@ -146,21 +163,8 @@ function InvoiceDraft() {
           onPress={() => router.push(`/invoice/${invoice.id}/options`)} />
       </Card>
 
-      <Sheet open={sendOpen} onClose={() => setSendOpen(false)} title={t('invoice.sendTo', { name: customer.firstName })}>
-        <T v="eyebrow">{t('invoice.sendBy')}</T>
-        <View style={{ gap: 4 }}>
-          <Checkbox label={t('invoice.byText')} value={byText} onChange={setByText} />
-          <Checkbox label={t('invoice.byEmail')} value={byEmail} onChange={setByEmail} />
-        </View>
-        <Row style={{ justifyContent: 'space-between' }}>
-          <T v="eyebrow" muted>{t('invoice.total')}</T>
-          <T v="money" style={{ fontSize: 24, fontFamily: font.black }}>{f.money(totals.total)}</T>
-        </Row>
-        <Button label={t('invoice.send')} icon="send" big disabled={!byText && !byEmail} onPress={() => {
-          actions.sendInvoice(invoice.id);
-          setSendOpen(false);
-        }} />
-      </Sheet>
+      <SendInvoiceSheet open={sendOpen} onClose={() => setSendOpen(false)} invoiceId={invoice.id} number={invoice.number}
+        customer={customer} totalCents={totals.total} />
     </Screen>
   );
 }

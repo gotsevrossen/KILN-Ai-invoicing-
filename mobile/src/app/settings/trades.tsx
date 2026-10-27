@@ -5,7 +5,7 @@ import { Sheet } from '@/components/sheet';
 import { TradePicker } from '@/components/trade-picker';
 import { Button, Notice, PageHeader, Screen, T } from '@/components/ui';
 import { useStore } from '@/data/store';
-import { ITEM_UNITS, itemsOnlyIn, starterItemIds, type TradeId } from '@/data/trades';
+import { ITEM_UNITS, itemsOnlyIn, starterCents, starterItemIds, type TradeId } from '@/data/trades';
 import type { PriceItem } from '@/data/types';
 import { useLang } from '@/i18n';
 import { usePalette } from '@/theme/use-palette';
@@ -34,7 +34,7 @@ export default function TradeSettings() {
         name: t(`items.${itemId}` as `items.trip`),
         unit: ITEM_UNITS[itemId],
         // same rule as setup: hourly owners start with their rate as the labor price
-        unitCents: itemId === 'labor' && state.profile.pricing === 'hourly' ? state.profile.rateCents : null,
+        unitCents: starterCents(itemId, state.profile.pricing, state.profile.rateCents),
       }));
     actions.setTrades([...trades, id], newItems);
     setResult({ added: newItems.length });

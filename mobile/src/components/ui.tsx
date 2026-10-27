@@ -229,7 +229,7 @@ export function Card({
 
 // ---------- Buttons ----------
 
-type ButtonVariant = 'primary' | 'dark' | 'outline' | 'soft' | 'ghost' | 'danger';
+type ButtonVariant = 'primary' | 'dark' | 'outline' | 'outlineInverse' | 'soft' | 'ghost' | 'danger';
 
 export function Button({
   label,
@@ -259,6 +259,8 @@ export function Button({
     primary: { bg: p.accent, fg: p.onAccent },
     dark: { bg: p.inverse, fg: p.onInverse },
     outline: { bg: 'transparent', fg: p.ink, border: p.ink },
+    // outline on an inverse card
+    outlineInverse: { bg: 'transparent', fg: p.onInverse, border: p.onInverse },
     soft: { bg: p.ground, fg: p.ink },
     ghost: { bg: 'transparent', fg: p.ink },
     // for actions that can't be undone, like deleting

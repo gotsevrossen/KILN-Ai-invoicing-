@@ -6,6 +6,18 @@ import { supabase } from '@/lib/supabase';
 import { loadAll } from './db';
 import { storeActions } from './store';
 
+/** Why a password-reset step failed, so the screen can explain it in the owner's language. */
+export type ResetProblem = { kind: 'badCode' | 'tooMany' | 'samePassword' | 'weakPassword' | 'other'; message: string };
+
+function resetProblem(error: { code?: string; status?: number; message: string }): ResetProblem {
+  const { code, status, message } = error;
+  if (code === 'otp_expired' || (status === 403 && !code)) return { kind: 'badCode', message };
+  if (code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit' || status === 429) return { kind: 'tooMany', message };
+  if (code === 'same_password') return { kind: 'samePassword', message };
+  if (code === 'weak_password') return { kind: 'weakPassword', message };
+  return { kind: 'other', message };
+}
+
 type Auth = {
   /** False when no server is set up (example mode). */
   configured: boolean;
@@ -17,6 +29,12 @@ type Auth = {
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
+  /** Emails a 6-digit reset code. Succeeds whether or not the email has an account (the server doesn't say). */
+  sendResetCode: (email: string) => Promise<ResetProblem | null>;
+  /** Checks the emailed code. On success the owner is signed in, ready to set a new password. */
+  verifyResetCode: (email: string, code: string) => Promise<ResetProblem | null>;
+  /** Saves a new password for the signed-in owner. */
+  setNewPassword: (password: string) => Promise<ResetProblem | null>;
 };
 
 const Ctx = createContext<Auth | null>(null);
@@ -83,6 +101,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async signOut() {
         await supabase?.auth.signOut();
+      },
+      async sendResetCode(email) {
+        if (!supabase) return { kind: 'other', message: 'No server is set up' };
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+        return error ? resetProblem(error) : null;
+      },
+      async verifyResetCode(email, code) {
+        if (!supabase) return { kind: 'other', message: 'No server is set up' };
+        const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'recovery' });
+        return error ? resetProblem(error) : null;
+      },
+      async setNewPassword(password) {
+        if (!supabase) return { kind: 'other', message: 'No server is set up' };
+        const { error } = await supabase.auth.updateUser({ password });
+        return error ? resetProblem(error) : null;
       },
     }),
     [ready, session, loadError],
