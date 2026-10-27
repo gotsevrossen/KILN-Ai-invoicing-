@@ -50,8 +50,10 @@ export function startGate(listenPort, targetPort) {
   };
   const server = http.createServer((req, res) => {
     if (!requestAllowed(req)) return refuse(res);
+    // Not behind Cloudflare, so this header can only be faked; signatures record the signer's address from it.
+    const { 'cf-connecting-ip': _faked, ...headers } = req.headers;
     const upstream = http.request(
-      { host: '127.0.0.1', port: targetPort, method: req.method, path: req.url, headers: req.headers },
+      { host: '127.0.0.1', port: targetPort, method: req.method, path: req.url, headers },
       (up) => {
         res.writeHead(up.statusCode ?? 502, up.headers);
         up.pipe(res);
