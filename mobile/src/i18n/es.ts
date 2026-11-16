@@ -367,7 +367,6 @@ const es: Dict = {
     loading: 'Cargando tu negocio…',
     loadFailed: 'No se pudo cargar tu negocio. Revisa tu señal.',
     retry: 'Intentar de nuevo',
-    syncFailed: 'No se pudo guardar un cambio: %{reason}. Revisa tu conexión.',
     saving: 'Guardando…',
     setupFailed: 'No se pudo guardar la configuración: %{reason}',
     forgot: '¿Olvidaste tu contraseña?',
@@ -390,6 +389,14 @@ const es: Dict = {
     offline: 'Sin conexión. Revisa tu señal e inténtalo de nuevo.',
     signInFailed: 'Algo salió mal. Inténtalo de nuevo.',
     passwordNotSaved: 'Tu código funcionó, pero la contraseña nueva no se guardó: %{reason}',
+  },
+  sync: {
+    offline: {
+      one: 'Sin señal. 1 cambio se guardará cuando vuelvas a tener conexión. Mantén KILN abierto.',
+      other: 'Sin señal. %{count} cambios se guardarán cuando vuelvas a tener conexión. Mantén KILN abierto.',
+    },
+    refused: 'No se pudo guardar un cambio.',
+    dismiss: 'Ocultar',
   },
   confirmPaid: {
     title: '¿Marcar como pagada?',

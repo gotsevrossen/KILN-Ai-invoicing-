@@ -14,6 +14,7 @@ import * as docsApi from './db-docs';
 import * as payApi from './db-pay';
 import * as photosApi from './db-photos';
 import * as sample from './sample';
+import { createSaveQueue, NoConnection } from './save-queue';
 import { business, customers, initialAssignments, initialEstimates, invoices, jobs, priceList, timeEntries } from './sample';
 import type { TradeId } from './trades';
 import type { Assignment, ChangeOrder, Customer, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, Photo, PhotoTag, PriceItem, Receipt, TimeEntry, Unit, WorkItem } from './types';
@@ -138,8 +139,12 @@ export interface State {
   version: number;
   mode: 'example' | 'connected';
   businessId: string | null;
-  /** Last save that failed, shown to the owner. */
+  /** Last save the server refused, shown to the owner. */
   syncError: string | null;
+  /** Changes not saved to the server yet. */
+  pendingSaves: number;
+  /** Saves are waiting for a connection. */
+  offline: boolean;
 }
 
 function initialState(): State {
@@ -191,6 +196,8 @@ function initialState(): State {
     mode: 'example',
     businessId: null,
     syncError: null,
+    pendingSaves: 0,
+    offline: false,
   };
 }
 
@@ -265,16 +272,27 @@ const subscribe = (l: () => void) => {
   };
 };
 
-// saves run one at a time, in order, so a quick off-then-on can't reach the server backwards
-let saveQueue: Promise<void> = Promise.resolve();
+// Saves run one at a time, in order (see save-queue.ts). One that gets no answer waits for signal
+// and is tried again; one the server refuses is shown to the owner, never dropped silently.
+// Waiting saves live only in memory: closing the app fully loses them.
+const saveQueue = createSaveQueue({
+  timers: { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) },
+  isNoConnection: (e) => e instanceof NoConnection || (e instanceof payApi.PayFailed && e.code === 'offline'),
+  onChange: ({ pending, offline }) => {
+    if (get().pendingSaves !== pending || get().offline !== offline) set((x) => ({ ...x, pendingSaves: pending, offline }));
+  },
+  onRefused: (e) => set((x) => ({ ...x, syncError: e instanceof Error ? e.message : String(e) })),
+});
 
-/** Save to the server in connected mode. A failed save is shown to the owner, never dropped silently. */
+/** Save to the server in connected mode. */
 function persist(task: (businessId: string) => Promise<void>): void {
   const { mode, businessId } = get();
   if (mode !== 'connected' || !businessId) return;
-  saveQueue = saveQueue
-    .then(() => task(businessId))
-    .catch((e: unknown) => set((x) => ({ ...x, syncError: e instanceof Error ? e.message : String(e) })));
+  saveQueue.add(() => task(businessId));
+}
+// the browser says the connection is back: don't wait for the next try
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('online', () => saveQueue.retryNow());
 }
 
 // Typing changes an estimate or summary on every keystroke; those save once typing pauses.
@@ -295,8 +313,12 @@ function flushSoon(key: string): void {
 // leaving the app (home button, switching apps) saves anything still waiting
 AppState.addEventListener('change', (next) => {
   if (next !== 'active') for (const key of [...soon.keys()]) flushSoon(key);
-  // Refresh date-dependent lists after returning to the app, including after midnight.
-  else if (get().mode === 'connected') set((s) => ({ ...s, version: s.version + 1 }));
+  else if (get().mode === 'connected') {
+    // back in the app: saves waiting on signal try again now
+    saveQueue.retryNow();
+    // Refresh date-dependent lists after returning to the app, including after midnight.
+    set((s) => ({ ...s, version: s.version + 1 }));
+  }
 });
 const saveEstimateSoon = (jobId: string) => persistSoon(`estimate:${jobId}`, (bid) => {
   const draft = get().estimates[jobId];
@@ -848,7 +870,10 @@ function makeActions() {
      * since a link only ever opens a sent invoice.
      */
     async invoiceLink(invoiceId: string): Promise<string> {
-      await saveQueue;
+      // fails fast (no connection) while saves wait on signal, instead of hanging
+      await saveQueue.settled().catch(() => {
+        throw new payApi.PayFailed('offline');
+      });
       return payApi.invoiceLink(invoiceId);
     },
     stripeSetupUrl: payApi.stripeSetupUrl,
@@ -969,6 +994,10 @@ function makeActions() {
       applyLoaded(loaded);
     },
     signedOut() {
+      // changes still waiting belong to the account that signed out
+      saveQueue.clear();
+      for (const waiting of soon.values()) clearTimeout(waiting.timer);
+      soon.clear();
       clearExampleData();
       set((s) => ({ ...connectedState(s), businessId: null, profile: { ...s.profile, onboarded: false }, version: s.version + 1 }));
     },

@@ -10,6 +10,7 @@ import { useJobDocs, type DocStatus } from '@/components/job-docs';
 import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Stepper } from '@/components/stepper';
+import { SyncBanner } from '@/components/sync-banner';
 import { WorkSheet } from '@/components/work-sheet';
 import { Button, Card, Field, Hair, Icon, IconButton, ListRow, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
 import { aiReady, draftChange, type ChangeDraft } from '@/data/ai';
@@ -195,6 +196,7 @@ function JobDetail() {
         </>
       }
       footer={next.action ? <Button label={next.action.label} icon={next.action.icon} big onPress={next.action.onPress} /> : undefined}>
+      <SyncBanner />
       <Card style={{ paddingVertical: 6, gap: 0 }}>
         <ListRow
           icon="user"

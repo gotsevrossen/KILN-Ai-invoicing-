@@ -366,7 +366,6 @@ const en = {
     loading: 'Loading your business…',
     loadFailed: "Couldn't load your business. Check your signal.",
     retry: 'Try again',
-    syncFailed: "Couldn't save a change: %{reason}. Check your connection.",
     saving: 'Saving…',
     setupFailed: "Couldn't save setup: %{reason}",
     forgot: 'Forgot password?',
@@ -389,6 +388,14 @@ const en = {
     offline: 'No connection. Check your signal and try again.',
     signInFailed: 'Something went wrong. Try again.',
     passwordNotSaved: "Your code worked, but the new password wasn't saved: %{reason}",
+  },
+  sync: {
+    offline: {
+      one: "No signal. 1 change will save when you're back online. Keep KILN open.",
+      other: "No signal. %{count} changes will save when you're back online. Keep KILN open.",
+    },
+    refused: "A change couldn't be saved.",
+    dismiss: 'Dismiss',
   },
   confirmPaid: {
     title: 'Mark as paid?',

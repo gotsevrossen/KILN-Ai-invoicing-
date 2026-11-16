@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { SyncBanner } from '@/components/sync-banner';
 import { Card, Field, Hair, IconButton, Notice, PageHeader, Pill, Row, Screen, Segmented, T, type Tone } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { customerOf, hoursFor, jobAmount, jobGroup, jobOverdueDays, jobStatus, type JobStatus } from '@/data/selectors';
@@ -52,6 +53,7 @@ export default function Jobs() {
       header={
         <PageHeader title={t('jobs.title')} right={<IconButton icon="plus" label={t('common.newJob')} tone="dark" onPress={() => router.push('/new-job')} />} />
       } tabs>
+      <SyncBanner />
       <Field value={query} onChangeText={setQuery} placeholder={t('jobs.search')} accessibilityLabel={t('jobs.search')} returnKeyType="search" />
       <Segmented
         label={t('jobs.title')}

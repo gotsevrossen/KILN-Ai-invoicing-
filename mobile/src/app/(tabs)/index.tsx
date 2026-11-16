@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 
 import { LogoMark } from '@/components/logo';
+import { SyncBanner } from '@/components/sync-banner';
 import { Button, Card, Icon, IconButton, ListRow, Notice, Pill, Row, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { changeOrderTotal, homeSummary, invoiceForJob, invoiceTotals, jobAmount, jobById, jobOverdueDays, jobStatus, unsortedItems } from '@/data/selectors';
@@ -42,6 +43,7 @@ export default function Home() {
           </Row>
         </Row>
       }>
+      <SyncBanner />
 
       <Card tone="accent" style={{ padding: 22, gap: 6, borderRadius: radius.lg }}>
         <T v="eyebrow" color={p.onAccent}>{t('home.owedToYou')}</T>
@@ -60,7 +62,6 @@ export default function Home() {
         <T v="title" style={{ fontSize: 28, lineHeight: 30 }} accessibilityRole="header">{t('home.needsYou')}</T>
       </Row>
 
-      {state.syncError ? <Notice text={t('auth.syncFailed', { reason: state.syncError })} tone="danger" icon="alert-circle" /> : null}
       {nothing ? <Notice text={t('home.allClear')} /> : null}
 
       {noJobs ? (
