@@ -6,6 +6,7 @@ import * as sample from '@/data/sample';
 import { changeOrderTotal, homeSummary, invoiceForJob, invoiceTotals, jobAmount, jobById, jobOverdueDays, jobStatus, unsortedItems } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { userError } from '@/lib/user-errors';
 import { useFormat } from '@/lib/format';
 import { font, radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -60,7 +61,7 @@ export default function Home() {
         <T v="title" style={{ fontSize: 28, lineHeight: 30 }} accessibilityRole="header">{t('home.needsYou')}</T>
       </Row>
 
-      {state.syncError ? <Notice text={t('auth.syncFailed', { reason: state.syncError })} tone="danger" icon="alert-circle" /> : null}
+      {state.syncError ? <Notice text={t('auth.syncFailed', { reason: userError(t, state.syncError) })} tone="danger" icon="alert-circle" /> : null}
       {nothing ? <Notice text={t('home.allClear')} /> : null}
 
       {receipt ? (

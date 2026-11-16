@@ -7,6 +7,7 @@ import { Button, Card, Hair, Notice, PageHeader, Screen, SwitchRow, T } from '@/
 import { PayFailed } from '@/data/db-pay';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { userError } from '@/lib/user-errors';
 
 export default function PaymentSettings() {
   const { t } = useLang();
@@ -17,14 +18,14 @@ export default function PaymentSettings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reason = (e: unknown) => t(`payErrors.${e instanceof PayFailed ? e.code : 'failed'}`);
+  const reason = (e: unknown) => e instanceof PayFailed ? t(`payErrors.${e.code}`) : userError(t, e);
 
   // coming back from Stripe's page (or opening this screen) asks Stripe what's ready now
   const { checkStripe } = actions;
   useFocusEffect(useCallback(() => {
     if (!connected) return;
-    checkStripe().catch(() => {});
-  }, [connected, checkStripe]));
+    checkStripe().catch((e: unknown) => setError(t('online.failed', { reason: e instanceof PayFailed ? t(`payErrors.${e.code}`) : userError(t, e) })));
+  }, [connected, checkStripe, t]));
 
   const setUp = async () => {
     setError(null);

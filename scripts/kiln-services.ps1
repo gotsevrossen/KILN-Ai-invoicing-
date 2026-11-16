@@ -350,25 +350,27 @@ function Start-Kiln {
         [IO.File]::WriteAllText($EnvFile, (Update-KilnEnvContent $content $values), [Text.UTF8Encoding]::new($false))
         Write-Host "The app uses the $($choice.ToLower()) server: $($values.EXPO_PUBLIC_SUPABASE_URL)"
 
-        $expo = Start-AppProcess 'expo' $node @(('"' + $expoCli + '"'), 'start', '--offline', '--port', '8081') $MobilePath
+        $expo = Start-AppProcess 'expo' $node @(('"' + $expoCli + '"'), 'start', '--go', '--tunnel', 'ngrok', '--port', '8081') $MobilePath
         $script:newProcesses += $expo.Id
         $until = (Get-Date).AddSeconds(120)
         $ready = $false
         do {
             if (!(Get-Process -Id $expo.Id -ErrorAction SilentlyContinue)) { throw 'Expo exited. See .kiln-runtime/expo-error.log.' }
             try {
-                $status = Invoke-WebRequest -Uri 'http://localhost:8081/status' -UseBasicParsing -TimeoutSec 2
-                $body = if ($status.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($status.Content) } else { [string]$status.Content }
-                if ($body -match '^packager-status:running$') { $ready = $true; break }
+                $launch = Invoke-RestMethod -Uri 'http://localhost:8081/_expo/open?platform=ios&runtime=expo' -TimeoutSec 2
+                if ($launch.url -match '^exps?://[^/?]+\.exp\.direct(?:[/?]|$)') {
+                    $phoneUrl = [string]$launch.url
+                    $ready = $true
+                    break
+                }
             } catch { }
             Start-Sleep -Seconds 1
         } while ((Get-Date) -lt $until)
-        if (!$ready) { throw 'Expo did not become ready within 120 seconds.' }
+        if (!$ready) { throw 'The Expo tunnel did not become ready within 120 seconds.' }
         Write-Host 'KILN is running. Browser preview: http://localhost:8081' -ForegroundColor Green
         if (!$hosted) { Write-Host 'Database dashboard: http://localhost:54323' }
         Write-Host 'Logs: .kiln-runtime/'
-        $network = Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway -and $_.IPv4Address } | Select-Object -First 1
-        if ($network) { Write-Host "Expo Go on the same network: exp://$($network.IPv4Address[0].IPAddress):8081" }
+        Write-Host "Expo Go phone address: $phoneUrl"
     } catch {
         $reason = $_
         foreach ($processId in $script:newProcesses) {

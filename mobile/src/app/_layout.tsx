@@ -1,16 +1,15 @@
-import {
-  Archivo_500Medium,
-  Archivo_600SemiBold,
-  Archivo_700Bold,
-  Archivo_800ExtraBold,
-  useFonts,
-} from '@expo-google-fonts/archivo';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { Archivo_500Medium } from '@expo-google-fonts/archivo/500Medium';
+import { Archivo_600SemiBold } from '@expo-google-fonts/archivo/600SemiBold';
+import { Archivo_700Bold } from '@expo-google-fonts/archivo/700Bold';
+import { Archivo_800ExtraBold } from '@expo-google-fonts/archivo/800ExtraBold';
+import { useFonts } from '@expo-google-fonts/archivo/useFonts';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ErrorScreen } from '@/components/error-screen';
 import { AuthProvider } from '@/data/auth';
 import { StoreProvider } from '@/data/store';
 import { LanguageProvider } from '@/i18n';
@@ -18,6 +17,14 @@ import { ThemeModeProvider, useScheme } from '@/theme/theme-mode';
 import { dark, light } from '@/theme/tokens';
 
 SplashScreen.preventAutoHideAsync();
+
+export const unstable_settings = { screenErrorBoundary: ErrorScreen };
+
+export function ErrorBoundary(props: ErrorBoundaryProps) {
+  // The root can fail before its language provider mounts.
+  useEffect(() => { void SplashScreen.hideAsync(); }, []);
+  return <LanguageProvider><ErrorScreen {...props} /></LanguageProvider>;
+}
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({ Archivo_500Medium, Archivo_600SemiBold, Archivo_700Bold, Archivo_800ExtraBold });

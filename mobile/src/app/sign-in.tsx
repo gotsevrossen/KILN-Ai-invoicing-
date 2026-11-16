@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { Button, Field, Notice, Row, Screen, Segmented, T } from '@/components/ui';
 import { useAuth, type ResetProblem } from '@/data/auth';
 import { useLang } from '@/i18n';
+import { userError } from '@/lib/user-errors';
 import { font } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
@@ -52,12 +53,12 @@ export default function SignIn() {
     if (problem.kind === 'tooMany') return t('auth.tooMany');
     if (problem.kind === 'samePassword') return t('auth.samePassword');
     if (problem.kind === 'weakPassword') return t('auth.weakPassword');
-    return problem.message;
+    return userError(t, problem);
   };
 
   const switchMode = (next: 'in' | 'up' | 'reset') => {
     // a used reset code signs the owner in; leaving without a new password signs them back out
-    if (verified) auth.signOut();
+    if (verified) void auth.signOut().catch((e: unknown) => setError(userError(t, e)));
     // the typed password isn't reused between signing in and choosing a new one
     if (next === 'reset' || mode === 'reset') setPassword('');
     setMode(next);
@@ -70,47 +71,61 @@ export default function SignIn() {
   const submit = async () => {
     setBusy(true);
     setError(null);
-    const err = mode === 'in' ? await auth.signIn(email, password) : await auth.signUp(email, password);
-    setBusy(false);
-    if (err) setError(err);
-    else router.replace('/');
+    try {
+      const err = mode === 'in' ? await auth.signIn(email, password) : await auth.signUp(email, password);
+      if (err) setError(userError(t, err));
+      else router.replace('/');
+    } catch (e) {
+      setError(userError(t, e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   // Same message whether or not the email has an account, so this can't be used to find out who does.
   const sendCode = async () => {
     setBusy(true);
     setError(null);
-    const problem = await auth.sendResetCode(email);
-    setBusy(false);
-    if (problem) {
-      setError(resetMessage(problem));
-      return;
+    try {
+      const problem = await auth.sendResetCode(email);
+      if (problem) {
+        setError(resetMessage(problem));
+        return;
+      }
+      setCodeSent(true);
+      setCode('');
+      setResendAt(Date.now() + RESEND_WAIT * 1000);
+      setNow(Date.now());
+    } catch (e) {
+      setError(userError(t, e));
+    } finally {
+      setBusy(false);
     }
-    setCodeSent(true);
-    setCode('');
-    setResendAt(Date.now() + RESEND_WAIT * 1000);
-    setNow(Date.now());
   };
 
   const saveNewPassword = async () => {
     setBusy(true);
     setError(null);
-    if (!verified) {
-      const problem = await auth.verifyResetCode(email, code);
+    try {
+      if (!verified) {
+        const problem = await auth.verifyResetCode(email, code);
+        if (problem) {
+          setError(resetMessage(problem));
+          return;
+        }
+        setVerified(true);
+      }
+      const problem = await auth.setNewPassword(password);
       if (problem) {
-        setBusy(false);
-        setError(resetMessage(problem));
+        setError(problem.kind === 'other' ? t('auth.passwordNotSaved', { reason: userError(t, problem) }) : resetMessage(problem));
         return;
       }
-      setVerified(true);
+      router.replace('/');
+    } catch (e) {
+      setError(userError(t, e));
+    } finally {
+      setBusy(false);
     }
-    const problem = await auth.setNewPassword(password);
-    setBusy(false);
-    if (problem) {
-      setError(problem.kind === 'other' ? t('auth.passwordNotSaved', { reason: problem.message }) : resetMessage(problem));
-      return;
-    }
-    router.replace('/');
   };
 
   if (mode === 'reset') {

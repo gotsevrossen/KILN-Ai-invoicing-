@@ -96,10 +96,12 @@ const toJob = (r: JobRow): Job => ({
 export async function loadAll(): Promise<Loaded | null> {
   const b = ok(await db().from('businesses').select('*').maybeSingle<BusinessRow>());
   if (!b) return null;
-  const [items, customers, jobs] = await Promise.all([
+  const [items, customers, jobs, photos, docs] = await Promise.all([
     db().from('price_list_items').select('id, catalog_id, name, unit, unit_cents').order('created_at').returns<PriceRow[]>(),
     db().from('customers').select('id, name, phone, lang').order('created_at').returns<CustomerRow[]>(),
     db().from('jobs').select('id, customer_id, title, address, pricing, rate_cents, work_order, private_note, estimate_skipped, reopened').order('created_at', { ascending: false }).returns<JobRow[]>(),
+    loadPhotos(),
+    loadDocs(),
   ]);
   return {
     businessId: b.id,
@@ -122,11 +124,11 @@ export async function loadAll(): Promise<Loaded | null> {
     priceList: (ok(items) ?? []).map(toPriceItem),
     customers: (ok(customers) ?? []).map(toCustomer),
     jobs: (ok(jobs) ?? []).map(toJob),
-    photos: await loadPhotos(),
-    docs: await loadDocs({
-      skipped: (ok(jobs) ?? []).filter((j) => j.estimate_skipped).map((j) => j.id),
-      reopened: (ok(jobs) ?? []).filter((j) => j.reopened).map((j) => j.id),
-    }),
+    photos,
+    docs: { ...docs,
+      skippedEstimates: (ok(jobs) ?? []).filter((j) => j.estimate_skipped).map((j) => j.id),
+      reopenedJobs: (ok(jobs) ?? []).filter((j) => j.reopened).map((j) => j.id),
+    },
   };
 }
 

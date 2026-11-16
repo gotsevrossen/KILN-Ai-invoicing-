@@ -194,7 +194,9 @@ export function invoiceSources(state: State, invoice: Invoice) {
 }
 
 export function invoiceTotals(state: State, invoice: Invoice): Totals {
-  return documentTotals(invoiceLines(state, invoice), invoiceTax(state, invoice));
+  const totals = documentTotals(invoiceLines(state, invoice), invoiceTax(state, invoice));
+  const paid = Math.max(paidOnline(state, invoice.id).paid, state.paidInvoices.includes(invoice.id) ? totals.total : 0);
+  return { ...totals, paid, due: Math.max(0, totals.total - paid) };
 }
 
 export function suggestionOpen(state: State, invoice: Invoice): boolean {
@@ -337,11 +339,13 @@ export function homeSummary(state: State) {
   for (const job of sample.jobs) {
     const status = jobStatus(state, job);
     const amount = jobAmount(state, job);
+    const invoice = invoiceForJob(job.id);
+    const remaining = invoice ? invoiceTotals(state, invoice).due : amount;
     if (status === 'overdue') {
       overdueCount += 1;
-      overdueCents += amount;
+      overdueCents += remaining;
     }
-    if (status === 'overdue' || status === 'viewed' || status === 'sent') owed += amount;
+    if (status === 'overdue' || status === 'viewed' || status === 'sent') owed += remaining;
     if (status === 'paid') paidCents += amount;
   }
   return { owed, overdueCount, overdueCents, paidCents };

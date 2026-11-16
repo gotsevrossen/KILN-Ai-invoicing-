@@ -1,4 +1,4 @@
-import type { Unit } from './types';
+import type { PriceItem, Unit } from './types';
 
 // What each trade sees: its job types and the price list items it usually charges for.
 // Names live in the translation files (trades.*, jobTypes.*, items.*). Starter price
@@ -61,6 +61,7 @@ export const ITEM_UNITS: Record<string, Unit> = {
   'floor-lvp': 'sq_ft',
   'floor-tile': 'sq_ft',
   'floor-carpet': 'sq_ft',
+  'carpet-repair': 'each',
   'floor-remove': 'sq_ft',
   baseboard: 'linear_ft',
   mount: 'each',
@@ -152,6 +153,7 @@ export const TRADES: TradeDef[] = [
       { id: 'lvp', ask: ['floor-lvp', 'floor-remove', 'baseboard'], extras: ['haul'] },
       { id: 'tile', ask: ['floor-tile', 'floor-remove'], extras: ['haul'] },
       { id: 'carpet', ask: ['floor-carpet', 'floor-remove'], extras: ['haul'] },
+      { id: 'carpetRepair', ask: ['carpet-repair'], extras: ['trip'] },
     ],
   },
   {
@@ -213,6 +215,20 @@ export function starterItemIds(trades: TradeId[]): string[] {
     }
   }
   return ids;
+}
+
+/** Starter items for an added trade, retaining all existing items and owner-entered prices. */
+export function starterItemsToAdd(
+  trade: TradeId,
+  currentItems: PriceItem[],
+  pricing: 'hourly' | 'flat',
+  rateCents: number | null,
+  itemName: (id: string) => string,
+): PriceItem[] {
+  const have = new Set(currentItems.map((item) => item.id));
+  return starterItemIds([trade])
+    .filter((id) => !have.has(id))
+    .map((id) => ({ id, name: itemName(id), unit: ITEM_UNITS[id], unitCents: starterCents(id, pricing, rateCents) }));
 }
 
 /** Starter items only the removed trade uses. Items a remaining trade still uses (trip fee, labor…) are kept. */

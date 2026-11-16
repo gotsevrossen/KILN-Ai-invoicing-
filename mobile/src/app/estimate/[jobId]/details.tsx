@@ -2,17 +2,19 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { TextInput, View } from 'react-native';
 
-import { draftScopeInBackground, guessInputFor } from '@/components/ai-parts';
+import { draftScopeInBackground } from '@/components/ai-parts';
 import { CUSTOM, EstimatePage, parseQty, pickJobType, useEstimate, useLineMaker } from '@/components/estimate-parts';
 import { PriceItemPicker } from '@/components/price-item-picker';
 import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
+import { TradePicker } from '@/components/trade-picker';
 import { Button, Card, Chip, Icon, IconButton, Pill, Row, T } from '@/components/ui';
 import { aiReady, guessJob } from '@/data/ai';
+import { guessInputFor } from '@/data/ai-input';
 import { hasJob } from '@/data/selectors';
 import * as sample from '@/data/sample';
 import { currentState, useStore } from '@/data/store';
-import { tradeById, type TradeId } from '@/data/trades';
+import { starterItemsToAdd, tradeById, type TradeId } from '@/data/trades';
 import type { JobScope } from '@/data/types';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -31,12 +33,22 @@ function EstimateDetails() {
   const trades = state.profile.trades;
   const { trade, jobTypeId, isCustom, jobType } = pickJobType(trades, job.id, draft.scope);
   const [typeGuessed, setTypeGuessed] = useState(false);
+  const [suggestedTrade, setSuggestedTrade] = useState<TradeId | null>(null);
+  const [tradeOpen, setTradeOpen] = useState(false);
+  const tradeChoices = [...new Set([...trades, ...(suggestedTrade ? [suggestedTrade] : []), trade.id])];
   // the owner picked something: a guess arriving late never undoes it
   const touched = useRef(false);
   const setScope = (patch: Partial<JobScope>) => {
     touched.current = true;
     setTypeGuessed(false);
     actions.updateEstimate(job.id, { scope: { ...draft.scope, tradeId: trade.id, jobTypeId, ...patch } });
+  };
+  const addTrade = () => {
+    const latest = currentState();
+    if (latest.profile.trades.includes(trade.id)) return;
+    const items = starterItemsToAdd(trade.id, latest.priceList, latest.profile.pricing, latest.profile.rateCents,
+      (id) => t(`items.${id}` as 'items.trip'));
+    actions.setTrades([...latest.profile.trades, trade.id], items);
   };
 
   // hourly jobs: hours go in the hours box at the top, so labor isn't asked twice
@@ -61,7 +73,7 @@ function EstimateDetails() {
   const asks = [...new Set([...baseAsk, ...extraAsk])].filter((id) => !(hourly && id === 'labor'));
 
   // A fresh estimate: KILN reads the job's title and notes and fills in what they clearly say.
-  // Everything stays a suggestion until the owner taps Build.
+  // The owner chooses which suggested items and quantities to add.
   const [shouldGuess] = useState(() => aiReady(state.mode) && !draft.scope?.jobTypeId && draft.lines.length === 0 && !!job.title.trim());
   const [guessDone, setGuessDone] = useState(false);
   const [guessed, setGuessed] = useState<string[]>([]);
@@ -73,6 +85,7 @@ function EstimateDetails() {
       if (!live || !g || touched.current || now?.scope?.jobTypeId || now?.lines.length) return;
       if (g.tradeId && g.jobTypeId) {
         actions.updateEstimate(job.id, { scope: { ...now?.scope, tradeId: g.tradeId, jobTypeId: g.jobTypeId } });
+        setSuggestedTrade(g.tradeId);
         setTypeGuessed(true);
       }
       const latest = currentState();
@@ -131,16 +144,18 @@ function EstimateDetails() {
         </Row>
       ) : null}
       {/* three separate questions: which trade, which kind of job, and how much */}
-      {trades.length > 1 ? (
-        <Card style={{ gap: 12 }}>
-          <T v="eyebrow">{t('estimate.tradeHeading')}</T>
-          <Row gap={8} style={{ flexWrap: 'wrap' }}>
-            {trades.map((id: TradeId) => (
-              <Chip key={id} label={t(`trades.${id}`)} selected={id === trade.id} onPress={() => setScope({ tradeId: id, jobTypeId: tradeById(id).jobTypes[0].id })} />
-            ))}
-          </Row>
-        </Card>
-      ) : null}
+      <Card style={{ gap: 12 }}>
+        <T v="eyebrow">{t('estimate.tradeHeading')}</T>
+        <Row gap={8} style={{ flexWrap: 'wrap' }}>
+          {tradeChoices.map((id) => (
+            <Chip key={id} label={t(`trades.${id}`)} selected={id === trade.id} onPress={() => setScope({ tradeId: id, jobTypeId: tradeById(id).jobTypes[0].id })} />
+          ))}
+        </Row>
+        <Button label={t('estimate.otherWork')} icon="plus" variant="outline" onPress={() => setTradeOpen(true)} />
+        {!trades.includes(trade.id) ? (
+          <Button label={t('estimate.addTrade', { trade: t(`trades.${trade.id}`) })} icon="plus" onPress={addTrade} />
+        ) : null}
+      </Card>
 
       <Card style={{ gap: 12 }}>
         <T v="eyebrow">{t('estimate.jobTypeHeading')}</T>
@@ -200,6 +215,12 @@ function EstimateDetails() {
         </Row>
       ) : null}
 
+      <Sheet open={tradeOpen} onClose={() => setTradeOpen(false)} title={t('estimate.otherWork')}>
+        <TradePicker value={[trade.id]} onToggle={(id) => {
+          setScope({ tradeId: id, jobTypeId: tradeById(id).jobTypes[0].id });
+          setTradeOpen(false);
+        }} />
+      </Sheet>
       <Sheet open={pickOpen} onClose={() => setPickOpen(false)} title={t('estimate.pickItem')} scroll={false}>
         <PriceItemPicker
           items={state.priceList.filter((item) => !asks.includes(item.id) && !(hourly && item.id === 'labor'))}

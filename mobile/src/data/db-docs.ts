@@ -46,6 +46,12 @@ function scopeFrom(value: unknown): JobScope | undefined {
 const taxFrom = (r: { tax_rate_bps: number | null; tax_labor: boolean | null; tax_materials: boolean | null }): TaxRule | undefined =>
   r.tax_rate_bps === null ? undefined : { rateBps: r.tax_rate_bps, labor: !!r.tax_labor, materials: !!r.tax_materials };
 
+function appendToGroup<T>(groups: Map<string, T[]>, key: string, item: T): void {
+  const group = groups.get(key);
+  if (group) group.push(item);
+  else groups.set(key, [item]);
+}
+
 // ---------------------------------------------------------------- loading
 
 interface TimeRow { id: string; job_id: string; worked_on: string; hundredths: number; note: string }
@@ -107,7 +113,7 @@ export interface LoadedDocs {
 }
 
 /** Everything saved on the business's jobs. Job flags (skipped, reopened) come with the jobs. */
-export async function loadDocs(flags: { skipped: string[]; reopened: string[] }): Promise<LoadedDocs> {
+export async function loadDocs(): Promise<LoadedDocs> {
   const [times, notes, work, estimates, estLines, changes, signatures, invoices, invLines, receipts, items, itemJobs] = await Promise.all([
     db().from('time_entries').select('id, job_id, worked_on, hundredths, note').order('created_at').returns<TimeRow[]>(),
     db().from('notes').select('id, job_id, body, created_at').order('created_at').returns<NoteRow[]>(),
@@ -131,8 +137,8 @@ export async function loadDocs(flags: { skipped: string[]; reopened: string[] })
       unit: r.unit, qtyHundredths: r.qty_hundredths, unitCents: r.unit_cents, kind: r.kind,
     })),
     estimates: {},
-    skippedEstimates: flags.skipped,
-    reopenedJobs: flags.reopened,
+    skippedEstimates: [],
+    reopenedJobs: [],
     changeOrders: [],
     signed: {},
     declinedChanges: [],
@@ -151,7 +157,7 @@ export async function loadDocs(flags: { skipped: string[]; reopened: string[] })
 
   const linesOf = new Map<string, EstimateLine[]>();
   for (const l of ok(estLines) ?? []) {
-    linesOf.set(l.estimate_id, [...(linesOf.get(l.estimate_id) ?? []), {
+    appendToGroup(linesOf, l.estimate_id, {
       id: l.id,
       priceItemId: l.price_item_ref ?? undefined,
       description: l.description,
@@ -161,7 +167,7 @@ export async function loadDocs(flags: { skipped: string[]; reopened: string[] })
       fromVoice: l.from_voice || undefined,
       kind: l.kind,
       excluded: l.excluded || undefined,
-    }]);
+    });
   }
   for (const e of ok(estimates) ?? []) {
     docs.estimates[e.job_id] = {
@@ -186,8 +192,8 @@ export async function loadDocs(flags: { skipped: string[]; reopened: string[] })
 
   const invLinesOf = new Map<string, DocLine[]>();
   for (const l of ok(invLines) ?? []) {
-    invLinesOf.set(l.invoice_id, [...(invLinesOf.get(l.invoice_id) ?? []),
-      { id: l.id, kind: l.kind, description: l.description, qtyHundredths: l.qty_hundredths, unitCents: l.unit_cents, unit: l.unit ?? undefined }]);
+    appendToGroup(invLinesOf, l.invoice_id,
+      { id: l.id, kind: l.kind, description: l.description, qtyHundredths: l.qty_hundredths, unitCents: l.unit_cents, unit: l.unit ?? undefined });
   }
   for (const i of ok(invoices) ?? []) {
     docs.invoices.push({ id: i.id, number: i.number, jobId: i.job_id, laborDescription: i.labor_description, fees: [], summary: i.summary });
@@ -215,11 +221,11 @@ export async function loadDocs(flags: { skipped: string[]; reopened: string[] })
   }
 
   const jobsOf = new Map<string, ItemJobRow[]>();
-  for (const r of ok(itemJobs) ?? []) jobsOf.set(r.receipt_item_id, [...(jobsOf.get(r.receipt_item_id) ?? []), r]);
+  for (const r of ok(itemJobs) ?? []) appendToGroup(jobsOf, r.receipt_item_id, r);
   const itemsOf = new Map<string, ReceiptItem[]>();
   for (const it of ok(items) ?? []) {
-    itemsOf.set(it.receipt_id, [...(itemsOf.get(it.receipt_id) ?? []),
-      { id: it.id, line: it.line, name: it.name, qtyLabel: it.qty_label, costCents: it.cost_cents, flagged: it.flagged || undefined, likelyJobIds: [] }]);
+    appendToGroup(itemsOf, it.receipt_id,
+      { id: it.id, line: it.line, name: it.name, qtyLabel: it.qty_label, costCents: it.cost_cents, flagged: it.flagged || undefined, likelyJobIds: [] });
     if (it.fixed_name) docs.fixedNames[it.id] = it.fixed_name;
     if (it.markup_off) docs.markupOff[it.id] = true;
     if (it.assignment === 'personal' || it.assignment === 'overhead') docs.assignments[it.id] = { type: it.assignment };

@@ -5,7 +5,7 @@ import { Sheet } from '@/components/sheet';
 import { TradePicker } from '@/components/trade-picker';
 import { Button, Notice, PageHeader, Screen, T } from '@/components/ui';
 import { useStore } from '@/data/store';
-import { ITEM_UNITS, itemsOnlyIn, starterCents, starterItemIds, type TradeId } from '@/data/trades';
+import { itemsOnlyIn, starterItemsToAdd, type TradeId } from '@/data/trades';
 import type { PriceItem } from '@/data/types';
 import { useLang } from '@/i18n';
 import { usePalette } from '@/theme/use-palette';
@@ -26,16 +26,8 @@ export default function TradeSettings() {
   const [confirm, setConfirm] = useState<{ id: TradeId; items: PriceItem[] } | null>(null);
 
   const turnOn = (id: TradeId) => {
-    const have = new Set(state.priceList.map((i) => i.id));
-    const newItems: PriceItem[] = starterItemIds([id])
-      .filter((itemId) => !have.has(itemId))
-      .map((itemId) => ({
-        id: itemId,
-        name: t(`items.${itemId}` as `items.trip`),
-        unit: ITEM_UNITS[itemId],
-        // same rule as setup: hourly owners start with their rate as the labor price
-        unitCents: starterCents(itemId, state.profile.pricing, state.profile.rateCents),
-      }));
+    const newItems = starterItemsToAdd(id, state.priceList, state.profile.pricing, state.profile.rateCents,
+      (itemId) => t(`items.${itemId}` as 'items.trip'));
     actions.setTrades([...trades, id], newItems);
     setResult({ added: newItems.length });
   };

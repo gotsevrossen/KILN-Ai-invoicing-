@@ -8,6 +8,7 @@ import type { Customer } from '@/data/types';
 import { useLang, useTFor } from '@/i18n';
 import { emailMessage, textMessage } from '@/lib/contact';
 import { formatters } from '@/lib/format';
+import { userError } from '@/lib/user-errors';
 import { tap } from '@/theme/tokens';
 
 import { Sheet } from './sheet';
@@ -40,7 +41,7 @@ export function SendInvoiceSheet({ open, onClose, invoiceId, number, customer, t
     setError(null);
     setBusy(how);
     try {
-      actions.sendInvoice(invoiceId);
+      await actions.sendInvoice(invoiceId);
       const link = await actions.invoiceLink(invoiceId);
       const fc = formatters(customer.lang);
       const body = tc('customer.textBody', { name: customer.firstName, n: number, business: state.profile.businessName, amount: fc.money(totalCents), link });
@@ -49,7 +50,7 @@ export function SendInvoiceSheet({ open, onClose, invoiceId, number, customer, t
       else await Share.share({ message: body });
       onClose();
     } catch (e) {
-      setError(t('invoice.linkFailed', { reason: t(`payErrors.${e instanceof PayFailed ? e.code : 'failed'}`) }));
+      setError(t('invoice.linkFailed', { reason: e instanceof PayFailed ? t(`payErrors.${e.code}`) : userError(t, e) }));
     } finally {
       setBusy(null);
     }
@@ -64,7 +65,6 @@ export function SendInvoiceSheet({ open, onClose, invoiceId, number, customer, t
             icon="message-square" big disabled={!!busy} onPress={() => send('text')} />
           <Button label={busy === 'email' ? t('invoice.working') : t('invoice.emailIt')} icon="mail" variant="outline" disabled={!!busy} onPress={() => send('email')} />
           <Button label={busy === 'share' ? t('invoice.working') : t('invoice.shareIt')} icon="share" variant="soft" disabled={!!busy} onPress={() => send('share')} />
-          {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
           {!canPayOnline ? (
             <Pressable accessibilityRole="link" onPress={() => { onClose(); router.push('/settings/payments'); }}
               style={{ minHeight: tap.min, justifyContent: 'center' }}>
@@ -75,9 +75,13 @@ export function SendInvoiceSheet({ open, onClose, invoiceId, number, customer, t
       ) : (
         <>
           <T v="body" muted>{t('invoice.exampleSend')}</T>
-          <Button label={t('invoice.send')} icon="send" big onPress={() => { actions.sendInvoice(invoiceId); onClose(); }} />
+          <Button label={t('invoice.send')} icon="send" big onPress={() => {
+            setError(null);
+            void actions.sendInvoice(invoiceId).then(onClose).catch((e: unknown) => setError(userError(t, e)));
+          }} />
         </>
       )}
+      {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
     </Sheet>
   );
 }

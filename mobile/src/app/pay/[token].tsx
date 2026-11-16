@@ -7,13 +7,13 @@ import { ScopeCard } from '@/components/job-scope';
 import { LogoMark } from '@/components/logo';
 import { StripePay } from '@/components/stripe-pay';
 import { Button, Card, Hair, Icon, LineRow, Notice, Row, Screen, T } from '@/components/ui';
-import { PayFailed } from '@/data/db-pay';
 import { checkPayment, loadPayPage, type PayPage } from '@/data/pay-page';
 import { useTFor, type Lang } from '@/i18n';
 import { useLang } from '@/i18n';
 import { addDays, formatters } from '@/lib/format';
 import { localDate } from '@/lib/invoice-aging';
 import { lineTotal } from '@/lib/money';
+import { errorDetails, userError, type ErrorDetails } from '@/lib/user-errors';
 import { radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
@@ -26,8 +26,9 @@ export default function PayInvoice() {
   const { lang: deviceLang } = useLang();
   const { token, payment_intent: returnedIntent } = useLocalSearchParams<{ token: string; payment_intent?: string }>();
   const [page, setPage] = useState<PayPage | null>(null);
-  const [problem, setProblem] = useState<'not_found' | 'failed' | null>(null);
+  const [problem, setProblem] = useState<ErrorDetails | null>(null);
   const [done, setDone] = useState<'succeeded' | 'processing' | null>(null);
+  const [paymentCheckFailed, setPaymentCheckFailed] = useState(false);
   const lang: Lang = page?.customer.lang ?? deviceLang;
   const tc = useTFor(lang);
   const fc = formatters(lang);
@@ -37,7 +38,7 @@ export default function PayInvoice() {
     try {
       setPage(await loadPayPage(String(token)));
     } catch (e) {
-      setProblem(e instanceof PayFailed && e.code === 'not_found' ? 'not_found' : 'failed');
+      setProblem(errorDetails(e));
     }
   }, [token]);
 
@@ -45,7 +46,10 @@ export default function PayInvoice() {
     void (async () => {
       // back from a bank's or wallet's own page: record what happened first
       if (returnedIntent) {
-        const status = await checkPayment(String(token), String(returnedIntent)).catch(() => 'not_paid' as const);
+        const status = await checkPayment(String(token), String(returnedIntent)).catch(() => {
+          setPaymentCheckFailed(true);
+          return 'not_paid' as const;
+        });
         if (status !== 'not_paid') setDone(status);
       }
       await load();
@@ -57,8 +61,8 @@ export default function PayInvoice() {
       <Screen>
         <View style={{ maxWidth: 560, width: '100%', alignSelf: 'center', gap: 14, paddingTop: 40, alignItems: 'center' }}>
           <LogoMark size={48} />
-          <T v="body" muted style={{ textAlign: 'center' }}>{problem === 'not_found' ? tc('pay.notFound') : problem ? tc('pay.failed') : tc('pay.loading')}</T>
-          {problem === 'failed' ? <Button label={tc('pay.tryAgain')} variant="outline" onPress={load} /> : null}
+          <T v="body" muted style={{ textAlign: 'center' }}>{problem?.code === 'not_found' ? tc('pay.notFound') : problem ? tc('pay.failed', { reason: userError(tc, problem) }) : tc('pay.loading')}</T>
+          {problem && problem.code !== 'not_found' ? <Button label={tc('pay.tryAgain')} variant="outline" onPress={load} /> : null}
         </View>
       </Screen>
     );
@@ -82,6 +86,11 @@ export default function PayInvoice() {
   return (
     <Screen>
       <View style={{ maxWidth: 560, width: '100%', alignSelf: 'center', gap: 14 }}>
+        {paymentCheckFailed ? <Notice text={tc('pay.checkFailed')} tone="danger" icon="alert-circle" /> : null}
+        {problem ? <>
+          <Notice text={tc('pay.failed', { reason: userError(tc, problem) })} tone="danger" icon="alert-circle" />
+          <Button label={tc('pay.tryAgain')} variant="outline" onPress={load} />
+        </> : null}
         <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           <View style={{ flex: 1 }}>
             <T v="h3">{page.business.name}</T>

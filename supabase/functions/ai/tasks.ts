@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 // What KILN asks Claude, and the checks on every answer before it goes back to the app.
 // Rules (CLAUDE.md): the AI drafts, the owner approves. It never makes up prices, only
-// picks from the owner's own trades and price list, and says nothing when it isn't sure.
+// picks job types from the supported catalog and quantities from the owner's price list.
 
 export const MODEL = 'claude-haiku-5-5';
 
@@ -150,7 +150,7 @@ const clean = (s: string, max: number) => s.replace(/\s+/g, ' ').trim().slice(0,
 
 const GUESS = `You help the owner of a small trades business (plumbing, electrical, painting, lawn care and similar) start an estimate. You get the job title and the owner's notes, the job types they offer, and their price list items (names and units only).
 
-Pick the one job type that best fits the work described. If the text doesn't make it clear, use null: no guess is better than a wrong one.
+Pick the one job type that best fits the job title, description, and notes. The job types cover all supported trades, including occasional work outside the owner's usual trade. Tolerate common spelling mistakes. Distinguish repairs from installations, such as carpet repair versus installing new carpet. If the text doesn't make it clear, use null: no guess is better than a wrong one.
 
 Then list the price list items the job clearly needs, with a quantity:
 - Use a number only when the text states it for that item ("400 sq ft", "3 outlets", "about 2 hours"). Convert only when it's direct ("a dozen" is 12).

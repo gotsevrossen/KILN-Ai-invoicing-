@@ -3,18 +3,21 @@ import { Redirect, Tabs, usePathname } from 'expo-router';
 import { ActivityIndicator, Pressable, Text, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { userError } from '@/lib/user-errors';
 import { font } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
-function Loading({ text }: { text: string }) {
+function Loading({ text, retry, retryLabel }: { text: string; retry?: () => void; retryLabel?: string }) {
   const p = usePalette();
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24, backgroundColor: p.ground }}>
-      <ActivityIndicator color={p.accent} size="large" />
+      {retry ? null : <ActivityIndicator color={p.accent} size="large" />}
       <Text style={{ fontFamily: font.semi, fontSize: 16, color: p.ink, textAlign: 'center' }}>{text}</Text>
+      {retry ? <Button label={retryLabel ?? ""} onPress={retry} /> : null}
     </View>
   );
 }
@@ -39,8 +42,6 @@ function CaptureButton({ onPress, label }: { onPress?: (e: GestureResponderEvent
               marginTop: -26,
               borderRadius: 33,
               backgroundColor: selected ? p.inverse : p.accent,
-              borderWidth: 4,
-              borderColor: p.ground,
               alignItems: 'center',
               justifyContent: 'center',
               transform: [{ scale: pressed ? 0.95 : 1 }],
@@ -62,8 +63,8 @@ export default function TabLayout() {
   const auth = useAuth();
   if (auth.configured) {
     if (!auth.ready) return <Loading text={t('auth.loading')} />;
+    if (auth.loadError) return <Loading text={t('auth.loadFailed', { reason: userError(t, auth.loadError) })} retry={auth.retryLoad} retryLabel={t('auth.retry')} />;
     if (!auth.session) return <Redirect href="/sign-in" />;
-    if (auth.loadError) return <Loading text={t('auth.loadFailed', { reason: auth.loadError })} />;
   }
   // first run: set up the business before anything else
   if (!state.profile.onboarded) return <Redirect href="/setup" />;

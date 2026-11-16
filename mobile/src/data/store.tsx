@@ -1,7 +1,9 @@
 import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
 
+import { errorDetails, type ErrorDetails } from '@/lib/user-errors';
 import type { Cents, TaxRule } from '@/lib/money';
+import { SaveQueue } from '@/lib/save-queue';
 import { copyDocument, estimateReady, needsActualHours, receiptShares, workItemValid } from '@/lib/billing';
 import { businessDate } from '@/lib/invoice-aging';
 import type { NewPhoto } from '@/lib/job-photos';
@@ -139,7 +141,7 @@ export interface State {
   mode: 'example' | 'connected';
   businessId: string | null;
   /** Last save that failed, shown to the owner. */
-  syncError: string | null;
+  syncError: ErrorDetails | null;
 }
 
 function initialState(): State {
@@ -229,6 +231,8 @@ function connectedState(base: State): State {
     online: { connected: false, walletReady: false, bankReady: false },
     captures: [],
     photos: [],
+    profile: { businessName: '', phone: '', trades: [], pricing: 'flat', rateCents: 0, onboarded: false },
+    settings: { markupBps: business.markupBps, tax: { ...business.tax }, depositBps: business.depositBps, dueDays: business.dueDays },
     // the example business's prices never carry into a real account
     priceList: [],
     mode: 'connected',
@@ -254,7 +258,9 @@ const newId = () => dbApi.newUuid();
 let current: State = initialState();
 const listeners = new Set<() => void>();
 function set(fn: (s: State) => State): void {
-  current = fn(current);
+  const next = fn(current);
+  if (next === current) return;
+  current = next;
   listeners.forEach((l) => l());
 }
 const get = (): State => current;
@@ -265,37 +271,22 @@ const subscribe = (l: () => void) => {
   };
 };
 
-// saves run one at a time, in order, so a quick off-then-on can't reach the server backwards
-let saveQueue: Promise<void> = Promise.resolve();
+// Saves and delayed typing belong to the account that scheduled them.
+const saveQueue = new SaveQueue((error) => set((s) => ({ ...s, syncError: errorDetails(error) })));
 
-/** Save to the server in connected mode. A failed save is shown to the owner, never dropped silently. */
 function persist(task: (businessId: string) => Promise<void>): void {
   const { mode, businessId } = get();
-  if (mode !== 'connected' || !businessId) return;
-  saveQueue = saveQueue
-    .then(() => task(businessId))
-    .catch((e: unknown) => set((x) => ({ ...x, syncError: e instanceof Error ? e.message : String(e) })));
+  if (mode === 'connected' && businessId) saveQueue.enqueue(() => task(businessId));
 }
 
-// Typing changes an estimate or summary on every keystroke; those save once typing pauses.
-const soon = new Map<string, { timer: ReturnType<typeof setTimeout>; task: (businessId: string) => Promise<void> }>();
 function persistSoon(key: string, task: (businessId: string) => Promise<void>, ms = 700): void {
-  const waiting = soon.get(key);
-  if (waiting) clearTimeout(waiting.timer);
-  soon.set(key, { task, timer: setTimeout(() => flushSoon(key), ms) });
+  const { mode, businessId } = get();
+  if (mode === 'connected' && businessId) saveQueue.debounce(key, () => task(businessId), ms);
 }
-/** Saves a waiting change now (before sending, so the sent version is the latest one). */
-function flushSoon(key: string): void {
-  const waiting = soon.get(key);
-  if (!waiting) return;
-  clearTimeout(waiting.timer);
-  soon.delete(key);
-  persist(waiting.task);
-}
-// leaving the app (home button, switching apps) saves anything still waiting
+
+const flushSoon = (key: string) => saveQueue.flush(key);
 AppState.addEventListener('change', (next) => {
-  if (next !== 'active') for (const key of [...soon.keys()]) flushSoon(key);
-  // Refresh date-dependent lists after returning to the app, including after midnight.
+  if (next !== 'active') saveQueue.flushAll();
   else if (get().mode === 'connected') set((s) => ({ ...s, version: s.version + 1 }));
 });
 const saveEstimateSoon = (jobId: string) => persistSoon(`estimate:${jobId}`, (bid) => {
@@ -353,14 +344,16 @@ let uploading = false;
 async function flushPhotos(): Promise<void> {
   if (uploading) return;
   uploading = true;
+  const active = saveQueue.scope();
   try {
     for (const { id } of get().photos.filter((p) => !p.path && p.localUri)) {
       const { mode, businessId } = get();
-      if (mode !== 'connected' || !businessId) return;
+      if (!active() || mode !== 'connected' || !businessId) return;
       const photo = get().photos.find((p) => p.id === id);
       if (!photo || photo.path) continue;
       try {
         const path = await photosApi.uploadPhoto(businessId, photo);
+        if (!active()) return;
         const now = get().photos.find((p) => p.id === id);
         if (!now) {
           // deleted while it was uploading
@@ -378,6 +371,7 @@ async function flushPhotos(): Promise<void> {
     }
   } finally {
     uploading = false;
+    if (!active()) void flushPhotos();
   }
 }
 
@@ -447,10 +441,11 @@ function applyLoaded(loaded: dbApi.Loaded): void {
  * Google Pay, or bank (Stripe tells the server). A paid invoice never goes back to unpaid here.
  */
 async function refreshPay(): Promise<void> {
-  if (get().mode !== 'connected') return;
+  if (get().mode !== 'connected' || !get().businessId) return;
+  const active = saveQueue.scope();
   try {
     const pay = await payApi.loadPayState();
-    if (get().mode !== 'connected') return;
+    if (!active()) return;
     set((s) => ({
       ...s,
       payments: pay.payments,
@@ -621,7 +616,8 @@ function makeActions() {
       set((s) => ({ ...s, showLocation: { ...s.showLocation, [invoiceId]: on } }));
       persist(() => docsApi.updateInvoice(invoiceId, { showLocation: on }));
     },
-    sendInvoice(invoiceId: string) {
+    async sendInvoice(invoiceId: string): Promise<void> {
+      const connected = get().mode === 'connected';
       const s = get();
       const invoice = invoices.find((i) => i.id === invoiceId);
       if (!invoice || s.sentInvoices.includes(invoiceId) || !invoiceBilling(s, invoice).reviewed) return;
@@ -634,10 +630,12 @@ function makeActions() {
         scope: s.estimates[job.id]?.scope, excludedScope: s.estimates[job.id]?.lines.filter((l) => l.excluded).map((l) => l.description),
         materialsMode: s.materialsMode[invoiceId] ?? 'items', dueDays: s.settings.dueDays,
         issuedOn: businessDate(s.mode, sample.TODAY), address: job.address, workOrder: job.workOrder });
-      set((x) => ({ ...x, issuedInvoices: { ...x.issuedInvoices, [invoiceId]: snapshot }, sentInvoices: [...x.sentInvoices, invoiceId] }));
+
       // the summary being typed is saved first; then the lines and frozen copy
       flushSoon(`summary:${invoiceId}`);
-      persist(() => docsApi.sendInvoice(invoiceId, snapshot, !!s.showLocation[invoiceId]));
+      const markSent = () => set((x) => ({ ...x, issuedInvoices: { ...x.issuedInvoices, [invoiceId]: snapshot }, sentInvoices: [...x.sentInvoices, invoiceId] }));
+      if (connected) await saveQueue.commit(() => docsApi.sendInvoice(invoiceId, snapshot, !!s.showLocation[invoiceId]), markSent);
+      else markSent();
     },
     setInvoiceBilling(invoiceId: string, patch: Partial<InvoiceBilling>) {
       const s = get();
@@ -660,9 +658,7 @@ function makeActions() {
       set((x) => ({ ...x, estimates: { ...x.estimates, [jobId]: issued } }));
       // The latest draft is saved first, in the same step, so the server checks and freezes exactly
       // what the owner sees. (A save still waiting on typing would now find it marked sent and skip.)
-      const waiting = soon.get(`estimate:${jobId}`);
-      if (waiting) clearTimeout(waiting.timer);
-      soon.delete(`estimate:${jobId}`);
+      saveQueue.cancel(`estimate:${jobId}`);
       persist(async (bid) => {
         await docsApi.saveEstimate(bid, jobId, draft);
         await docsApi.sendEstimate(bid, jobId, s.settings.tax);
@@ -822,9 +818,7 @@ function makeActions() {
         };
       });
       // a typed edit still waiting would recreate the estimate after the job is gone
-      const waiting = soon.get(`estimate:${jobId}`);
-      if (waiting) clearTimeout(waiting.timer);
-      soon.delete(`estimate:${jobId}`);
+      saveQueue.cancel(`estimate:${jobId}`);
       persist(async (bid) => {
         for (const [itemId, next] of moved) await docsApi.assignReceiptItem(bid, itemId, next);
         await docsApi.deleteJob(bid, jobId);
@@ -848,14 +842,19 @@ function makeActions() {
      * since a link only ever opens a sent invoice.
      */
     async invoiceLink(invoiceId: string): Promise<string> {
-      await saveQueue;
-      return payApi.invoiceLink(invoiceId);
+      const active = saveQueue.scope();
+      await saveQueue.wait();
+      const link = await payApi.invoiceLink(invoiceId);
+      if (!active()) throw Object.assign(new Error('signed_out'), { code: 'signed_out' });
+      return link;
     },
     stripeSetupUrl: payApi.stripeSetupUrl,
     /** Asks Stripe what the owner's account can take now, and keeps the answer. */
     async checkStripe(): Promise<void> {
       if (get().mode !== 'connected') return;
+      const active = saveQueue.scope();
       const online = await payApi.checkStripe();
+      if (!active()) return;
       set((s) => ({ ...s, online }));
     },
     updateSettings(patch: Partial<PricingSettings>) {
@@ -901,8 +900,11 @@ function makeActions() {
     },
     async completeSetup(input: SetupInput): Promise<void> {
       if (get().mode === 'connected') {
+        const active = saveQueue.scope();
         await dbApi.createBusiness(input);
+        if (!active()) throw Object.assign(new Error('signed_out'), { code: 'signed_out' });
         const loaded = await dbApi.loadAll();
+        if (!active()) throw Object.assign(new Error('signed_out'), { code: 'signed_out' });
         if (!loaded) throw new Error('Setup was saved but could not be loaded');
         applyLoaded(loaded);
         return;
@@ -961,16 +963,18 @@ function makeActions() {
 
     /** Signed in: show this account's data only (none yet until it loads). */
     startConnected() {
+      saveQueue.reset();
       clearExampleData();
-      set((s) => ({ ...connectedState(s), businessId: null, profile: { ...s.profile, onboarded: false }, version: s.version + 1 }));
+      set((s) => ({ ...connectedState(s), businessId: null, version: s.version + 1 }));
     },
     /** Puts the loaded business data in place. */
     hydrate(loaded: dbApi.Loaded) {
       applyLoaded(loaded);
     },
     signedOut() {
+      saveQueue.reset();
       clearExampleData();
-      set((s) => ({ ...connectedState(s), businessId: null, profile: { ...s.profile, onboarded: false }, version: s.version + 1 }));
+      set((s) => ({ ...connectedState(s), businessId: null, version: s.version + 1 }));
     },
   };
 }

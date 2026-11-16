@@ -15,6 +15,6 @@ export function one<T>(res: { data: T | null; error: { message: string } | null 
 }
 
 export function ok<T>(res: { data: T; error: { message: string } | null }): T {
-  if (res.error) throw new Error(res.error.message);
+  if (res.error) throw Object.assign(new Error(res.error.message), res.error);
   return res.data;
 }

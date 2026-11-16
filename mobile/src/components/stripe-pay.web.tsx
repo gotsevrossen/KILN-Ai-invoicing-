@@ -2,7 +2,7 @@ import { loadStripe, type Stripe, type StripeElements } from '@stripe/stripe-js'
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
-import { PayFailed } from '@/data/db-pay';
+import { userError } from '@/lib/user-errors';
 import { checkPayment, startPayment } from '@/data/pay-page';
 import type { Lang, TFn } from '@/i18n';
 import { usePalette } from '@/theme/use-palette';
@@ -39,21 +39,30 @@ export function StripePay({ token, pay, amountCents, amountText, lang, tc, onDon
   useEffect(() => {
     let live = true;
     // the business's own Stripe account takes the payment
-    loadStripe(pay.publishableKey, { stripeAccount: pay.account, locale: lang }).then((s) => live && setStripe(s)).catch(() => live && setWalletShown(false));
+    loadStripe(pay.publishableKey, { stripeAccount: pay.account, locale: lang }).then((s) => {
+      if (!live) return;
+      setStripe(s);
+      if (!s) setError(tc('pay.payFailed', { reason: tc('errors.unavailable') }));
+    }).catch((e: unknown) => {
+      if (live) setError(tc('pay.payFailed', { reason: userError(tc, e) }));
+    });
     return () => {
       live = false;
     };
-  }, [pay.publishableKey, pay.account, lang]);
+  }, [pay.publishableKey, pay.account, lang, tc]);
 
   const failed = (e: unknown) => {
-    if (e instanceof PayFailed) setError(tc('pay.payFailedPlain'));
-    else setError(e instanceof Error && e.message ? tc('pay.payFailed', { reason: e.message }) : tc('pay.payFailedPlain'));
+    setError(tc('pay.payFailed', { reason: userError(tc, e) }));
   };
 
   const finish = async (intentId: string) => {
-    const status = await checkPayment(token, intentId);
-    if (status === 'not_paid') setError(tc('pay.payFailedPlain'));
-    else onDone(status);
+    try {
+      const status = await checkPayment(token, intentId);
+      if (status === 'not_paid') setError(tc('pay.payFailedPlain'));
+      else onDone(status);
+    } catch {
+      setError(tc('pay.checkFailed'));
+    }
   };
 
   // Apple Pay / Google Pay
@@ -72,12 +81,12 @@ export function StripePay({ token, pay, amountCents, amountText, lang, tc, onDon
       setError(null);
       try {
         const submitted = await elements.submit();
-        if (submitted.error) throw new Error(submitted.error.message);
+        if (submitted.error) throw submitted.error;
         const clientSecret = await startPayment(token, 'wallet');
         const result = await stripe.confirmPayment({ elements, clientSecret, confirmParams: { return_url: window.location.href }, redirect: 'if_required' });
         if (result.error) {
           event.paymentFailed({ reason: 'fail' });
-          throw new Error(result.error.message);
+          throw result.error;
         }
         await finish(result.paymentIntent.id);
       } catch (e) {
@@ -108,10 +117,10 @@ export function StripePay({ token, pay, amountCents, amountText, lang, tc, onDon
     setBusy(true);
     try {
       const submitted = await bankElements.submit();
-      if (submitted.error) throw new Error(submitted.error.message);
+      if (submitted.error) throw submitted.error;
       const clientSecret = await startPayment(token, 'bank');
       const result = await stripe.confirmPayment({ elements: bankElements, clientSecret, confirmParams: { return_url: window.location.href }, redirect: 'if_required' });
-      if (result.error) throw new Error(result.error.message);
+      if (result.error) throw result.error;
       await finish(result.paymentIntent.id);
     } catch (e) {
       failed(e);

@@ -17,7 +17,7 @@ Your database containers and Docker volumes are preserved. These scripts do not 
 - Browser preview: <http://localhost:8081>
 - Database dashboard: <http://localhost:54323>
 - Development email inbox: <http://localhost:54324>
-- The launcher prints an `exp://...:8081` address for Expo Go on the same network when Windows reports a suitable network address.
+- The launcher prints the public ngrok tunnel address for Expo Go on your phone.
 
 ## The phone address (laptop server)
 
@@ -44,7 +44,7 @@ KILN's hosted project is `ssjshfjkkgcqjvvsjsnk` and this file already exists. To
 
 Then start once with `-Server Hosted` (see below). The choice is remembered as `KILN_SERVER` in `mobile/.env.local` until you start with `-Server Laptop`. With the hosted server, Start runs only Expo: no Docker, no phone connection. An Android build uses whichever server `mobile/.env.local` points at when it's built.
 
-Expo runs in LAN/offline-CLI mode to avoid startup delays from Expo's remote checks. This does not disable your app's backend connection or the separate phone connection. Expo Go must be on the laptop's network for the Expo preview address.
+Expo starts with `--go --tunnel ngrok` and waits for the public phone address before reporting that it is ready. Expo Go can connect over Wi-Fi or cellular. The app's backend address still follows the saved Hosted or Laptop setting.
 
 Logs and process records live in the ignored `.kiln-runtime/` folder. For startup problems, check `expo.log`, `expo-error.log`, `gate-error.log`, and `funnel.log` there.
 

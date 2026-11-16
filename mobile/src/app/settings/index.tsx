@@ -6,6 +6,7 @@ import { aiReady } from '@/data/ai';
 import { useAuth } from '@/data/auth';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { userError } from '@/lib/user-errors';
 import { loadVoiceLang, saveVoiceLang, type VoiceLang } from '@/lib/voice';
 import { useThemeMode } from '@/theme/theme-mode';
 
@@ -17,6 +18,7 @@ export default function Settings() {
   const theme = useThemeMode();
   const s = state.settings;
   const [voiceLang, setVoiceLang] = useState<VoiceLang>(loadVoiceLang);
+  const [error, setError] = useState<string | null>(null);
   const unpriced = state.priceList.filter((i) => i.unitCents === null).length;
 
   return (
@@ -112,7 +114,13 @@ export default function Settings() {
         <T v="h3">{state.profile.businessName}</T>
         {state.profile.phone ? <T v="small" muted>{state.profile.phone}</T> : null}
         {auth.configured ? (
-          <Button label={t('auth.signOut')} icon="log-out" variant="outline" onPress={() => auth.signOut().then(() => router.replace('/sign-in'))} />
+          <>
+            {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
+            <Button label={t('auth.signOut')} icon="log-out" variant="outline" onPress={() => {
+              setError(null);
+              void auth.signOut().then(() => router.replace('/sign-in')).catch((e: unknown) => setError(userError(t, e)));
+            }} />
+          </>
         ) : (
           <Button
             label={t('settings.redoSetup')}

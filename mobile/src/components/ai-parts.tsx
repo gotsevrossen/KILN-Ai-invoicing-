@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { AiFailed, findMissed, writeScope, type GuessInput, type MissedItem, type ScopeInput } from '@/data/ai';
+import { AiFailed, findMissed, writeScope, type MissedItem, type ScopeInput } from '@/data/ai';
+import { priceItems } from '@/data/ai-input';
 import { customerOf, estimateDraft, jobById } from '@/data/selectors';
 import { currentState, storeActions, useStore, type State } from '@/data/store';
-import { tradeById } from '@/data/trades';
-import type { Job } from '@/data/types';
 import { translate, useLang, type Lang, type TFn } from '@/i18n';
 
 import { pickJobType } from './estimate-parts';
@@ -14,25 +13,6 @@ import { Button, Card, IconButton, Row, T } from './ui';
 // What the screens send to KILN's AI helpers, built from the latest saved state.
 // Only what each task needs: never prices, and never the private note where text could come back
 // to the customer.
-
-const priceItems = (s: State, leaveOut: string[] = []) =>
-  s.priceList.filter((i) => !leaveOut.includes(i.id)).slice(0, 400).map((i) => ({ id: i.id, name: i.name.slice(0, 160), unit: i.unit }));
-
-/** The job type and quantities, read from the job's title, its private note, and typed notes. */
-export function guessInputFor(s: State, job: Job, t: TFn): GuessInput {
-  return {
-    title: job.title.slice(0, 200),
-    note: (job.privateNote ?? '').slice(0, 2000),
-    notes: s.captures.filter((c) => c.jobId === job.id && c.kind === 'note' && c.text).map((c) => c.text!.slice(0, 2000)).slice(-20),
-    hourly: job.pricing === 'hourly',
-    trades: s.profile.trades.slice(0, 10).map((id) => ({
-      id,
-      name: t(`trades.${id}`),
-      jobTypes: tradeById(id).jobTypes.map((jt) => ({ id: jt.id, name: t(`jobTypes.${jt.id}` as 'jobTypes.leak') })),
-    })),
-    items: priceItems(s),
-  };
-}
 
 /** The customer description, from the job and its lines, in the customer's language. */
 export function scopeInputFor(s: State, jobId: string): ScopeInput {

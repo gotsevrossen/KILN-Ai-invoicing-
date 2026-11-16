@@ -10,6 +10,7 @@ import { useStore } from '@/data/store';
 import { ITEM_UNITS, starterCents, starterItemIds, suggestedPricing, type TradeId } from '@/data/trades';
 import type { PriceItem } from '@/data/types';
 import { useLang } from '@/i18n';
+import { userError } from '@/lib/user-errors';
 import { radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
@@ -76,7 +77,7 @@ export default function Setup() {
     actions
       .completeSetup({ businessName: name, phone, trades, pricing, rateCents: rateCents ?? state.profile.rateCents, priceList: items })
       .then(() => router.replace('/'))
-      .catch((e: unknown) => setSaveError(e instanceof Error ? e.message : String(e)))
+      .catch((e: unknown) => setSaveError(userError(t, e)))
       .finally(() => setSaving(false));
   };
 

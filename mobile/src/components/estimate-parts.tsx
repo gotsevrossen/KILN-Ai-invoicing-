@@ -5,7 +5,7 @@ import { Pressable, View } from 'react-native';
 import * as sample from '@/data/sample';
 import { customerOf, estimateDraft, estimateTotals, jobById } from '@/data/selectors';
 import { useStore, type EstimateLine } from '@/data/store';
-import { ITEM_UNITS, tradeById, type TradeId } from '@/data/trades';
+import { ITEM_UNITS, TRADES, tradeById, type TradeId } from '@/data/trades';
 import type { JobScope, PriceItem, Unit } from '@/data/types';
 import { useLang, useTFor, type Lang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -59,13 +59,14 @@ export function useEstimate() {
   };
 }
 
-/** The trade and job type saved on the estimate, or the first ones the owner does. */
+/** The estimate's work type can also cover a trade the owner takes on occasionally. */
 export function pickJobType(trades: TradeId[], jobId: string, scope?: JobScope) {
-  const saved = scope?.tradeId && trades.includes(scope.tradeId) ? scope.tradeId : undefined;
-  const trade = tradeById(saved ?? (trades.includes('carpentry') && jobId === 'walsh' ? 'carpentry' : trades[0]));
-  const jobTypeId = saved && scope?.jobTypeId ? scope.jobTypeId : trade.jobTypes[0].id;
-  const isCustom = jobTypeId === CUSTOM;
-  const jobType = trade.jobTypes.find((jt) => jt.id === jobTypeId) ?? trade.jobTypes[0];
+  const saved = TRADES.find((trade) => trade.id === scope?.tradeId);
+  const trade = saved ?? tradeById(trades.includes('carpentry') && jobId === 'walsh' ? 'carpentry' : trades[0] ?? 'handyman');
+  const requestedType = saved ? scope?.jobTypeId : undefined;
+  const isCustom = requestedType === CUSTOM;
+  const jobType = trade.jobTypes.find((jt) => jt.id === requestedType) ?? trade.jobTypes[0];
+  const jobTypeId = isCustom ? CUSTOM : jobType.id;
   return { trade, jobTypeId, isCustom, jobType };
 }
 

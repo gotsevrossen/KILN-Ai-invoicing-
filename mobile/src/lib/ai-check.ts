@@ -38,7 +38,7 @@ const str = (x: unknown, max: number): string | null => {
 const whole = (x: unknown, min: number, max: number): number | null =>
   (typeof x === 'number' && Number.isSafeInteger(x) && x >= min && x <= max ? x : null);
 
-/** A job type from the owner's own trades, and quantities only for their own price list items. */
+/** A job type from the available catalog, and quantities for the owner's price list items. */
 export function checkGuess(raw: unknown, trades: TradeId[], itemIds: string[]): Guess | null {
   const r = record(raw);
   if (!r) return null;

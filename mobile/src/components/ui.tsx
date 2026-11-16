@@ -322,11 +322,15 @@ export function IconButton({
   icon: IconName;
   label: string;
   onPress?: () => void;
-  tone?: 'plain' | 'dark';
+  tone?: 'plain' | 'dark' | 'accent';
 }) {
   const p = usePalette();
-  const bg = tone === 'dark' ? p.inverse : p.card;
-  const fg = tone === 'dark' ? p.onInverse : p.ink;
+  const colors = {
+    plain: { bg: p.card, fg: p.ink },
+    dark: { bg: p.inverse, fg: p.onInverse },
+    accent: { bg: p.accent, fg: p.onAccent },
+  };
+  const { bg, fg } = colors[tone];
   return (
     <Pressable
       onPress={onPress}

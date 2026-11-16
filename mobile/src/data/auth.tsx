@@ -2,12 +2,13 @@ import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { supabase } from '@/lib/supabase';
+import { errorDetails, type ErrorDetails } from '@/lib/user-errors';
 
 import { loadAll } from './db';
 import { storeActions } from './store';
 
 /** Why a password-reset step failed, so the screen can explain it in the owner's language. */
-export type ResetProblem = { kind: 'badCode' | 'tooMany' | 'samePassword' | 'weakPassword' | 'other'; message: string };
+export type ResetProblem = ErrorDetails & { kind: 'badCode' | 'tooMany' | 'samePassword' | 'weakPassword' | 'other' };
 
 function resetProblem(error: { code?: string; status?: number; message: string }): ResetProblem {
   const { code, status, message } = error;
@@ -15,7 +16,7 @@ function resetProblem(error: { code?: string; status?: number; message: string }
   if (code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit' || status === 429) return { kind: 'tooMany', message };
   if (code === 'same_password') return { kind: 'samePassword', message };
   if (code === 'weak_password') return { kind: 'weakPassword', message };
-  return { kind: 'other', message };
+  return { kind: 'other', ...errorDetails(error) };
 }
 
 type Auth = {
@@ -25,9 +26,10 @@ type Auth = {
   ready: boolean;
   session: Session | null;
   /** Why the business data couldn't load, if it didn't. */
-  loadError: string | null;
-  signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (email: string, password: string) => Promise<string | null>;
+  loadError: ErrorDetails | null;
+  retryLoad: () => void;
+  signIn: (email: string, password: string) => Promise<ErrorDetails | null>;
+  signUp: (email: string, password: string) => Promise<ErrorDetails | null>;
   signOut: () => Promise<void>;
   /** Emails a 6-digit reset code. Succeeds whether or not the email has an account (the server doesn't say). */
   sendResetCode: (email: string) => Promise<ResetProblem | null>;
@@ -41,20 +43,29 @@ const Ctx = createContext<Auth | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [sessionError, setSessionError] = useState<ErrorDetails | null>(null);
   // false until we know whether someone is already signed in (avoids flashing the sign-in screen)
   const [sessionKnown, setSessionKnown] = useState(!supabase);
   // which user's data has finished loading, and any error doing it
-  const [loaded, setLoaded] = useState<{ userId: string; error: string | null } | null>(null);
+  const [loaded, setLoaded] = useState<{ userId: string; error: ErrorDetails | null } | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
+    let live = true;
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!live) return;
       setSession(data.session);
+      setSessionError(error ? errorDetails(error) : null);
+      setSessionKnown(true);
+    }).catch((e: unknown) => {
+      if (!live) return;
+      setSessionError(errorDetails(e));
       setSessionKnown(true);
     });
     const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
-    return () => data.subscription.unsubscribe();
-  }, []);
+    return () => { live = false; data.subscription.unsubscribe(); };
+  }, [attempt]);
 
   // whenever the signed-in user changes, load their business (or clear everything)
   const userId = session?.user.id ?? null;
@@ -73,15 +84,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoaded({ userId, error: null });
       })
       .catch((e: unknown) => {
-        if (!cancelled) setLoaded({ userId, error: e instanceof Error ? e.message : String(e) });
+        if (!cancelled) setLoaded({ userId, error: errorDetails(e) });
       });
     return () => {
       cancelled = true;
     };
-  }, [userId, sessionKnown]);
+  }, [userId, sessionKnown, attempt]);
 
-  const ready = !supabase || (sessionKnown && (userId === null || loaded?.userId === userId));
-  const loadError = loaded && loaded.userId === userId ? loaded.error : null;
+  const ready = !supabase || !!sessionError || (sessionKnown && (userId === null || loaded?.userId === userId));
+  const loadError = sessionError ?? (loaded && loaded.userId === userId ? loaded.error : null);
 
   const value = useMemo<Auth>(
     () => ({
@@ -89,18 +100,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ready,
       session,
       loadError,
+      retryLoad: () => { setSessionError(null); setLoaded(null); setAttempt((n) => n + 1); },
       async signIn(email, password) {
-        if (!supabase) return 'No server is set up';
+        if (!supabase) return { message: 'No server is set up' };
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        return error ? error.message : null;
+        return error ? errorDetails(error) : null;
       },
       async signUp(email, password) {
-        if (!supabase) return 'No server is set up';
+        if (!supabase) return { message: 'No server is set up' };
         const { error } = await supabase.auth.signUp({ email: email.trim(), password });
-        return error ? error.message : null;
+        return error ? errorDetails(error) : null;
       },
       async signOut() {
-        await supabase?.auth.signOut();
+        const result = await supabase?.auth.signOut();
+        if (result?.error) throw result.error;
       },
       async sendResetCode(email) {
         if (!supabase) return { kind: 'other', message: 'No server is set up' };

@@ -3,12 +3,13 @@ import { describe, it } from 'node:test';
 
 import { businessDate, localDate } from '../lib/invoice-aging.ts';
 import * as sample from './sample.ts';
-import { homeSummary, jobById, jobGroup, jobOverdueDays, jobStatus } from './selectors.ts';
+import { homeSummary, invoiceById, invoiceTotals, jobById, jobGroup, jobOverdueDays, jobStatus } from './selectors.ts';
 import type { State } from './store';
 
 /** A sent copy whose price/terms deliberately differ from live job/settings data. */
 function stateForInvoice(): State {
   return {
+    payments: [], opened: {}, online: { connected: false, walletReady: false, bankReady: false },
     mode: 'example', sentInvoices: ['inv-1042'], paidInvoices: [],
     issuedInvoices: { 'inv-1042': {
       lines: [{ id: 'saved', description: 'Agreed repair', kind: 'labor', qtyHundredths: 100, unitCents: 12500 }],
@@ -27,6 +28,27 @@ function stateForInvoice(): State {
 
 describe('overdue jobs and Home totals', () => {
   const park = jobById('park');
+  it('subtracts confirmed partial payments from outstanding and overdue balances only once', () => {
+    const state = stateForInvoice();
+    const original = homeSummary(state);
+    state.payments.push({ id: 'partial', invoiceId: 'inv-1042', amountCents: 5000, method: 'bank', status: 'succeeded', paidAt: '2026-10-02' });
+    state.payments.push({ id: 'pending', invoiceId: 'inv-1042', amountCents: 1000, method: 'bank', status: 'processing', paidAt: '2026-10-02' });
+    const totals = invoiceTotals(state, invoiceById('inv-1042')!);
+    assert.equal(totals.total, 12500);
+    assert.equal(totals.paid, 5000);
+    assert.equal(totals.due, 7500);
+    const summary = homeSummary(state);
+    assert.equal(summary.owed, original.owed - 5000);
+    assert.equal(summary.overdueCents, original.overdueCents - 5000);
+  });
+
+  it('never shows a negative balance or an overdue invoice after its whole balance was paid', () => {
+    const state = stateForInvoice();
+    state.payments.push({ id: 'paid', invoiceId: 'inv-1042', amountCents: 15000, method: 'wallet', status: 'succeeded', paidAt: '2026-10-02' });
+    assert.equal(invoiceTotals(state, invoiceById('inv-1042')!).due, 0);
+    assert.equal(jobOverdueDays(state, park), 0);
+  });
+
   it('shows a live sent invoice as overdue using its saved terms and price', () => {
     const state = stateForInvoice();
     assert.equal(jobOverdueDays(state, park), 3);

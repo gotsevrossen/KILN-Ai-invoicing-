@@ -66,6 +66,21 @@ Deno.test('guess: an unsure answer stays empty', async () => {
   assertEquals(await run(client, 'guess', guessInput), { tradeId: null, jobTypeId: null, quantities: [] });
 });
 
+Deno.test('guess: recognizes carpet repair across the available work types', async () => {
+  const { client, sent } = fake({ jobType: 'flooring/carpetRepair', items: [] });
+  const input = {
+    ...guessInput, title: 'Carpet reapir', note: '', notes: ['Patch a torn carpet seam.'],
+    trades: [
+      { id: 'plumbing', name: 'Plumbing', jobTypes: [{ id: 'leak', name: 'Leak repair' }] },
+      { id: 'flooring', name: 'Flooring', jobTypes: [{ id: 'carpetRepair', name: 'Carpet repair' }] },
+    ],
+  };
+  assertEquals(await run(client, 'guess', input), { tradeId: 'flooring', jobTypeId: 'carpetRepair', quantities: [] });
+  const content = JSON.stringify(sent[0].messages);
+  assertEquals(content.includes('Carpet reapir'), true);
+  assertEquals(content.includes('Patch a torn carpet seam.'), true);
+});
+
 Deno.test('guess: prices never go to Claude', async () => {
   const { client, sent } = fake({ jobType: null, items: [] });
   await run(client, 'guess', { ...guessInput, items: items.map((i) => ({ ...i, unitCents: 4500 })) });
