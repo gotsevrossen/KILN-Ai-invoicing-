@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 
 import { LogoMark } from '@/components/logo';
-import { Card, Icon, IconButton, ListRow, Notice, Pill, Row, Screen, T } from '@/components/ui';
+import { Button, Card, Icon, IconButton, ListRow, Notice, Pill, Row, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { changeOrderTotal, homeSummary, invoiceForJob, invoiceTotals, jobAmount, jobById, jobOverdueDays, jobStatus, unsortedItems } from '@/data/selectors';
 import { useStore } from '@/data/store';
@@ -17,14 +17,14 @@ export default function Home() {
   const { state } = useStore();
 
   const summary = homeSummary(state);
-  // each card shows only when there's something for it (a new account has none of these)
-  const receipt = sample.receipts.find((r) => unsortedItems(state, r).length > 0);
-  const unsorted = receipt ? unsortedItems(state, receipt) : [];
-  const invoice = sample.invoices.find((i) => !state.sentInvoices.includes(i.id));
-  const co = sample.changeOrders.find((c) => !state.signed[c.id] && !state.declinedChanges.includes(c.id));
+  // one card for everything waiting on the owner (a new account has none of these)
+  const receipts = sample.receipts.filter((r) => unsortedItems(state, r).length > 0);
+  const drafts = sample.invoices.filter((i) => !state.sentInvoices.includes(i.id));
+  const changes = sample.changeOrders.filter((c) => !state.signed[c.id] && !state.declinedChanges.includes(c.id));
   const overdueJobs = sample.jobs.filter((j) => jobStatus(state, j) === 'overdue');
   const pendingUploads = state.mode === 'example' ? sample.business.pendingUploads : 0;
-  const nothing = !receipt && !invoice && !co && overdueJobs.length === 0;
+  const noJobs = sample.jobs.length === 0;
+  const nothing = !noJobs && receipts.length + drafts.length + changes.length + overdueJobs.length === 0;
 
   return (
     <Screen
@@ -63,20 +63,32 @@ export default function Home() {
       {state.syncError ? <Notice text={t('auth.syncFailed', { reason: state.syncError })} tone="danger" icon="alert-circle" /> : null}
       {nothing ? <Notice text={t('home.allClear')} /> : null}
 
-      {receipt ? (
-        <Card onPress={() => router.push(`/receipt/${receipt.id}`)} label={t('home.sortReceipt', { count: unsorted.length })} style={{ paddingVertical: 10 }}>
-          <ListRow
-            icon="file-text"
-            iconTone="flag"
-            title={t('home.sortReceipt', { count: unsorted.length })}
-            sub={`${receipt.store} · ${t('common.today')} · ${f.money(receipt.items.reduce((a, i) => a + i.costCents, 0) + receipt.taxCents)}`}
-            chevron
-          />
+      {noJobs ? (
+        <Card style={{ gap: 12 }}>
+          <T v="h2">{t('home.firstJobTitle')}</T>
+          <T v="body" muted>{t('home.firstJobBody')}</T>
+          <Button label={t('home.firstJob')} icon="plus" big onPress={() => router.push('/new-job')} />
         </Card>
       ) : null}
 
-      {invoice ? (
-        <Card onPress={() => router.push(`/invoice/${invoice.id}`)} label={t('home.invoiceReady')} style={{ paddingVertical: 10 }}>
+      {receipts.map((receipt) => {
+        const count = unsortedItems(state, receipt).length;
+        const when = receipt.date === sample.TODAY ? t('common.today') : f.date(receipt.date);
+        return (
+          <Card key={receipt.id} onPress={() => router.push(`/receipt/${receipt.id}`)} label={t('home.sortReceipt', { count })} style={{ paddingVertical: 10 }}>
+            <ListRow
+              icon="file-text"
+              iconTone="flag"
+              title={t('home.sortReceipt', { count })}
+              sub={`${receipt.store} · ${when} · ${f.money(receipt.items.reduce((a, i) => a + i.costCents, 0) + receipt.taxCents)}`}
+              chevron
+            />
+          </Card>
+        );
+      })}
+
+      {drafts.map((invoice) => (
+        <Card key={invoice.id} onPress={() => router.push(`/invoice/${invoice.id}`)} label={t('home.invoiceReady')} style={{ paddingVertical: 10 }}>
           <ListRow
             icon="file"
             iconTone="accent"
@@ -85,10 +97,10 @@ export default function Home() {
             chevron
           />
         </Card>
-      ) : null}
+      ))}
 
-      {co ? (
-        <Card onPress={() => router.push(`/job/${co.jobId}`)} label={t('home.waitingSignature')} style={{ paddingVertical: 10 }}>
+      {changes.map((co) => (
+        <Card key={co.id} onPress={() => router.push(`/job/${co.jobId}`)} label={t('home.waitingSignature')} style={{ paddingVertical: 10 }}>
           <ListRow
             icon="edit-3"
             title={t('home.waitingSignature')}
@@ -97,7 +109,7 @@ export default function Home() {
             chevron
           />
         </Card>
-      ) : null}
+      ))}
 
       {overdueJobs.map((job) => (
         <Card key={job.id} label={job.title} style={{ paddingVertical: 10 }} onPress={() => {

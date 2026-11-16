@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { CrashScreen } from '@/components/crash-screen';
 import { AuthProvider } from '@/data/auth';
 import { StoreProvider } from '@/data/store';
 import { LanguageProvider } from '@/i18n';
@@ -18,6 +19,9 @@ import { ThemeModeProvider, useScheme } from '@/theme/theme-mode';
 import { dark, light } from '@/theme/tokens';
 
 SplashScreen.preventAutoHideAsync();
+
+// Expo Router shows this in place of the app if a page breaks while drawing.
+export const ErrorBoundary = CrashScreen;
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({ Archivo_500Medium, Archivo_600SemiBold, Archivo_700Bold, Archivo_800ExtraBold });

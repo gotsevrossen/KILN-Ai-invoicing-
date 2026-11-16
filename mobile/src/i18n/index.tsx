@@ -13,7 +13,8 @@ const i18n = new I18n({ en, es });
 i18n.defaultLocale = 'en';
 i18n.enableFallback = true;
 
-function deviceLang(): Lang {
+/** The phone's language (English unless it's Spanish). */
+export function deviceLang(): Lang {
   return getLocales()[0]?.languageCode === 'es' ? 'es' : 'en';
 }
 

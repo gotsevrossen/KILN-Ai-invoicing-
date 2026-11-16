@@ -1,6 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 
+import { ConfirmPaidSheet } from '@/components/confirm-paid';
 import { FixList } from '@/components/fix-list';
 import { useInvoice } from '@/components/invoice-parts';
 import { RecordGate } from '@/components/record-gate';
@@ -33,6 +34,7 @@ function InvoiceDraft() {
   const { invoice, job, customer, sent, paid, billing, agreed, lines, fixes, mode, dueDays, dueDate } = useInvoice();
   const sources = invoiceSources(state, invoice);
   const [sendOpen, setSendOpen] = useState(false);
+  const [paidOpen, setPaidOpen] = useState(false);
   const online = paidOnline(state, invoice.id);
   const opened = state.opened[invoice.id];
   const waiting = sent && !paid && state.mode === 'connected';
@@ -89,7 +91,7 @@ function InvoiceDraft() {
             <Row gap={10}>
               <IconButton icon="eye" label={t('invoice.seeAsCustomer', { name: customer.firstName })} onPress={seeAsCustomer} />
               {state.mode === 'connected' ? <Button label={t('invoice.sendAgain')} variant="outline" icon="send" flex onPress={() => setSendOpen(true)} /> : null}
-              <Button label={t('invoice.markPaidCash')} icon="dollar-sign" variant="dark" flex onPress={() => actions.markPaid(invoice.id)} />
+              <Button label={t('invoice.markPaidCash')} icon="dollar-sign" variant="dark" flex onPress={() => setPaidOpen(true)} />
             </Row>
           </>
         ) : (
@@ -162,6 +164,8 @@ function InvoiceDraft() {
           sub={`${mode === 'items' ? t('invoice.itemized') : t('invoice.oneTotal')} · ${dueText} (${f.date(dueDate)})`}
           onPress={() => router.push(`/invoice/${invoice.id}/options`)} />
       </Card>
+
+      <ConfirmPaidSheet invoiceId={invoice.id} open={paidOpen} onClose={() => setPaidOpen(false)} />
 
       <SendInvoiceSheet open={sendOpen} onClose={() => setSendOpen(false)} invoiceId={invoice.id} number={invoice.number}
         customer={customer} totalCents={totals.total} />

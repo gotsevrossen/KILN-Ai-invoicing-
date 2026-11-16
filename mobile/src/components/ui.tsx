@@ -278,7 +278,8 @@ export function Button({
         {
           minHeight: stacked ? tap.big + 8 : big ? tap.big : tap.main,
           paddingHorizontal: stacked ? 6 : 16,
-          paddingVertical: stacked ? 8 : 0,
+          // room for a label that wraps to a second line
+          paddingVertical: stacked ? 8 : 6,
           borderRadius: radius.sm,
           backgroundColor: c.bg,
           borderWidth: c.border ? 1.5 : 0,
@@ -301,11 +302,13 @@ export function Button({
           {label}
         </Text>
       ) : (
+        // a long label (often in Spanish) wraps to two centered lines instead of ending in "…";
+        // past two lines, the phone shrinks it a little
         <Text
-          numberOfLines={1}
+          numberOfLines={2}
           adjustsFontSizeToFit
           minimumFontScale={0.85}
-          style={{ fontFamily: font.bold, fontSize: big ? 19 : 17, color: c.fg, flexShrink: 1 }}>
+          style={{ fontFamily: font.bold, fontSize: big ? 19 : 17, lineHeight: big ? 23 : 21, textAlign: 'center', color: c.fg, flexShrink: 1 }}>
           {label}
         </Text>
       )}

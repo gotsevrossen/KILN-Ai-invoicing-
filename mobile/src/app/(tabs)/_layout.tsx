@@ -3,6 +3,7 @@ import { Redirect, Tabs, usePathname } from 'expo-router';
 import { ActivityIndicator, Pressable, Text, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
@@ -15,6 +16,23 @@ function Loading({ text }: { text: string }) {
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24, backgroundColor: p.ground }}>
       <ActivityIndicator color={p.accent} size="large" />
       <Text style={{ fontFamily: font.semi, fontSize: 16, color: p.ink, textAlign: 'center' }}>{text}</Text>
+    </View>
+  );
+}
+
+/** The business didn't load (usually no signal): say so plainly and offer a way out. */
+function LoadFailed() {
+  const p = usePalette();
+  const { t } = useLang();
+  const auth = useAuth();
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', gap: 14, padding: 24, backgroundColor: p.ground }}>
+      <Feather name="wifi-off" size={36} color={p.ink} style={{ alignSelf: 'center' }} />
+      <Text accessibilityRole="header" style={{ fontFamily: font.bold, fontSize: 21, lineHeight: 26, color: p.ink, textAlign: 'center' }}>
+        {t('auth.loadFailed')}
+      </Text>
+      <Button label={t('auth.retry')} icon="refresh-cw" big onPress={auth.reload} />
+      <Button label={t('auth.signOut')} icon="log-out" variant="outline" onPress={() => void auth.signOut()} />
     </View>
   );
 }
@@ -63,7 +81,7 @@ export default function TabLayout() {
   if (auth.configured) {
     if (!auth.ready) return <Loading text={t('auth.loading')} />;
     if (!auth.session) return <Redirect href="/sign-in" />;
-    if (auth.loadError) return <Loading text={t('auth.loadFailed', { reason: auth.loadError })} />;
+    if (auth.loadError) return <LoadFailed />;
   }
   // first run: set up the business before anything else
   if (!state.profile.onboarded) return <Redirect href="/setup" />;

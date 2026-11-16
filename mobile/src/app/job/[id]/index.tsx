@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { aiErrorText } from '@/components/ai-parts';
+import { ConfirmPaidSheet } from '@/components/confirm-paid';
 import { ActivityDays, useJobActivity } from '@/components/job-activity';
 import { PhotoSourceSheet } from '@/components/job-photos';
 import { useJobDocs, type DocStatus } from '@/components/job-docs';
@@ -52,6 +53,7 @@ function JobDetail() {
   const [hoursNote, setHoursNote] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [paidOpen, setPaidOpen] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [photoAdded, setPhotoAdded] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -145,7 +147,7 @@ function JobDetail() {
         return {
           title: t('flow.invoiceSent'),
           body: t('flow.invoiceSentBody'),
-          action: invoice ? { label: t('flow.markPaid'), icon: 'dollar-sign', onPress: () => actions.markPaid(invoice.id) } : undefined,
+          action: invoice ? { label: t('flow.markPaid'), icon: 'dollar-sign', onPress: () => setPaidOpen(true) } : undefined,
           extra: invoice ? <Button label={t('flow.viewInvoice')} variant="outline" onPress={() => router.push(`/invoice/${invoice.id}`)} /> : undefined,
         };
       default:
@@ -312,6 +314,8 @@ function JobDetail() {
         setPhotoOpen(false);
         if (actions.addPhotos(job.id, photos)) setPhotoAdded(true);
       }} />
+
+      {invoice ? <ConfirmPaidSheet invoiceId={invoice.id} open={paidOpen} onClose={() => setPaidOpen(false)} /> : null}
 
       <WorkSheet jobId={job.id} open={workOpen} onClose={() => setWorkOpen(false)} onEstimate={!!draft?.signed} />
 

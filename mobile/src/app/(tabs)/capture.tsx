@@ -7,7 +7,7 @@ import { CommandBox } from '@/components/command-box';
 import { PhotoSourceSheet } from '@/components/job-photos';
 import { JobPicker, Sheet } from '@/components/sheet';
 import { VoiceSheet } from '@/components/voice-sheet';
-import { Button, ButtonRow, Card, Field, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
+import { Button, Card, Field, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
 import { aiReady } from '@/data/ai';
 import * as sample from '@/data/sample';
 import { jobById } from '@/data/selectors';
@@ -136,10 +136,7 @@ export default function Capture() {
                 </Row>
               ))}
             </View>
-            <ButtonRow gap={10}>
-              <Button label={t('capture.addBoth')} icon="check" flex onPress={actions.confirmVoice} />
-              <Button label={t('capture.edit')} variant="soft" />
-            </ButtonRow>
+            <Button label={t('capture.addBoth')} icon="check" onPress={actions.confirmVoice} />
           </>
         )}
       </Card>

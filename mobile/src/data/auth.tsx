@@ -18,6 +18,20 @@ function resetProblem(error: { code?: string; status?: number; message: string }
   return { kind: 'other', message };
 }
 
+/** Why signing in or creating an account failed, so the screen can explain it in the owner's language. */
+export type SignInProblem = { kind: 'badLogin' | 'exists' | 'weakPassword' | 'tooMany' | 'offline' | 'other'; message: string };
+
+function signInProblem(error: { code?: string; status?: number; name?: string; message: string }): SignInProblem {
+  const { code, status, name, message } = error;
+  // the request never got an answer (no signal), or the server couldn't be reached
+  if (name === 'AuthRetryableFetchError') return { kind: 'offline', message };
+  if (code === 'invalid_credentials') return { kind: 'badLogin', message };
+  if (code === 'user_already_exists' || code === 'email_exists') return { kind: 'exists', message };
+  if (code === 'weak_password') return { kind: 'weakPassword', message };
+  if (code === 'over_request_rate_limit' || code === 'over_email_send_rate_limit' || status === 429) return { kind: 'tooMany', message };
+  return { kind: 'other', message };
+}
+
 type Auth = {
   /** False when no server is set up (example mode). */
   configured: boolean;
@@ -26,9 +40,11 @@ type Auth = {
   session: Session | null;
   /** Why the business data couldn't load, if it didn't. */
   loadError: string | null;
-  signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (email: string, password: string) => Promise<string | null>;
+  signIn: (email: string, password: string) => Promise<SignInProblem | null>;
+  signUp: (email: string, password: string) => Promise<SignInProblem | null>;
   signOut: () => Promise<void>;
+  /** Loads the signed-in owner's business again (after it failed to load). */
+  reload: () => void;
   /** Emails a 6-digit reset code. Succeeds whether or not the email has an account (the server doesn't say). */
   sendResetCode: (email: string) => Promise<ResetProblem | null>;
   /** Checks the emailed code. On success the owner is signed in, ready to set a new password. */
@@ -45,6 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionKnown, setSessionKnown] = useState(!supabase);
   // which user's data has finished loading, and any error doing it
   const [loaded, setLoaded] = useState<{ userId: string; error: string | null } | null>(null);
+  // bumped by reload() to load the business again after a failure
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!supabase) return;
@@ -78,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [userId, sessionKnown]);
+  }, [userId, sessionKnown, attempt]);
 
   const ready = !supabase || (sessionKnown && (userId === null || loaded?.userId === userId));
   const loadError = loaded && loaded.userId === userId ? loaded.error : null;
@@ -90,14 +108,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       loadError,
       async signIn(email, password) {
-        if (!supabase) return 'No server is set up';
+        if (!supabase) return { kind: 'other', message: 'No server is set up' };
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        return error ? error.message : null;
+        return error ? signInProblem(error) : null;
       },
       async signUp(email, password) {
-        if (!supabase) return 'No server is set up';
+        if (!supabase) return { kind: 'other', message: 'No server is set up' };
         const { error } = await supabase.auth.signUp({ email: email.trim(), password });
-        return error ? error.message : null;
+        return error ? signInProblem(error) : null;
+      },
+      reload() {
+        // shows "Loading…" instead of the old error while it tries again
+        setLoaded(null);
+        setAttempt((n) => n + 1);
       },
       async signOut() {
         await supabase?.auth.signOut();

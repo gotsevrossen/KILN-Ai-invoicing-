@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { Button, Field, Notice, Row, Screen, Segmented, T } from '@/components/ui';
-import { useAuth, type ResetProblem } from '@/data/auth';
+import { useAuth, type ResetProblem, type SignInProblem } from '@/data/auth';
 import { useLang } from '@/i18n';
 import { font } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -55,6 +55,15 @@ export default function SignIn() {
     return problem.message;
   };
 
+  const signInMessage = (problem: SignInProblem): string => {
+    if (problem.kind === 'badLogin') return t('auth.badLogin');
+    if (problem.kind === 'exists') return t('auth.accountExists');
+    if (problem.kind === 'weakPassword') return t('auth.weakPassword');
+    if (problem.kind === 'tooMany') return t('auth.tooMany');
+    if (problem.kind === 'offline') return t('auth.offline');
+    return t('auth.signInFailed');
+  };
+
   const switchMode = (next: 'in' | 'up' | 'reset') => {
     // a used reset code signs the owner in; leaving without a new password signs them back out
     if (verified) auth.signOut();
@@ -70,9 +79,9 @@ export default function SignIn() {
   const submit = async () => {
     setBusy(true);
     setError(null);
-    const err = mode === 'in' ? await auth.signIn(email, password) : await auth.signUp(email, password);
+    const problem = mode === 'in' ? await auth.signIn(email, password) : await auth.signUp(email, password);
     setBusy(false);
-    if (err) setError(err);
+    if (problem) setError(signInMessage(problem));
     else router.replace('/');
   };
 
