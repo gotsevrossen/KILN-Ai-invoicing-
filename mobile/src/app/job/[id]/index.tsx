@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { aiErrorText } from '@/components/ai-parts';
@@ -55,6 +55,8 @@ function JobDetail() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [paidOpen, setPaidOpen] = useState(false);
+  // a page to open once the change sheet has fully gone
+  const afterChange = useRef<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [photoAdded, setPhotoAdded] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -276,7 +278,11 @@ function JobDetail() {
         <Button label={t('common.cancel')} variant="outline" onPress={() => setDeleteOpen(false)} />
       </Sheet>
 
-      <Sheet open={changeOpen} onClose={() => setChangeOpen(false)} title={t('review.newChange')}>
+      <Sheet open={changeOpen} onClose={() => setChangeOpen(false)} title={t('review.newChange')} onClosed={() => {
+        const changeId = afterChange.current;
+        afterChange.current = null;
+        if (changeId) router.push(`/change-order/${changeId}`);
+      }}>
         <T muted>{aiReady(state.mode) ? t('ai.changeHelp') : t('review.changeHelp')}</T>
         <Field label={t('review.changeDescription')} value={changeDescription} onChangeText={setChangeDescription}
           multiline maxLength={2000} style={{ minHeight: 100, paddingTop: 14, textAlignVertical: 'top' }} />
@@ -308,7 +314,7 @@ function JobDetail() {
           setChangeDescription('');
           setChangePrice('');
           setChangeDraft(null);
-          setTimeout(() => router.push(`/change-order/${changeId}`), 400);
+          afterChange.current = changeId;
         }} />
       </Sheet>
 

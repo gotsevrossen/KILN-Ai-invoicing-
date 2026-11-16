@@ -16,7 +16,11 @@ import { Button, Icon, Notice, Row, T } from './ui';
  * The words can be fixed by hand once it stops. Without speech recognition (Expo Go) the
  * Record button is shown but off, and the owner types the note instead.
  */
-export function VoiceSheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: (text: string) => void }) {
+export function VoiceSheet({ open, onClose, onDone, onClosed }: {
+  open: boolean; onClose: () => void; onDone: (text: string) => void;
+  /** Runs once the sheet has fully gone (to open the next sheet). */
+  onClosed?: () => void;
+}) {
   const p = usePalette();
   const { t, lang: appLang } = useLang();
   const [heard, setHeard] = useState('');
@@ -167,7 +171,7 @@ export function VoiceSheet({ open, onClose, onDone }: { open: boolean; onClose: 
   };
 
   return (
-    <Sheet open={open} onClose={dismiss} title={t('voice.title')}>
+    <Sheet open={open} onClose={dismiss} onClosed={onClosed} title={t('voice.title')}>
       <Row gap={8} style={{ alignItems: 'center' }}>
         <Icon name={listening ? 'radio' : 'mic'} size={18} color={listening ? p.danger : p.muted} />
         <T v="small" muted={!listening} style={{ flex: 1 }}>

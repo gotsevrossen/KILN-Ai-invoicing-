@@ -71,7 +71,11 @@ export function PhotoStrip({ photos, max = 3, height = 96 }: { photos: Photo[]; 
 }
 
 /** Take a photo or choose some, then hand them to `onPicked`. Each is shrunk and saved on the phone first. */
-export function PhotoSourceSheet({ open, onClose, onPicked }: { open: boolean; onClose: () => void; onPicked: (photos: NewPhoto[]) => void }) {
+export function PhotoSourceSheet({ open, onClose, onPicked, onClosed }: {
+  open: boolean; onClose: () => void; onPicked: (photos: NewPhoto[]) => void;
+  /** Runs once the sheet has fully gone (to open the next sheet). */
+  onClosed?: () => void;
+}) {
   const p = usePalette();
   const { t } = useLang();
   const [busy, setBusy] = useState(false);
@@ -90,7 +94,7 @@ export function PhotoSourceSheet({ open, onClose, onPicked }: { open: boolean; o
     }
   };
   return (
-    <Sheet open={open} onClose={onClose} title={t('photos.add')}>
+    <Sheet open={open} onClose={onClose} onClosed={onClosed} title={t('photos.add')}>
       <Button label={busy ? t('photos.saving') : t('ai.takePhoto')} icon="camera" big disabled={busy} onPress={() => pick(true)} />
       <Button label={t('photos.choose')} icon="image" variant="outline" disabled={busy} onPress={() => pick(false)} />
       {error ? <T v="small" color={p.danger}>{error}</T> : null}

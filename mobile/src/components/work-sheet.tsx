@@ -35,11 +35,7 @@ export function WorkSheet({ jobId, open, onClose, onEstimate }: {
   // null = choosing: the price list, or "Type it in"
   const [draft, setDraft] = useState<Draft | null>(null);
 
-  const close = () => {
-    onClose();
-    // after the sheet slides away, so it doesn't jump back to the list while closing
-    setTimeout(() => setDraft(null), 300);
-  };
+  const close = () => onClose();
   const fromItem = (item: PriceItem) => setDraft({
     priceItemId: item.id, description: item.name, unit: item.unit,
     qty: '1', price: item.unitCents === null ? '' : (item.unitCents / 100).toFixed(2), kind: 'labor',
@@ -53,7 +49,8 @@ export function WorkSheet({ jobId, open, onClose, onEstimate }: {
   const set = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
 
   return (
-    <Sheet open={open} onClose={close} title={t('work.title')} scroll={draft !== null}>
+    // back to the list once the sheet has slid away, so it doesn't jump while closing
+    <Sheet open={open} onClose={close} onClosed={() => setDraft(null)} title={t('work.title')} scroll={draft !== null}>
       {draft === null ? (
         <>
           <Button label={t('work.typeIt')} icon="edit-3" onPress={() => setDraft(blank())} />

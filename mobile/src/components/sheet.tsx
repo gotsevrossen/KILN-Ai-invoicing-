@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View, useWindowDimensions, type KeyboardEvent } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,15 +19,20 @@ const ios = Platform.OS === 'ios';
 const KEYBOARD_EASING = Easing.bezier(0.38, 0.7, 0.125, 1);
 
 /**
- * Bottom sheet: a white card that slides up over a dimmed screen.
- * The dim shows at once and only the card slides (the built-in slide moved the dim too).
+ * Bottom sheet: a white card that slides up over a dimmed screen. The dim fades with the card's
+ * slide (the built-in slide moved the dim too).
+ *
+ * `onClosed` runs once the sheet has fully gone. Use it to open the next sheet or page: iPhone
+ * shows one pop-up at a time, so the next one must wait for this one to leave.
  *
  * Both the slide and the keyboard lift run in Reanimated. (Mixing React Native's Animated slide
  * with a layout animation for the keyboard could reset the card to its starting position below
  * the screen, leaving the note box under the keyboard.)
  */
-export function Sheet({ open, onClose, title, children, scroll = true }: {
+export function Sheet({ open, onClose, onClosed, title, children, scroll = true }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode;
+  /** Runs once the close slide has finished and the sheet is gone. */
+  onClosed?: () => void;
   /** Off when the children scroll on their own, so a top part can stay in place. */
   scroll?: boolean;
 }) {
@@ -54,6 +59,32 @@ export function Sheet({ open, onClose, title, children, scroll = true }: {
     }
   }, [open, slide]);
 
+  // Tell the screen the sheet is gone, once. iPhone: when the pop-up has really left (onDismiss),
+  // with a short backup wait in case that never comes. Elsewhere: once the screen has updated.
+  const closedRef = useRef(onClosed);
+  useEffect(() => {
+    closedRef.current = onClosed;
+  });
+  const wasShown = useRef(shown);
+  const pendingClosed = useRef(false);
+  const fireClosed = () => {
+    if (!pendingClosed.current) return;
+    pendingClosed.current = false;
+    closedRef.current?.();
+  };
+  useEffect(() => {
+    const went = wasShown.current && !shown;
+    wasShown.current = shown;
+    if (!went) return;
+    pendingClosed.current = true;
+    if (!ios) {
+      fireClosed();
+      return;
+    }
+    const backup = setTimeout(fireClosed, 500);
+    return () => clearTimeout(backup);
+  }, [shown]);
+
   // counted while showing, so the page underneath leaves the keyboard to this sheet
   useLayoutEffect(() => (shown ? sheetShown() : undefined), [shown]);
 
@@ -75,6 +106,8 @@ export function Sheet({ open, onClose, title, children, scroll = true }: {
   // the keyboard covers the home bar, so the card only rises by the part above it
   const lift = useAnimatedStyle(() => ({ paddingBottom: Math.max(keyboard.get() - bottomInset, 0) }));
   const card = useAnimatedStyle(() => ({ transform: [{ translateY: slide.get() * height }] }));
+  // the dim fades in as the card rises, and out as it drops
+  const dim = useAnimatedStyle(() => ({ opacity: 1 - slide.get() }));
   const head = (
     <Row style={{ justifyContent: 'space-between' }}>
       <T v="h2" accessibilityRole="header">{title}</T>
@@ -83,12 +116,14 @@ export function Sheet({ open, onClose, title, children, scroll = true }: {
   );
 
   return (
-    <Modal visible={shown} transparent animationType="none" onRequestClose={onClose}>
+    <Modal visible={shown} transparent animationType="none" onRequestClose={onClose} onDismiss={fireClosed}>
       {/* lifts the sheet above the keyboard so the text box stays visible
           (iPhone: the lift above; Android keeps the built-in view) */}
       <KeyboardAvoidingView enabled={!ios} behavior="height" style={{ flex: 1 }}>
         <Animated.View style={[{ flex: 1, justifyContent: 'flex-end' }, lift]}>
-          <Pressable accessibilityLabel={t('common.close')} onPress={onClose} style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)' }} />
+          <Animated.View style={[{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)' }, dim]}>
+            <Pressable accessibilityLabel={t('common.close')} onPress={onClose} style={{ flex: 1 }} />
+          </Animated.View>
           <Animated.View style={[{ backgroundColor: p.card, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, maxHeight: '85%' }, card]}>
             <View style={{ flexShrink: 1, paddingBottom: bottomInset }}>
               {scroll ? (
@@ -112,7 +147,9 @@ export function Sheet({ open, onClose, title, children, scroll = true }: {
 }
 
 /** "Which job?" list of active jobs whose invoice isn't sent, with New job at the top. */
-export function JobPicker({ open, onClose, onPick, title }: { open: boolean; onClose: () => void; onPick: (jobId: string) => void; title?: string }) {
+export function JobPicker({ open, onClose, onPick, title, onClosed }: {
+  open: boolean; onClose: () => void; onPick: (jobId: string) => void; title?: string; onClosed?: () => void;
+}) {
   const { t } = useLang();
   const { state } = useStore();
   const [creating, setCreating] = useState(false);
@@ -123,7 +160,7 @@ export function JobPicker({ open, onClose, onPick, title }: { open: boolean; onC
   };
   // one sheet, two views: the job list, or the New job form (iOS shows one pop-up at a time)
   return (
-    <Sheet open={open} onClose={close} title={creating ? t('newJob.title') : (title ?? t('common.whichJob'))}>
+    <Sheet open={open} onClose={close} onClosed={onClosed} title={creating ? t('newJob.title') : (title ?? t('common.whichJob'))}>
       {creating ? (
         <NewJobForm
           onCreated={(id) => {

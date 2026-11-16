@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { CommandBox } from '@/components/command-box';
@@ -53,6 +53,13 @@ export default function Capture() {
   const [note, setNote] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  // what to open once the sheet on screen has fully gone (iOS shows one pop-up at a time)
+  const next = useRef<(() => void) | null>(null);
+  const thenOpen = () => {
+    const open = next.current;
+    next.current = null;
+    open?.();
+  };
   // signed in, KILN checks what was said for hours and work; otherwise the words are saved as
   // a note on the job picked next. Without speech recognition (Expo Go) the owner types it.
   const ai = aiReady(state.mode);
@@ -107,9 +114,8 @@ export default function Capture() {
         <VoiceSheet open={voiceOpen} onClose={() => setVoiceOpen(false)} onDone={(heard) => {
           setVoiceOpen(false);
           setNote(heard);
-          // let the voice sheet finish closing before the job sheet opens (iOS shows one modal at a time)
-          setTimeout(() => setMode('note'), 400);
-        }} />
+          next.current = () => setMode('note');
+        }} onClosed={thenOpen} />
       )}
 
       {parkJob ? (
@@ -145,9 +151,8 @@ export default function Capture() {
       <PhotoSourceSheet open={photoOpen} onClose={() => setPhotoOpen(false)} onPicked={(photos) => {
         setPhotoOpen(false);
         setPicked(photos);
-        // let the photo sheet finish closing before the job sheet opens (iOS shows one modal at a time)
-        setTimeout(() => setMode('photo'), 400);
-      }} />
+        next.current = () => setMode('photo');
+      }} onClosed={thenOpen} />
 
       <JobPicker
         open={mode !== null}
@@ -160,15 +165,14 @@ export default function Capture() {
         title={mode === 'voice' ? t('capture.recording') : undefined}
       />
 
-      <Sheet open={noteOpen} onClose={() => setNoteOpen(false)} title={t('capture.note')}>
+      <Sheet open={noteOpen} onClose={() => setNoteOpen(false)} onClosed={thenOpen} title={t('capture.note')}>
         <Field value={note} onChangeText={setNote} placeholder={t('capture.notePlaceholder')} multiline autoFocus style={{ minHeight: 120, paddingTop: 14, textAlignVertical: 'top' }} />
         <Button
           label={t('common.save')}
           disabled={note.trim().length === 0}
           onPress={() => {
+            next.current = () => setMode('note');
             setNoteOpen(false);
-            // let the note sheet finish closing before the job sheet opens (iOS shows one modal at a time)
-            setTimeout(() => setMode('note'), 400);
           }}
         />
       </Sheet>
