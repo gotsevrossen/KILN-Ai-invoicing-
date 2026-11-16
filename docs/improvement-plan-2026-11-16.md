@@ -98,3 +98,70 @@ Check each on web in light and dark mode. Native-only behavior that can't be che
 - Drag down to close a sheet (needs testing on real phones).
 - Moving live data out of `data/sample.ts`, splitting `store.tsx`, and a save queue kept on the phone.
 - Customer links for estimates and change orders; deposits and partial payments; reminders; PDFs; repeat invoices; Face ID; automatic checks on every push.
+
+---
+
+# Planned next (not started, each needs Rossen's go-ahead)
+
+These are plans only. Nothing below is part of Phases 1–4 above.
+
+## Plan A: Sign in with Google and Apple
+
+**Where things stand.** Sign-in is email and password only (`mobile/src/app/sign-in.tsx`, `mobile/src/data/auth.tsx`). Both providers are off in `supabase/config.toml` (`[auth.external.apple] enabled = false`). The app's link name is `kiln` and its ID is `com.rosseng.kiln` on both phones.
+
+**Two ways to build it.**
+
+| | Browser sign-in | Native buttons |
+|---|---|---|
+| How it feels | A browser sheet opens, the owner picks their account, and lands back in KILN | Apple's Face ID sheet / Google's account picker, no browser |
+| New packages | None (`expo-web-browser` and `expo-linking` are already installed) | `expo-apple-authentication` and a Google sign-in package |
+| Works in | The Android test app, iPhone builds, and the web version | Only real builds, never Expo Go |
+| Risk | Apple reviewers prefer the native Apple button on iPhone | More setup; Google's package needs a build setting per platform |
+
+**Recommendation:** Google by browser sign-in first (free, and it works in the Android test app today). Apple with the native button on iPhone when iPhone builds start, and by browser sign-in on Android and web.
+
+**What Rossen needs to set up (accounts and cost).**
+- Google: a free Google Cloud project with a consent screen and a "Web" sign-in client. Its allowed return address is the server's `/auth/v1/callback`.
+- Apple: the Apple Developer Program ($99 a year, also needed for TestFlight). Turn on "Sign in with Apple" for `com.rosseng.kiln`; for Android and web also make a Services ID and a sign-in key. That key's secret must be re-made every 6 months.
+- Apple's rule: an iPhone app that offers Google sign-in must also offer Sign in with Apple. So Google can ship on Android alone first, but the iPhone release needs both.
+- Use the hosted server for this. The laptop server's address can be registered too, but it only works while KILN is on.
+
+**Build steps.**
+1. Server: turn the providers on in `supabase/config.toml` (local) and the hosted project's settings; ids and secrets go in `supabase/.env` / hosted secrets, never in the app. Add `kiln://` and `https://kiln.expo.app` to the allowed return addresses.
+2. Check the gatekeeper (`scripts/kiln-gate.mjs`) passes the sign-in return path under `/auth/v1` and nothing else new.
+3. `auth.tsx`: add `signInWith('google' | 'apple')`. Browser path: ask the server for the sign-in address, open it in the in-app browser, and trade the returned code for a session (the more secure "code" flow, not tokens in the address). Native Apple path later: get Apple's identity token on the phone and hand it to the server.
+4. `sign-in.tsx`: "Continue with Apple" (black, Apple's own button rules) and "Continue with Google" above the email form, 56 px tall, in English and Spanish. Show them only when the server has them turned on.
+5. After sign-in nothing else changes: a new account goes to setup, an existing one loads its business.
+6. Tests: a new Google account lands on setup with an empty business; signing out and back in loads the same business; cancelling the browser returns to sign-in with no error; permission tests still pass (rules depend on the user id, not on how they signed in).
+
+**Things to decide or check before building.**
+- **Same email, two ways in.** If an owner made a password account and later taps Google with the same email, they must land in the same business, not a second empty one. The server only joins accounts whose email is verified, and KILN doesn't verify emails yet. Check this on the hosted server first; if it makes a second account, build the 6-digit email verification before turning Google on.
+- **Apple's hidden emails.** Apple lets people hide their email behind a relay address, and gives the name only on the first sign-in. KILN's future emails must be registered with Apple to reach relay addresses, and the name must be saved the first time.
+- **Deleting an account.** Apple requires a way to delete the account inside the app once Sign in with Apple is offered. KILN has none yet; it needs its own small plan (what happens to sent invoices and payment records).
+
+## Plan B: Apple Pay and Google Pay
+
+Assumed meaning: customers paying invoices. (KILN charging owners its own subscription through Apple or Google is a separate topic and not needed for the first version.)
+
+**Where things stand.** This is already built (Oct 26): the customer's page at `kiln.expo.app/pay/<code>` shows Apple Pay / Google Pay buttons through Stripe, the money goes to the owner's own Stripe account, and the invoice marks itself paid. The server also registers the page's address with each owner's Stripe account, which Apple Pay requires. See `docs/online-payments-2026-10-26.md`. It has only been run in Stripe's test mode.
+
+**Step 1: prove it on real phones (test mode, free).**
+- iPhone Safari with a card in Wallet: the Apple Pay button shows, pays, and the invoice turns paid in the app within about 15 seconds.
+- Android Chrome with Google Pay set up: the same.
+- A phone with no wallet, and a desktop browser: the page says clearly to open the link on a phone or pay by bank. Add a QR code of the link on desktop so the customer can switch to their phone.
+- A declined payment: the customer sees a plain message and the owner sees "payment failed" on the invoice.
+
+**Step 2: go live checklist.**
+- Finish Stripe's platform profile and switch to live keys and a live webhook (server secrets only).
+- In live mode, confirm the address registration succeeds for a real owner account and Apple Pay shows. If KILN later moves from `kiln.expo.app` to its own domain, every owner's account must be registered for the new address (add a one-time catch-up job).
+- Google Pay through Stripe needs no extra sign-up.
+- One real small payment end to end, then refund it from Stripe.
+
+**Step 3: fill the gaps (in this order).**
+1. **Deposits and partial payments by wallet.** Pay the deposit right after signing the estimate, and pay part of an invoice. Needs the customer link for estimates and the balance math first (already on the "not in this pass" list). Database change.
+2. **Receipt for the customer.** A "Paid" page with the date, amount, and method that stays reachable from the same link, and later an email receipt once KILN's email service exists.
+3. **Tell the owner when money arrives.** A notification on the phone ("Linda paid $430.64"). Needs a notifications package and a development build.
+4. **Card fee setting.** The existing "Card fee for customers" switch doesn't reach online payments yet. Rules on card fees differ by state and by card network, so decide whether to keep this setting at all before wiring it.
+5. **Refunds and disputes shown in KILN** (read-only; the owner still handles them in Stripe).
+
+**Optional later: tap to pay on site.** The owner's phone itself takes a tap of the customer's card, iPhone, or Android phone at the job (Stripe "Tap to Pay"). Fits the trades well, but it needs a new native package, a development build, Apple's approval for the feature, and Stripe's in-person fee. Decide after the first testers ask for it.
