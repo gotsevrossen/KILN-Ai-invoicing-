@@ -10,6 +10,7 @@ import { useJobDocs, type DocStatus } from '@/components/job-docs';
 import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Stepper } from '@/components/stepper';
+import { useToast } from '@/components/toast';
 import { SyncBanner } from '@/components/sync-banner';
 import { WorkSheet } from '@/components/work-sheet';
 import { Button, Card, Field, Hair, Icon, IconButton, ListRow, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
@@ -58,7 +59,7 @@ function JobDetail() {
   // a page to open once the change sheet has fully gone
   const afterChange = useRef<string | null>(null);
   const [noteText, setNoteText] = useState('');
-  const [photoAdded, setPhotoAdded] = useState(false);
+  const toast = useToast();
   const [photoOpen, setPhotoOpen] = useState(false);
   const [workOpen, setWorkOpen] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
@@ -245,7 +246,6 @@ function JobDetail() {
           <Button label={t('flow.note')} icon="edit-3" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setNoteOpen(true)} />
         </Row>
       ) : null}
-      {photoAdded ? <Notice text={t('flow.photoAdded')} icon="camera" /> : null}
       {(stage === 'work' || detail === 'invoiceDraft') ? <Button label={t('review.newChange')} variant="outline" icon="plus"
         onPress={() => pendingChange ? router.push(`/change-order/${pendingChange.id}`) : setChangeOpen(true)} /> : null}
 
@@ -320,7 +320,7 @@ function JobDetail() {
 
       <PhotoSourceSheet open={photoOpen} onClose={() => setPhotoOpen(false)} onPicked={(photos) => {
         setPhotoOpen(false);
-        if (actions.addPhotos(job.id, photos)) setPhotoAdded(true);
+        if (actions.addPhotos(job.id, photos)) toast.show(t('flow.photoAdded'), 'camera');
       }} />
 
       {invoice ? <ConfirmPaidSheet invoiceId={invoice.id} open={paidOpen} onClose={() => setPaidOpen(false)} /> : null}
@@ -339,6 +339,7 @@ function JobDetail() {
           onPress={() => {
             if (hoursValue === null) return;
             actions.logHours(job.id, hoursValue, hoursNote.trim());
+            toast.show(t('flow.hoursSaved', { hours: f.qty(hoursValue) }), 'clock');
             setHoursText('');
             setHoursNote('');
             setHoursOpen(false);
@@ -353,6 +354,7 @@ function JobDetail() {
           disabled={!noteText.trim()}
           onPress={() => {
             actions.addCapture(job.id, 'note', noteText.trim());
+            toast.show(t('flow.noteSaved'), 'edit-3');
             setNoteText('');
             setNoteOpen(false);
           }}

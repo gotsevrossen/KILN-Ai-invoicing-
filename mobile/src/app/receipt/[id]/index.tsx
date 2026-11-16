@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { ListGroup, ListItem } from '@/components/motion-list';
 import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Button, ButtonRow, Card, Field, Hair, PageHeader, Pill, Row, Screen, T, type Tone } from '@/components/ui';
@@ -149,10 +150,12 @@ function SortReceipt() {
       {showList ? (
         <Card style={{ gap: 0 }}>
           <T v="eyebrow" style={{ marginBottom: 6 }}>{t('receipt.onReceipt')}</T>
+          <ListGroup>
           {receipt.items.map((item) => {
             const s = statusOf(item);
             return (
-              <Row key={item.id} gap={10} style={{ minHeight: 52, borderTopWidth: 1, borderTopColor: p.line, paddingVertical: 6 }}>
+              <ListItem key={item.id}>
+              <Row gap={10} style={{ minHeight: 52, borderTopWidth: 1, borderTopColor: p.line, paddingVertical: 6 }}>
                 <T v="small" muted style={{ width: 16, fontFamily: font.semi }}>{item.line}</T>
                 <T v="body" style={{ flex: 1 }} numberOfLines={2}>{nameOf(item)}</T>
                 <T v="money" style={{ fontFamily: font.medium, fontSize: 15 }}>{f.money(itemCostWithTax(item))}</T>
@@ -160,8 +163,10 @@ function SortReceipt() {
                   <Pill label={s.label} tone={s.tone} />
                 </View>
               </Row>
+              </ListItem>
             );
           })}
+          </ListGroup>
           <Hair style={{ marginTop: 6 }} />
           <T v="small" muted style={{ marginTop: 10 }}>{t('receipt.taxSplit', { amount: f.money(receipt.taxCents) })}</T>
         </Card>

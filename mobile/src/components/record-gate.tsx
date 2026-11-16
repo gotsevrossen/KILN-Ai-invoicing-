@@ -1,13 +1,12 @@
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, View } from 'react-native';
 
 import { useAuth } from '@/data/auth';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
-import { usePalette } from '@/theme/use-palette';
 
-import { Button, Notice, PageHeader, Screen, T } from './ui';
+import { LoadingCards } from './skeleton';
+import { Button, Notice, PageHeader, Screen } from './ui';
 
 /**
  * Shows a page only once its job, invoice, or receipt is in memory. Opened from a link or a
@@ -15,7 +14,6 @@ import { Button, Notice, PageHeader, Screen, T } from './ui';
  * "Loading…" until then, and "not available" if the record really isn't there.
  */
 export function RecordGate({ found, children }: { found: () => boolean; children: ReactNode }) {
-  const p = usePalette();
   const { t } = useLang();
   const auth = useAuth();
   // subscribing re-checks the record when the business finishes loading
@@ -27,10 +25,7 @@ export function RecordGate({ found, children }: { found: () => boolean; children
   return (
     <Screen header={<PageHeader title="" back={back} />}>
       {loading ? (
-        <View style={{ alignItems: 'center', gap: 14, paddingTop: 60 }}>
-          <ActivityIndicator color={p.accent} size="large" />
-          <T v="label">{t('common.loading')}</T>
-        </View>
+        <LoadingCards label={t('common.loading')} />
       ) : (
         <>
           <Notice text={t('common.notFound')} icon="alert-circle" tone="soft" />

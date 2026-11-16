@@ -181,6 +181,8 @@ const en = {
     note: 'Note',
     receipt: 'Receipt',
     photoAdded: 'Photo added to this job.',
+    hoursSaved: '%{hours} h saved to this job.',
+    noteSaved: 'Note saved to this job.',
     workDone: 'Work done',
     viewEstimate: 'Estimate',
   },

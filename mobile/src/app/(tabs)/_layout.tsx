@@ -1,21 +1,23 @@
 import Feather from '@expo/vector-icons/Feather';
 import { Redirect, Tabs, usePathname } from 'expo-router';
-import { ActivityIndicator, Pressable, Text, View, type GestureResponderEvent } from 'react-native';
+import { Text, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button } from '@/components/ui';
+import { LoadingCards } from '@/components/skeleton';
+import { Button, PressableScale } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { font } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
+/** Home's shape in gray while the business loads. */
 function Loading({ text }: { text: string }) {
   const p = usePalette();
+  const insets = useSafeAreaInsets();
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24, backgroundColor: p.ground }}>
-      <ActivityIndicator color={p.accent} size="large" />
-      <Text style={{ fontFamily: font.semi, fontSize: 16, color: p.ink, textAlign: 'center' }}>{text}</Text>
+    <View style={{ flex: 1, padding: 16, paddingTop: insets.top + 72, backgroundColor: p.ground }}>
+      <LoadingCards label={text} big />
     </View>
   );
 }
@@ -42,33 +44,29 @@ function CaptureButton({ onPress, label }: { onPress?: (e: GestureResponderEvent
   const p = usePalette();
   const selected = usePathname() === '/capture';
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       accessibilityRole="tab"
       accessibilityLabel={label}
       accessibilityState={{ selected }}
+      scaleTo={0.94}
       style={{ flex: 1, alignItems: 'center' }}>
-      {({ pressed }) => (
-        <>
-          <View
-            style={{
-              width: 66,
-              height: 66,
-              marginTop: -26,
-              borderRadius: 33,
-              backgroundColor: selected ? p.inverse : p.accent,
-              borderWidth: 4,
-              borderColor: p.ground,
-              alignItems: 'center',
-              justifyContent: 'center',
-              transform: [{ scale: pressed ? 0.95 : 1 }],
-            }}>
-            <Feather name="plus" size={32} color={selected ? p.accent : p.onAccent} />
-          </View>
-          <Text style={{ fontFamily: font.semi, fontSize: 12, marginTop: 2, color: selected ? p.ink : p.muted }}>{label}</Text>
-        </>
-      )}
-    </Pressable>
+      <View
+        style={{
+          width: 66,
+          height: 66,
+          marginTop: -26,
+          borderRadius: 33,
+          backgroundColor: selected ? p.inverse : p.accent,
+          borderWidth: 4,
+          borderColor: p.ground,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+        <Feather name="plus" size={32} color={selected ? p.accent : p.onAccent} />
+      </View>
+      <Text style={{ fontFamily: font.semi, fontSize: 12, marginTop: 2, color: selected ? p.ink : p.muted }}>{label}</Text>
+    </PressableScale>
   );
 }
 

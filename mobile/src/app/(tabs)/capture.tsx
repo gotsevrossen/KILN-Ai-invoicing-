@@ -1,13 +1,14 @@
 import Feather from '@expo/vector-icons/Feather';
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { CommandBox } from '@/components/command-box';
 import { PhotoSourceSheet } from '@/components/job-photos';
 import { JobPicker, Sheet } from '@/components/sheet';
+import { useToast } from '@/components/toast';
 import { VoiceSheet } from '@/components/voice-sheet';
-import { Button, Card, Field, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
+import { Button, Card, Field, Notice, PageHeader, PressableScale, Row, Screen, T, type IconName } from '@/components/ui';
 import { aiReady } from '@/data/ai';
 import * as sample from '@/data/sample';
 import { jobById } from '@/data/selectors';
@@ -23,23 +24,21 @@ function Tile({ icon, label, onPress, accent }: { icon: IconName; label: string;
   const p = usePalette();
   const fg = accent ? p.onAccent : p.ink;
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => ({
+      style={{
         flex: 1,
         height: 150,
         borderRadius: radius.md,
         padding: 18,
         justifyContent: 'space-between',
         backgroundColor: accent ? p.accent : p.card,
-        opacity: pressed ? 0.85 : 1,
-        transform: [{ scale: pressed ? 0.98 : 1 }],
-      })}>
+      }}>
       <Feather name={icon} size={38} color={fg} />
       <Text style={{ fontFamily: font.black, fontSize: 24, letterSpacing: -0.5, textTransform: 'uppercase', color: fg }}>{label}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -51,7 +50,8 @@ export default function Capture() {
   const [mode, setMode] = useState<CaptureKind | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState('');
-  const [saved, setSaved] = useState<string | null>(null);
+  const toast = useToast();
+  const saved = (jobId: string) => toast.show(t('common.savedTo', { job: jobById(jobId).title }));
   const [voiceOpen, setVoiceOpen] = useState(false);
   // what to open once the sheet on screen has fully gone (iOS shows one pop-up at a time)
   const next = useRef<(() => void) | null>(null);
@@ -76,14 +76,14 @@ export default function Capture() {
   const pick = (jobId: string) => {
     if (!mode) return;
     if (mode === 'photo') {
-      if (actions.addPhotos(jobId, picked)) setSaved(jobById(jobId).title);
+      if (actions.addPhotos(jobId, picked)) saved(jobId);
       else dropPicked();
       setPicked([]);
       setMode(null);
       return;
     }
     actions.addCapture(jobId, mode, mode === 'note' ? note : undefined);
-    setSaved(jobById(jobId).title);
+    saved(jobId);
     setMode(null);
     setNote('');
   };
@@ -107,8 +107,6 @@ export default function Capture() {
         <Tile icon="camera" label={t('capture.photo')} onPress={() => setPhotoOpen(true)} />
         <Tile icon="edit-3" label={t('capture.note')} onPress={() => setNoteOpen(true)} />
       </Row>
-
-      {saved ? <Notice text={t('common.savedTo', { job: saved })} /> : null}
 
       {ai ? <CommandBox voiceOpen={voiceOpen} onVoiceClose={() => setVoiceOpen(false)} /> : (
         <VoiceSheet open={voiceOpen} onClose={() => setVoiceOpen(false)} onDone={(heard) => {

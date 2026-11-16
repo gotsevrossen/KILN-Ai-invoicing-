@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { CrashScreen } from '@/components/crash-screen';
+import { ToastProvider } from '@/components/toast';
 import { AuthProvider } from '@/data/auth';
 import { StoreProvider } from '@/data/store';
 import { LanguageProvider } from '@/i18n';
@@ -38,7 +39,9 @@ export default function RootLayout() {
         <LanguageProvider>
           <StoreProvider>
             <AuthProvider>
-              <Screens />
+              <ToastProvider>
+                <Screens />
+              </ToastProvider>
             </AuthProvider>
           </StoreProvider>
         </LanguageProvider>

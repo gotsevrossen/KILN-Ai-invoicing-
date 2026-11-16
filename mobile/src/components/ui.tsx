@@ -1,9 +1,9 @@
 import Feather from '@expo/vector-icons/Feather';
-import type { ComponentProps, ReactNode } from 'react';
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import {
   Pressable,
+  type PressableProps,
   ScrollView,
-  StyleSheet,
   Switch,
   Text,
   TextInput,
@@ -13,9 +13,11 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLang } from '@/i18n';
+import { duration, popSpring, pressSpring, standardEasing, useMotion } from '@/theme/motion';
 import { font, radius, space, tap, type Palette } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
@@ -26,6 +28,69 @@ export type IconName = ComponentProps<typeof Feather>['name'];
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
   const p = usePalette();
   return <Feather name={name} size={size} color={color ?? p.ink} />;
+}
+
+// ---------- Motion ----------
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+/**
+ * A Pressable that springs down a little while pressed and back on release, on the UI thread so
+ * it keeps up with the finger. With Reduce Motion it dims a little instead of shrinking.
+ */
+export function PressableScale({ style, scaleTo = 0.97, onPressIn, onPressOut, disabled, ...rest }: Omit<PressableProps, 'style'> & {
+  style?: StyleProp<ViewStyle>;
+  /** How small it gets while pressed. */
+  scaleTo?: number;
+}) {
+  const reduced = useMotion() === 'reduced';
+  const down = useSharedValue(0);
+  const feel = useAnimatedStyle(() => (reduced
+    ? { opacity: 1 - down.get() * 0.15 }
+    : { transform: [{ scale: 1 - down.get() * (1 - scaleTo) }] }));
+  return (
+    <AnimatedPressable
+      {...rest}
+      disabled={disabled}
+      onPressIn={(e) => {
+        down.set(reduced ? withTiming(1, { duration: duration.fast }) : withSpring(1, pressSpring));
+        onPressIn?.(e);
+      }}
+      onPressOut={(e) => {
+        down.set(reduced ? withTiming(0, { duration: duration.fast }) : withSpring(0, pressSpring));
+        onPressOut?.(e);
+      }}
+      style={[style, feel]}
+    />
+  );
+}
+
+/**
+ * Pops its child in (from 60% size to full) when `on` turns true while on screen, like a check
+ * mark being ticked. Already on at first show: no pop. Reduce Motion: a quick fade instead.
+ */
+export function Pop({ on, children, mounted = false }: { on: boolean; children: ReactNode;
+  /** Pop when first shown too (it appears because something just happened). */
+  mounted?: boolean;
+}) {
+  const reduced = useMotion() === 'reduced';
+  const v = useSharedValue(on && !mounted ? 1 : 0);
+  const first = useRef(true);
+  useEffect(() => {
+    const skip = first.current && !mounted;
+    first.current = false;
+    if (!on) {
+      v.set(0);
+      return;
+    }
+    if (skip) return;
+    v.set(0);
+    v.set(reduced ? withTiming(1, { duration: duration.fast }) : withSpring(1, popSpring));
+  }, [on, mounted, reduced, v]);
+  const style = useAnimatedStyle(() => (reduced
+    ? { opacity: v.get() }
+    : { opacity: Math.min(1, v.get() * 2), transform: [{ scale: 0.6 + 0.4 * v.get() }] }));
+  return <Animated.View style={style}>{children}</Animated.View>;
 }
 
 // ---------- Text ----------
@@ -217,13 +282,9 @@ export function Card({
   const base: ViewStyle = { backgroundColor: c.bg, borderRadius: radius.md, padding: 18, gap: 10 };
   if (!onPress) return <View style={[base, style]}>{children}</View>;
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [base, style, pressed && styles.pressed]}>
+    <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={label} scaleTo={0.98} style={[base, style]}>
       {children}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -268,13 +329,13 @@ export function Button({
   };
   const c = colors[variant];
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
-      style={({ pressed }) => [
+      style={[
         {
           minHeight: stacked ? tap.big + 8 : big ? tap.big : tap.main,
           paddingHorizontal: stacked ? 6 : 16,
@@ -293,7 +354,6 @@ export function Button({
         // stacked tiles share the row equally; others grow from their own width and wrap when full
         stacked ? { flex: 1 } : flex && { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' },
         style,
-        pressed && styles.pressed,
       ]}>
       {icon ? <Feather name={icon} size={big || stacked ? 22 : 19} color={c.fg} /> : null}
       {stacked ? (
@@ -312,7 +372,7 @@ export function Button({
           {label}
         </Text>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -331,17 +391,15 @@ export function IconButton({
   const bg = tone === 'dark' ? p.inverse : p.card;
   const fg = tone === 'dark' ? p.onInverse : p.ink;
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
       hitSlop={4}
-      style={({ pressed }) => [
-        { width: tap.min, height: tap.min, borderRadius: radius.pill, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' },
-        pressed && styles.pressed,
-      ]}>
+      scaleTo={0.92}
+      style={{ width: tap.min, height: tap.min, borderRadius: radius.pill, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
       <Feather name={icon} size={22} color={fg} />
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -381,25 +439,23 @@ export function Chip({
 }) {
   const p = usePalette();
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
       accessibilityLabel={label}
-      style={({ pressed }) => [
-        {
-          minHeight: tap.min,
-          minWidth: 64,
-          paddingHorizontal: 18,
-          borderRadius: radius.pill,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: selected ? p.inverse : onPage ? p.card : p.ground,
-        },
-        pressed && styles.pressed,
-      ]}>
+      scaleTo={0.94}
+      style={{
+        minHeight: tap.min,
+        minWidth: 64,
+        paddingHorizontal: 18,
+        borderRadius: radius.pill,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: selected ? p.inverse : onPage ? p.card : p.ground,
+      }}>
       <Text style={{ fontFamily: font.semi, fontSize: 16, color: selected ? p.onInverse : p.ink }}>{label}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -441,9 +497,9 @@ export function ListRow({
   const style: ViewStyle = { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64 };
   if (!onPress) return <View style={style}>{body}</View>;
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={title} style={({ pressed }) => [style, pressed && styles.pressed]}>
+    <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={title} scaleTo={0.98} style={style}>
       {body}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -482,8 +538,34 @@ export function Segmented<K extends string>({
   label: string;
 }) {
   const p = usePalette();
+  const reduced = useMotion() === 'reduced';
+  const index = Math.max(0, options.findIndex((o) => o.key === value));
+  // the black block slides to the chosen option (it needs the control's width first)
+  const [width, setWidth] = useState(0);
+  const at = useSharedValue(index);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      at.set(index);
+      return;
+    }
+    at.set(reduced ? index : withTiming(index, { duration: duration.base, easing: standardEasing }));
+  }, [index, reduced, at]);
+  const seg = width > 0 ? (width - 8) / options.length : 0;
+  const block = useAnimatedStyle(() => ({ transform: [{ translateX: at.get() * seg }] }));
   return (
-    <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ flexDirection: 'row', backgroundColor: p.ground, borderRadius: radius.sm, padding: 4 }}>
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel={label}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      style={{ flexDirection: 'row', backgroundColor: p.ground, borderRadius: radius.sm, padding: 4 }}>
+      {seg > 0 ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[{ position: 'absolute', top: 4, bottom: 4, left: 4, width: seg, borderRadius: radius.xs, backgroundColor: p.inverse }, block]}
+        />
+      ) : null}
       {options.map((o) => {
         const on = o.key === value;
         return (
@@ -498,7 +580,8 @@ export function Segmented<K extends string>({
               borderRadius: radius.xs,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: on ? p.inverse : 'transparent',
+              // until the width is known, the chosen option draws its own block
+              backgroundColor: on && seg === 0 ? p.inverse : 'transparent',
             }}>
             <Text style={{ fontFamily: font.semi, fontSize: 15, color: on ? p.onInverse : p.ink }}>{o.label}</Text>
           </Pressable>
@@ -579,7 +662,8 @@ export function Checkbox({ label, value, onChange }: { label: string; value: boo
           alignItems: 'center',
           justifyContent: 'center',
         }}>
-        {value ? <Feather name="check" size={18} color={p.onInverse} /> : null}
+        {/* always there, so ticking it pops the check in */}
+        <Pop on={value}><Feather name="check" size={18} color={p.onInverse} /></Pop>
       </View>
       <T v="body" style={{ flex: 1 }}>{label}</T>
     </Pressable>
@@ -600,17 +684,17 @@ export function PhotoTile({ tag, height = 96, flex = true }: { tag?: string; hei
   );
 }
 
-export function Notice({ text, tone = 'inverse', icon = 'check' }: { text: string; tone?: Tone; icon?: IconName }) {
+export function Notice({ text, tone = 'inverse', icon = 'check', pop }: { text: string; tone?: Tone; icon?: IconName;
+  /** Pop the icon in as it appears (it shows because something just happened, like being paid). */
+  pop?: boolean;
+}) {
   const p = usePalette();
   const c = toneColors(p, tone);
   return (
     <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', gap: 10, alignItems: 'center', backgroundColor: c.bg, borderRadius: radius.sm, padding: 14 }}>
-      <Feather name={icon} size={20} color={c.fg} />
+      <Pop on mounted={pop}><Feather name={icon} size={20} color={c.fg} /></Pop>
       <T v="label" color={c.fg} style={{ flex: 1 }}>{text}</T>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  pressed: { opacity: 0.85, transform: [{ scale: 0.985 }] },
-});

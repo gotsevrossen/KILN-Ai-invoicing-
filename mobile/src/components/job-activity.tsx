@@ -11,6 +11,7 @@ import { lineTotal } from '@/lib/money';
 import { localDay } from '@/lib/photo-facts';
 import { font } from '@/theme/tokens';
 
+import { ListGroup, ListItem } from './motion-list';
 import { PhotoStrip } from './job-photos';
 import { Card, IconButton, ListRow, PhotoTile, Row, T } from './ui';
 
@@ -152,15 +153,15 @@ export function ActivityDays({ items }: { items: ActivityItem[] }) {
   const f = useFormat();
   const days = [...new Set(items.map((i) => i.date))];
   return (
-    <>
+    <ListGroup>
       {days.map((day) => (
-        <View key={day} style={{ gap: 10 }}>
+        <ListItem key={day} style={{ gap: 10 }}>
           <T style={{ fontFamily: font.black, fontSize: 18, letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 8 }}>
             {day === sample.TODAY ? t('common.today') : f.date(day)}
           </T>
-          {items.filter((i) => i.date === day).map((i) => i.node)}
-        </View>
+          {items.filter((i) => i.date === day).map((i) => <ListItem key={i.key}>{i.node}</ListItem>)}
+        </ListItem>
       ))}
-    </>
+    </ListGroup>
   );
 }

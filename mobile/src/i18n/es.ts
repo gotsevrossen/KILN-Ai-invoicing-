@@ -181,6 +181,8 @@ const es: Dict = {
     photo: 'Foto',
     note: 'Nota',
     receipt: 'Recibo',
+    hoursSaved: '%{hours} h guardadas en este trabajo.',
+    noteSaved: 'Nota guardada en este trabajo.',
     photoAdded: 'Foto agregada a este trabajo.',
     workDone: 'Trabajo hecho',
     viewEstimate: 'Presupuesto',

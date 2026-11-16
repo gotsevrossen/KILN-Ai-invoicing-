@@ -35,6 +35,8 @@ function InvoiceDraft() {
   const sources = invoiceSources(state, invoice);
   const [sendOpen, setSendOpen] = useState(false);
   const [paidOpen, setPaidOpen] = useState(false);
+  // paid while this page is open: the check pops in (not when opening an invoice paid before)
+  const [paidAtOpen] = useState(paid);
   const online = paidOnline(state, invoice.id);
   const opened = state.opened[invoice.id];
   const waiting = sent && !paid && state.mode === 'connected';
@@ -84,7 +86,7 @@ function InvoiceDraft() {
       }
       footer={
         paid ? (
-          <Notice text={`${t('flow.paidDone')} ${paidHow}`} icon="check-circle" tone="accent" />
+          <Notice text={`${t('flow.paidDone')} ${paidHow}`} icon="check-circle" tone="accent" pop={!paidAtOpen} />
         ) : sent ? (
           <>
             <Notice text={sentStatus} icon={online.pending > 0 ? 'clock' : online.failed ? 'alert-circle' : opened ? 'eye' : 'send'} />

@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
 
+import { ListGroup, ListItem } from '@/components/motion-list';
 import { RecordGate } from '@/components/record-gate';
 import { Card, Hair, IconButton, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
@@ -45,8 +46,9 @@ function JobCosts() {
       <T v="eyebrow" style={{ marginTop: 8 }}>{t('job.work')}</T>
       {work.length === 0 ? <T v="body" muted>{t('job.noWork')}</T> : (
         <Card style={{ gap: 4 }}>
+          <ListGroup>
           {work.map((item, i) => (
-            <View key={item.id}>
+            <ListItem key={item.id}>
               {i ? <Hair /> : null}
               <ListRow icon="tool" title={item.description}
                 sub={`${day(item.date)} · ${f.qty(item.qtyHundredths)}${item.unit === 'flat' ? '' : ` ${t(`estimate.units.${item.unit}`)}`} × ${f.money(item.unitCents)}`}
@@ -56,8 +58,9 @@ function JobCosts() {
                     {locked ? null : <IconButton icon="trash-2" label={t('job.workRemove', { name: item.description })} onPress={() => actions.removeWorkItem(item.id)} />}
                   </Row>
                 } />
-            </View>
+            </ListItem>
           ))}
+          </ListGroup>
         </Card>
       )}
       {locked && work.length > 0 ? <Notice text={t('job.workLocked')} icon="lock" tone="soft" /> : null}

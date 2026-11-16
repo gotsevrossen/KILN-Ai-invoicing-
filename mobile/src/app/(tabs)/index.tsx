@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 
 import { LogoMark } from '@/components/logo';
+import { ListGroup, ListItem } from '@/components/motion-list';
 import { SyncBanner } from '@/components/sync-banner';
 import { Button, Card, Icon, IconButton, ListRow, Notice, Pill, Row, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
@@ -8,6 +9,7 @@ import { changeOrderTotal, homeSummary, invoiceForJob, invoiceTotals, jobAmount,
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
+import { useCountUp } from '@/theme/motion';
 import { font, radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
@@ -18,6 +20,8 @@ export default function Home() {
   const { state } = useStore();
 
   const summary = homeSummary(state);
+  // counts to the new total when it changes while Home is open
+  const owedShown = useCountUp(summary.owed);
   // one card for everything waiting on the owner (a new account has none of these)
   const receipts = sample.receipts.filter((r) => unsortedItems(state, r).length > 0);
   const drafts = sample.invoices.filter((i) => !state.sentInvoices.includes(i.id));
@@ -47,7 +51,7 @@ export default function Home() {
 
       <Card tone="accent" style={{ padding: 22, gap: 6, borderRadius: radius.lg }}>
         <T v="eyebrow" color={p.onAccent}>{t('home.owedToYou')}</T>
-        <T v="moneyBig" color={p.onAccent}>{f.money(summary.owed)}</T>
+        <T v="moneyBig" color={p.onAccent}>{f.money(owedShown)}</T>
         <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 6 }} gap={6}>
           <T v="label" color={p.onAccent}>
             {t('home.overdue', { count: summary.overdueCount })} · {f.money(summary.overdueCents)}
@@ -64,19 +68,23 @@ export default function Home() {
 
       {nothing ? <Notice text={t('home.allClear')} /> : null}
 
+      <ListGroup>
       {noJobs ? (
+        <ListItem key="first-job">
         <Card style={{ gap: 12 }}>
           <T v="h2">{t('home.firstJobTitle')}</T>
           <T v="body" muted>{t('home.firstJobBody')}</T>
           <Button label={t('home.firstJob')} icon="plus" big onPress={() => router.push('/new-job')} />
         </Card>
+        </ListItem>
       ) : null}
 
       {receipts.map((receipt) => {
         const count = unsortedItems(state, receipt).length;
         const when = receipt.date === sample.TODAY ? t('common.today') : f.date(receipt.date);
         return (
-          <Card key={receipt.id} onPress={() => router.push(`/receipt/${receipt.id}`)} label={t('home.sortReceipt', { count })} style={{ paddingVertical: 10 }}>
+          <ListItem key={receipt.id}>
+          <Card onPress={() => router.push(`/receipt/${receipt.id}`)} label={t('home.sortReceipt', { count })} style={{ paddingVertical: 10 }}>
             <ListRow
               icon="file-text"
               iconTone="flag"
@@ -85,11 +93,13 @@ export default function Home() {
               chevron
             />
           </Card>
+          </ListItem>
         );
       })}
 
       {drafts.map((invoice) => (
-        <Card key={invoice.id} onPress={() => router.push(`/invoice/${invoice.id}`)} label={t('home.invoiceReady')} style={{ paddingVertical: 10 }}>
+        <ListItem key={invoice.id}>
+        <Card onPress={() => router.push(`/invoice/${invoice.id}`)} label={t('home.invoiceReady')} style={{ paddingVertical: 10 }}>
           <ListRow
             icon="file"
             iconTone="accent"
@@ -98,10 +108,12 @@ export default function Home() {
             chevron
           />
         </Card>
+        </ListItem>
       ))}
 
       {changes.map((co) => (
-        <Card key={co.id} onPress={() => router.push(`/job/${co.jobId}`)} label={t('home.waitingSignature')} style={{ paddingVertical: 10 }}>
+        <ListItem key={co.id}>
+        <Card onPress={() => router.push(`/job/${co.jobId}`)} label={t('home.waitingSignature')} style={{ paddingVertical: 10 }}>
           <ListRow
             icon="edit-3"
             title={t('home.waitingSignature')}
@@ -110,10 +122,12 @@ export default function Home() {
             chevron
           />
         </Card>
+        </ListItem>
       ))}
 
       {overdueJobs.map((job) => (
-        <Card key={job.id} label={job.title} style={{ paddingVertical: 10 }} onPress={() => {
+        <ListItem key={job.id}>
+        <Card label={job.title} style={{ paddingVertical: 10 }} onPress={() => {
           const bill = invoiceForJob(job.id);
           router.push(bill ? `/invoice/${bill.id}` : `/job/${job.id}`);
         }}>
@@ -125,7 +139,9 @@ export default function Home() {
             chevron
           />
         </Card>
+        </ListItem>
       ))}
+      </ListGroup>
 
       {state.mode === 'example' ? (
         <Row style={{ justifyContent: 'center', marginTop: 12 }} gap={6}>

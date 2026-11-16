@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { MissedItems } from '@/components/ai-parts';
 import { EstimateLineRow, parseDollars, pickJobType, useEstimate, useLineMaker } from '@/components/estimate-parts';
 import { FixList } from '@/components/fix-list';
+import { ListGroup, ListItem } from '@/components/motion-list';
 import { PriceItemPicker } from '@/components/price-item-picker';
 import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
@@ -99,10 +100,14 @@ function EstimateBuilder() {
         </Card>
       ) : (
         <Card style={{ paddingVertical: 4 }}>
-          {draft.lines.map((line, i) => (
-            <EstimateLineRow key={line.id} line={line} first={i === 0} unitLabel={unitLabel}
-              onPress={() => router.push(`/estimate/${job.id}/line/${line.id}`)} />
-          ))}
+          <ListGroup>
+            {draft.lines.map((line, i) => (
+              <ListItem key={line.id}>
+                <EstimateLineRow line={line} first={i === 0} unitLabel={unitLabel}
+                  onPress={() => router.push(`/estimate/${job.id}/line/${line.id}`)} />
+              </ListItem>
+            ))}
+          </ListGroup>
         </Card>
       )}
       <FixList items={fixes} />
