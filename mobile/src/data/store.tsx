@@ -10,9 +10,10 @@ import { copyDocument, estimateReady, needsActualHours, receiptShares, workItemV
 import { businessDate } from '@/lib/invoice-aging';
 import type { NewPhoto } from '@/lib/job-photos';
 import { defaultTag } from '@/lib/photo-facts';
+import { withReceiptReview } from '@/lib/receipt-policy';
 import { removeFromPhone, stillOnPhone } from '@/lib/photo-file';
 
-import { aiReady, guessTags } from './ai';
+import { AiFailed, aiReady, guessTags, reviewReceipt } from './ai';
 import * as dbApi from './db';
 import * as docsApi from './db-docs';
 import * as payApi from './db-pay';
@@ -610,26 +611,33 @@ function makeActions() {
      * A receipt typed in by hand. With a job, every item goes to it (the owner can still
      * re-sort on the receipt page); without one, the items wait in the Inbox. Returns its id.
      */
-    addReceipt(input: NewReceiptInput, jobId: string | null): string | null {
+    async addReceipt(input: NewReceiptInput, jobId: string | null): Promise<string | null> {
+      // Freeze exactly what is reviewed; no receipt, expense or outbox entry exists yet.
+      input = { ...input, items: input.items.map((item) => ({ ...item })) };
+      const active = saveQueue.scope();
       const money = (c: number) => Number.isSafeInteger(c) && c >= 0 && c <= 100_000_000;
       const items = input.items.map((i) => ({ name: i.name.trim(), costCents: i.costCents }));
       if (!input.store.trim() || input.store.length > 120 || input.number.length > 60 || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
         !money(input.taxCents) || items.length === 0 || items.length > 200 ||
         items.some((i) => !i.name || i.name.length > 160 || !money(i.costCents)) ||
         (jobId !== null && (!jobs.some((j) => j.id === jobId) || workLocked(get(), jobId)))) return null;
-      const receipt: Receipt = {
-        id: newId(), store: input.store.trim(), number: input.number.trim(), date: input.date, taxCents: input.taxCents,
-        items: items.map((i, index) => ({ id: newId(), line: index + 1, name: i.name, qtyLabel: '', costCents: i.costCents, likelyJobIds: jobId ? [jobId] : [] })),
-      };
-      sample.receipts.unshift(receipt);
-      set((s) => {
-        if (!jobId) return { ...s, version: s.version + 1 };
-        const assignments = { ...s.assignments };
-        for (const item of receipt.items) assignments[item.id] = { type: 'jobs', jobIds: [jobId] };
-        return { ...s, assignments, version: s.version + 1 };
+      if (!aiReady(get().mode)) throw new AiFailed('signed_out');
+      return withReceiptReview(() => reviewReceipt({ store: input.store, items }), items.length, () => {
+        if (!active() || (jobId !== null && (!jobs.some((j) => j.id === jobId) || workLocked(get(), jobId)))) return null;
+        const receipt: Receipt = {
+          id: newId(), store: input.store.trim(), number: input.number.trim(), date: input.date, taxCents: input.taxCents,
+          items: items.map((i, index) => ({ id: newId(), line: index + 1, name: i.name, qtyLabel: '', costCents: i.costCents, likelyJobIds: jobId ? [jobId] : [] })),
+        };
+        sample.receipts.unshift(receipt);
+        set((s) => {
+          if (!jobId) return { ...s, version: s.version + 1 };
+          const assignments = { ...s.assignments };
+          for (const item of receipt.items) assignments[item.id] = { type: 'jobs', jobIds: [jobId] };
+          return { ...s, assignments, version: s.version + 1 };
+        });
+        persist(command('insertReceipt', get().businessId!, receipt, jobId));
+        return receipt.id;
       });
-      persist(command('insertReceipt', get().businessId!, receipt, jobId));
-      return receipt.id;
     },
     /**
      * New photos for a job, from the camera or library. They start as before, during, or after
@@ -1074,6 +1082,8 @@ function makeActions() {
       set((s) => ({ ...connectedState(s), businessId: null, version: s.version + 1 }));
     },
     startHelper(businessId: string) {
+      // crew screens use today's real date (receipts), not the example business's
+      sample.setToday(docsApi.localDate());
       set((s) => ({ ...connectedState(s), businessId, profile: { ...s.profile, onboarded: true }, version: s.version + 1 }));
     },
     startConnected(userId: string) {

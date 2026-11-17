@@ -5,6 +5,10 @@ import { Button, Card, Hair, ListRow, Notice, PageHeader, Screen, Segmented, Swi
 import { aiReady } from '@/data/ai';
 import { useAuth } from '@/data/auth';
 import { useStore } from '@/data/store';
+import { saveTeamSettings, type TeamSettings } from '@/data/team-access';
+import { teamText } from '@/features/team/text';
+import { refreshTeam, useTeam } from '@/features/team/use-team';
+import { can } from '@/lib/permissions';
 import { useLang } from '@/i18n';
 import { userError } from '@/lib/user-errors';
 import { loadVoiceLang, saveVoiceLang, type VoiceLang } from '@/lib/voice';
@@ -20,6 +24,15 @@ export default function Settings() {
   const [voiceLang, setVoiceLang] = useState<VoiceLang>(loadVoiceLang);
   const [error, setError] = useState<string | null>(null);
   const unpriced = state.priceList.filter((i) => i.unitCents === null).length;
+  const team = useTeam();
+  const c = teamText(lang);
+  const owner = can(auth.role, 'businessSettings');
+  const [teamError, setTeamError] = useState<string | null>(null);
+  const setTeam = (patch: Partial<TeamSettings>) => {
+    if (!team.businessId) return;
+    setTeamError(null);
+    saveTeamSettings(team.businessId, patch).then(refreshTeam, (e: unknown) => setTeamError(userError(t, e)));
+  };
 
   return (
     <Screen
@@ -70,18 +83,34 @@ export default function Settings() {
         />
       </Card>
 
+      {team.businessId && owner && team.data ? (
+        <Card style={{ gap: 12 }}>
+          <T v="eyebrow">{c.teamSection}</T>
+          <SwitchRow label={c.hasTeam} help={c.hasTeamHelp} value={team.data.settings.hasTeam} onChange={(hasTeam) => setTeam({ hasTeam })} />
+          {team.data.settings.hasTeam ? <>
+            <SwitchRow label={c.crewPrices} help={c.crewPricesHelp} value={team.data.settings.crewSeesPrices} onChange={(crewSeesPrices) => setTeam({ crewSeesPrices })} />
+            <SwitchRow label={c.managerCosts} help={c.managerCostsHelp} value={team.data.settings.managersSeeCosts} onChange={(managersSeeCosts) => setTeam({ managersSeeCosts })} />
+          </> : null}
+          {teamError ? <Notice text={teamError} tone="danger" icon="alert-circle" /> : null}
+        </Card>
+      ) : null}
+
       <Card style={{ gap: 4 }}>
-        <ListRow icon="users" title={t('improvements.operations')} sub={t('improvements.operationsHelp')} onPress={() => router.push('/operations')} />
-        <Hair />
+        {can(auth.role, 'seeCosts', { managersSeeCosts: team.data?.settings.managersSeeCosts }) ? <>
+          <ListRow icon="users" title={t('improvements.operations')} sub={t('improvements.operationsHelp')} onPress={() => router.push('/operations')} />
+          <Hair />
+        </> : null}
         <ListRow icon="layers" title={t('improvements.packages')} sub={t('improvements.packagesHelp')} onPress={() => router.push('/settings/packages')} />
         <Hair />
-        <ListRow
-          icon="tool"
-          title={t('settings.trades')}
-          sub={state.profile.trades.map((id) => t(`trades.${id}`)).join(', ')}
-          onPress={() => router.push('/settings/trades')}
-        />
-        <Hair />
+        {owner ? <>
+          <ListRow
+            icon="tool"
+            title={t('settings.trades')}
+            sub={state.profile.trades.map((id) => t(`trades.${id}`)).join(', ')}
+            onPress={() => router.push('/settings/trades')}
+          />
+          <Hair />
+        </> : null}
         <ListRow
           icon="tag"
           iconTone={unpriced > 0 ? 'flag' : 'soft'}
@@ -89,6 +118,7 @@ export default function Settings() {
           sub={unpriced > 0 ? t('settings.needPrices', { count: unpriced }) : t('settings.itemCount', { count: state.priceList.length })}
           onPress={() => router.push('/settings/prices')}
         />
+        {owner ? <>
         <Hair />
         <ListRow
           icon="percent"
@@ -103,9 +133,12 @@ export default function Settings() {
           sub={`${t('settings.due')}: ${s.dueDays === 0 ? t('settings.dueOnReceipt') : t('settings.dueDays', { days: s.dueDays })}`}
           onPress={() => router.push('/settings/payments')}
         />
+        </> : null}
       </Card>
 
-      {aiReady(state.mode) ? (
+      {!owner ? <Notice text={c.ownerOnly} tone="soft" icon="lock" /> : null}
+
+      {aiReady(state.mode) && owner ? (
         <Card style={{ gap: 12 }}>
           <T v="eyebrow">{t('ai.settingsTitle')}</T>
           <SwitchRow label={t('ai.scopeSetting')} help={t('ai.scopeSettingHelp')} value={state.aiScope} onChange={actions.setAiScope} />

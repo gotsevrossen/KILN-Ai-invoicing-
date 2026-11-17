@@ -5,7 +5,7 @@ import { Pressable, View } from 'react-native';
 import * as sample from '@/data/sample';
 import { customerOf, estimateDraft, estimateTotals, jobById } from '@/data/selectors';
 import { useStore, type EstimateLine } from '@/data/store';
-import { ITEM_UNITS, TRADES, tradeById, type TradeId } from '@/data/trades';
+import { ITEM_UNITS, priceOnly, TRADES, tradeById, type TradeId } from '@/data/trades';
 import type { JobScope, PriceItem, Unit } from '@/data/types';
 import { useLang, useTFor, type Lang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -81,7 +81,7 @@ export function useLineMaker(customerLang: Lang) {
     description: ITEM_UNITS[item.id] ? tc(`items.${item.id}` as 'items.trip') : item.name,
     kind: ['trip', 'diag', 'haul'].includes(item.id) ? 'fee' : 'labor',
     unit: item.unit,
-    qtyHundredths,
+    qtyHundredths: priceOnly(item.id) ? 100 : qtyHundredths,
     unitCents: item.unitCents,
   });
   /** The owner's price list item, or the starter item (no price yet) if they removed it. */

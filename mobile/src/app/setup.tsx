@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -6,7 +6,10 @@ import { PriceListEditor } from '@/components/price-list-editor';
 import { TradePicker } from '@/components/trade-picker';
 import { Button, Field, IconButton, Notice, Row, Screen, Segmented, T } from '@/components/ui';
 import { useAuth } from '@/data/auth';
-import { useStore } from '@/data/store';
+import { currentState, useStore } from '@/data/store';
+import { saveTeamSettings } from '@/data/team-access';
+import { teamText } from '@/features/team/text';
+import { refreshTeam } from '@/features/team/use-team';
 import { ITEM_UNITS, starterCents, starterItemIds, suggestedPricing, type TradeId } from '@/data/trades';
 import type { PriceItem } from '@/data/types';
 import { useLang } from '@/i18n';
@@ -41,6 +44,8 @@ export default function Setup() {
   const auth = useAuth();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [team, setTeam] = useState<'alone' | 'team'>('alone');
+  const c = teamText(lang);
 
   const toggleTrade = (id: TradeId) => setTrades((ts) => (ts.includes(id) ? ts.filter((x) => x !== id) : [...ts, id]));
 
@@ -63,6 +68,9 @@ export default function Setup() {
     return [...starter, ...custom];
   };
 
+  // signed out (for example from the join page): the server can't save a business for nobody
+  if (auth.configured && auth.ready && !auth.session) return <Redirect href="/sign-in" />;
+
   const canNext = [name.trim().length > 1, trades.length > 0, pricing === 'flat' || rateCents !== null, true][step];
 
   const next = () => {
@@ -76,7 +84,13 @@ export default function Setup() {
     setSaveError(null);
     actions
       .completeSetup({ businessName: name, phone, trades, pricing, rateCents: rateCents ?? state.profile.rateCents, priceList: items })
-      .then(() => router.replace('/'))
+      .then(async () => {
+        // "Me and a team" turns on the Team tab
+        const bid = currentState().businessId;
+        // the business is already saved; if this fails, "I have a team" in Settings does the same
+        if (team === 'team' && bid && currentState().mode === 'connected') await saveTeamSettings(bid, { hasTeam: true }).then(refreshTeam, () => undefined);
+        router.replace('/');
+      })
       .catch((e: unknown) => setSaveError(userError(t, e)))
       .finally(() => setSaving(false));
   };
@@ -128,6 +142,13 @@ export default function Setup() {
           />
           <Field label={t('setup.businessName')} value={name} onChangeText={setName} placeholder={t('setup.businessPlaceholder')} autoCapitalize="words" />
           <Field label={t('setup.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
+          {auth.configured ? <>
+            <T v="label">{c.teamQuestion}</T>
+            <Segmented label={c.teamQuestion} value={team} onChange={setTeam} options={[{ key: 'alone', label: c.alone }, { key: 'team', label: c.withTeam }]} />
+            <T v="small" muted>{c.teamQuestionHelp}</T>
+            {/* someone else's worker who signed up here by mistake */}
+            <Button label={c.invited} icon="users" variant="ghost" style={{ alignSelf: 'flex-start' }} onPress={() => router.push('/join')} />
+          </> : null}
         </>
       ) : null}
 

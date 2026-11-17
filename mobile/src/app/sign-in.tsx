@@ -4,6 +4,8 @@ import { View } from 'react-native';
 
 import { Button, Field, Notice, Row, Screen, Segmented, T } from '@/components/ui';
 import { useAuth, type ResetProblem } from '@/data/auth';
+import { cleanCode } from '@/data/team-access';
+import { teamText } from '@/features/team/text';
 import { useLang } from '@/i18n';
 import { userError } from '@/lib/user-errors';
 import { font } from '@/theme/tokens';
@@ -17,11 +19,16 @@ export default function SignIn() {
   const p = usePalette();
   const { t, lang, setLang } = useLang();
   const { join } = useLocalSearchParams<{ join?: string }>();
-  const destination: Href = typeof join === 'string' && /^[a-f0-9]{64}$/.test(join) ? `/join/${join}` : '/';
+  // came from "I was invited to a team": go back to entering the code after signing in
+  const joinCode = typeof join === 'string' ? cleanCode(join) : null;
+  const destination: Href = joinCode ? `/join/${joinCode}` : join === '1' ? '/join' : '/';
   const auth = useAuth();
   const [mode, setMode] = useState<'in' | 'up' | 'reset'>('in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // making a password (new account or reset): typed twice, and can be shown
+  const [confirm, setConfirm] = useState('');
+  const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // password reset: code sent, the code typed, and whether it already worked (it can only be used once)
@@ -43,12 +50,25 @@ export default function SignIn() {
   // same rule as the server: 8+ characters with letters and numbers
   const passwordOk = password.length >= 8 && /[a-zA-Z]/.test(password) && /\d/.test(password);
   const codeOk = /^\d{6}$/.test(code.trim());
+  const matches = confirm === password;
   const ready =
     mode === 'reset'
       ? codeSent
-        ? emailOk && (verified || codeOk) && passwordOk
+        ? emailOk && (verified || codeOk) && passwordOk && matches
         : emailOk
-      : emailOk && (mode === 'in' ? password.length > 0 : passwordOk);
+      : emailOk && (mode === 'in' ? password.length > 0 : passwordOk && matches);
+
+  /** The new password typed twice, with a show/hide button (new account and password reset). */
+  const newPassword = (label: string) => <>
+    <Field label={label} value={password} onChangeText={setPassword} secureTextEntry={!show}
+      autoCapitalize="none" autoCorrect={false} autoComplete="new-password" textContentType="newPassword" />
+    <T v="small" color={password && !passwordOk ? p.danger : p.muted}>{t('auth.passwordHelp')}</T>
+    <Field label={t('auth.confirmPassword')} value={confirm} onChangeText={setConfirm} secureTextEntry={!show}
+      autoCapitalize="none" autoCorrect={false} autoComplete="new-password" textContentType="newPassword" />
+    {confirm && !matches ? <T v="small" color={p.danger}>{t('auth.passwordsDiffer')}</T> : null}
+    <Button label={show ? t('auth.hidePassword') : t('auth.showPassword')} icon={show ? 'eye-off' : 'eye'} variant="ghost"
+      style={{ alignSelf: 'flex-start' }} onPress={() => setShow((v) => !v)} />
+  </>;
 
   const resetMessage = (problem: ResetProblem): string => {
     if (problem.kind === 'badCode') return t('auth.badCode');
@@ -63,6 +83,8 @@ export default function SignIn() {
     if (verified) void auth.signOut().catch((e: unknown) => setError(userError(t, e)));
     // the typed password isn't reused between signing in and choosing a new one
     if (next === 'reset' || mode === 'reset') setPassword('');
+    setConfirm('');
+    setShow(false);
     setMode(next);
     setError(null);
     setCodeSent(false);
@@ -184,16 +206,7 @@ export default function SignIn() {
                 textContentType="oneTimeCode"
               />
             ) : null}
-            <Field
-              label={t('auth.newPassword')}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              autoComplete="new-password"
-              textContentType="newPassword"
-            />
-            <T v="small" color={password && !passwordOk ? p.danger : p.muted}>{t('auth.passwordHelp')}</T>
+            {newPassword(t('auth.newPassword'))}
           </>
         ) : null}
         {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
@@ -225,21 +238,25 @@ export default function SignIn() {
         ]}
       />
       <Field label={t('auth.email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" textContentType="emailAddress" />
-      <Field
-        label={t('auth.password')}
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        autoCapitalize="none"
-        autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
-        textContentType={mode === 'in' ? 'password' : 'newPassword'}
-      />
-      {mode === 'up' ? <T v="small" color={password && !passwordOk ? p.danger : p.muted}>{t('auth.passwordHelp')}</T> : null}
+      {mode === 'up' ? newPassword(t('auth.password')) : (
+        <Field
+          label={t('auth.password')}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoComplete="current-password"
+          textContentType="password"
+        />
+      )}
       {/* reset needs a server to email the code; the sign-in screen only shows when one is set up, but check anyway */}
       {mode === 'in' && auth.configured ? (
         <Button label={t('auth.forgot')} variant="ghost" style={{ alignSelf: 'flex-start' }} onPress={() => switchMode('reset')} />
       ) : null}
       {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
+      {/* invited workers make their own account here, then enter the code on the next page */}
+      {join ? <Notice text={teamText(lang).signInFirst} tone="soft" icon="users" />
+        : <Button label={teamText(lang).invited} icon="users" variant="ghost" style={{ alignSelf: 'flex-start' }} onPress={() => router.setParams({ join: '1' })} />}
     </Screen>
   );
 }

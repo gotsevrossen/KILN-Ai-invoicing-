@@ -1,14 +1,14 @@
 import { OfflineStatus } from '@/components/offline-status';
-import Feather from '@expo/vector-icons/Feather';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { View } from 'react-native';
 
+import { Tile } from '@/components/capture-tile';
 import { CommandBox } from '@/components/command-box';
 import { PhotoSourceSheet } from '@/components/job-photos';
 import { JobPicker, Sheet } from '@/components/sheet';
 import { VoiceSheet } from '@/components/voice-sheet';
-import { Button, ButtonRow, Card, Field, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
+import { Button, ButtonRow, Card, Field, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
 import { aiReady } from '@/data/ai';
 import * as sample from '@/data/sample';
 import { jobById } from '@/data/selectors';
@@ -17,32 +17,8 @@ import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 import type { NewPhoto } from '@/lib/job-photos';
 import { removeFromPhone } from '@/lib/photo-file';
-import { font, radius } from '@/theme/tokens';
+import { radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
-
-function Tile({ icon, label, onPress, accent }: { icon: IconName; label: string; onPress: () => void; accent?: boolean }) {
-  const p = usePalette();
-  const fg = accent ? p.onAccent : p.ink;
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => ({
-        flex: 1,
-        height: 150,
-        borderRadius: radius.md,
-        padding: 18,
-        justifyContent: 'space-between',
-        backgroundColor: accent ? p.accent : p.card,
-        opacity: pressed ? 0.85 : 1,
-        transform: [{ scale: pressed ? 0.98 : 1 }],
-      })}>
-      <Feather name={icon} size={38} color={fg} />
-      <Text style={{ fontFamily: font.black, fontSize: 24, letterSpacing: -0.5, textTransform: 'uppercase', color: fg }}>{label}</Text>
-    </Pressable>
-  );
-}
 
 export default function Capture() {
   const p = usePalette();

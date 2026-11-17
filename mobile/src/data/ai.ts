@@ -5,6 +5,7 @@ import {
   type ChangeDraft, type Command, type Guess, type ImportedPrice, type MissedItem, type ScannedReceipt,
 } from '@/lib/ai-check';
 import { supabase } from '@/lib/supabase';
+import { checkReceiptReview, type ReceiptEligibility } from '@/lib/receipt-policy';
 
 import type { TradeId } from './trades';
 import type { PhotoTag, Unit } from './types';
@@ -29,7 +30,7 @@ export function aiReady(mode: 'example' | 'connected'): boolean {
   return mode === 'connected' && supabase !== null;
 }
 
-async function call(task: 'guess' | 'missed' | 'scope' | 'prices' | 'receipt' | 'change' | 'command' | 'tags', input: unknown): Promise<unknown> {
+async function call(task: 'guess' | 'missed' | 'scope' | 'prices' | 'receipt' | 'receiptReview' | 'change' | 'command' | 'tags', input: unknown): Promise<unknown> {
   if (!supabase) throw new AiFailed('not_set_up');
   const { data, error } = await supabase.functions.invoke('ai', { body: { task, input } });
   if (!error) return data;
@@ -106,6 +107,13 @@ export async function scanReceipt(images: AiImage[]): Promise<ScannedReceipt> {
   const receipt = checkReceipt(await call('receipt', { images }));
   if (!receipt) throw new AiFailed('failed');
   return receipt;
+}
+
+/** Check the final editable receipt too: scanning is not the only entry point. */
+export async function reviewReceipt(input: { store: string; items: { name: string; costCents: number }[] }): Promise<ReceiptEligibility[]> {
+  const result = checkReceiptReview(await call('receiptReview', input), input.items.length);
+  if (!result) throw new AiFailed('failed');
+  return result;
 }
 
 export interface ChangeInput {

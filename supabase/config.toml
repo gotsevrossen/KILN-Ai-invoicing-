@@ -450,10 +450,6 @@ enabled = true
 [functions.estimate-access]
 verify_jwt = false
 
-# Team join verifies the bearer session and a fresh email OTP inside the function.
-[functions.team-join]
-verify_jwt = false
-
 # Local helper-invitation proof uses an email code, not a magic link.
 [auth.email.template.magic_link]
 subject = "Your KILN team verification code"

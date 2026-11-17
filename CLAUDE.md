@@ -18,6 +18,8 @@ KILN is an AI invoicing tool for solo and very small trades businesses: plumbers
 
 ## Current stage (Oct 2026)
 
+- Team roles (Nov 17): owner, manager and crew member. A business shares one price list; crew add items, only owners and managers change them. Setup asks "alone or with a team"; teams get a Team tab (people, approvals, things to check, each person's jobs and uploads). Workers join with a one-time code (`KILN-XXXX-XXXX-XXXX`), then an owner or manager approves them. Crew have their own screens (`app/crew/`) and only reach their assigned jobs through narrow server functions; `is_owner()`/`is_member()` now mean owner-or-manager, and owner-only things use `is_business_owner()`. Rules: `lib/permissions.ts` and migration `20261117120000_team_roles.sql`; details and what's not built yet: `docs/team-roles-implementation-2026-11-17.md`. The bottom menu is a floating card with an orange slider, and Capture is a separate round button on the right (`components/tab-bar.tsx`). All migrations and server functions through Nov 17 are deployed to the hosted server (backups in `builds/backups/`).
+
 - Trade review implementation (Nov 17): durable account-scoped ordinary-edit outbox, issued-versus-shared status, secure remote estimate acceptance, persisted finger evidence, deposit/milestone reconciliation, credit variations, service/callout packages, trade worksheets and owner team planning/job costs. Helper access is isolated from owner financial screens and guarded by assignment-specific server RPCs; joining requires fresh email verification. See `docs/trade-review-implementation-2026-11-16.md` for exact behavior, deployment dependencies and limits. These are source changes; hosted migrations/functions have not been deployed. Historical preview limitations below describe earlier versions.
 
 - Code review and optimization (Nov 16): account-owned save queue, cancellation of stale background results, server-confirmed invoice sending, confirmed-payment deductions in outstanding balances, cached Jobs rows, parallel startup reads, and linear document grouping. Review and remaining launch issues: `docs/code-review-2026-11-16.md`. Ordinary edits still lack durable offline recovery; sending/signing/cash-payment RPCs are absent from the hosted database. Do not treat the review's app fixes as a completed server deployment or a full payment/security audit.
@@ -74,7 +76,7 @@ Always start Expo with an ngrok tunnel when Rossen asks to start KILN or Expo. R
 
 **Pricing details:** materials shown itemized or as one total (owner picks per invoice); markup is built into prices and never shown as its own line. Card fee for customers is an on/off setting. Due date is a default the owner can change per invoice, with an optional late fee. Saved terms and warranty are added to every estimate and invoice. 2–3 invoice templates plus logo and color.
 
-**Out of scope for the first version:** full bookkeeping and taxes, payroll, scheduling/CRM, financing, supplier price integrations or store accounts, importing receipts from email, review requests, helper/team logins, lien tools. Don't build these unless Rossen says so.
+**Out of scope for the first version:** full bookkeeping and taxes, payroll, scheduling/CRM, financing, supplier price integrations or store accounts, importing receipts from email, review requests, lien tools. Don't build these unless Rossen says so.
 
 ## Platforms
 
@@ -151,7 +153,7 @@ Rossen is a cybersecurity student with Security+. Security is part of KILN's pit
 
 ## Decided
 
-- One login per business for now. Design for helpers later.
+- Teams (Nov 17): one owner per business, plus managers and crew members with their own logins (see Current stage). One person belongs to one business.
 - Sending: texts from the owner's phone, emails from KILN. Automatic reminders go by email; text reminders are one tap for the owner.
 - KILN's emails come from KILN's own automated address, never the owner's or customer's email. "From" shows the business name (e.g. "Mike's Plumbing (via KILN)"), and Reply-To is the owner's email so customer replies reach them. Not a true "noreply" address. Set up later in development: a KILN domain with a separate sending sub-address, SPF/DKIM/DMARC records, and a sending service called only from an Edge Function. The same service also sends sign-in emails (password reset). Until then, local Supabase catches all emails at http://127.0.0.1:54324.
 - Sales tax for the first version: the owner sets one rate and switches tax on or off for labor and materials.

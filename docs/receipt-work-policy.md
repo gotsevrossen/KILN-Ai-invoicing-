@@ -1,0 +1,11 @@
+# Work-only receipts
+
+New receipts are checked before they enter local state, job assignments, costs, invoices, or the offline outbox. This applies both to scanned receipts and to receipts typed or edited by hand. The `receipt` AI task reads and classifies every purchased row; `receiptReview` reviews the final rows again from the store action before saving.
+
+Only an explicit `work` classification permits saving. Food (including employee and owner meals), drinks, personal purchases, and other unrelated items are `non_work`. Vague or unreadable products are `uncertain`. Receipt text is treated as data rather than instructions. Work products with food-like names, such as sandwich panels and food-safe sealant, are classified by their actual purpose.
+
+A refused receipt stays in the editable form, with no partial save. Non-work rows must be deleted; changing their name or price does not clear the refusal. Uncertain rows must be clarified or removed. After removing a purchased row, the user must enter the tax for the remaining work items, including an explicit zero when appropriate. KILN does not guess which removed products were taxable.
+
+Saving now requires a signed-in connection and a successful AI review. Offline, failed, rate-limited, missing, duplicate, or malformed review results cannot approve a receipt. Already saved receipts and issued invoices are not retrospectively changed. Owners and managers keep their existing table permissions; crew save through the assigned-job-only `team_add_receipt` function. The AI policy controls KILN's application receipt entry, rather than providing database-level product classification for custom API clients.
+
+The updated `ai` Edge Function is deployed to the hosted project, active at version 7 as of Nov 17, 2026. Its `receiptReview` task is available to owners, managers and active crew, sharing the business quota. The crew access migration `20261117130000_crew_capture.sql` is also deployed. Owner and crew routes share `mobile/src/components/receipt-form.tsx`. Model responses are checked with stand-in responses in `supabase/functions/ai/tasks.test.ts`; the app's review gate is covered in `mobile/src/lib/receipt-policy.test.ts` and scanned-response checks in `mobile/src/lib/ai-check.test.ts`.

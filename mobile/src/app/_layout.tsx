@@ -7,6 +7,7 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type ErrorBoundaryProps,
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, type ReactNode } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorScreen } from '@/components/error-screen';
@@ -36,6 +37,8 @@ export default function RootLayout() {
   if (!loaded && !error) return null;
 
   return (
+    // gestures (the tab bar's slider) need this around the whole app
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
       <ThemeModeProvider>
         <LanguageProvider>
@@ -47,6 +50,7 @@ export default function RootLayout() {
         </LanguageProvider>
       </ThemeModeProvider>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -59,8 +63,12 @@ function Screens(): ReactNode {
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
   const theme = { ...base, colors: { ...base.colors, background: p.ground, card: p.card, text: p.ink, border: p.line, primary: p.accent } };
 
-  const helperAllowed = pathname === '/team-work' || pathname === '/sign-in' || ['/pay/', '/quote/', '/collect/', '/join/'].some((prefix) => pathname.startsWith(prefix));
-  if (auth.ready && auth.role === 'helper' && !helperAllowed) return <Redirect href="/team-work" />;
+  // pages anyone may open: signing in, joining a team, and the customer pages
+  const open = ['/sign-in', '/join', '/waiting'].includes(pathname) || ['/pay/', '/quote/', '/collect/', '/join/'].some((prefix) => pathname.startsWith(prefix));
+  // waiting for approval: nothing else until an owner or manager approves
+  if (auth.ready && auth.pending && !open) return <Redirect href="/waiting" />;
+  // crew members only ever see their own screens
+  if (auth.ready && auth.role === 'crew' && !open && !pathname.startsWith('/crew')) return <Redirect href="/crew" />;
   return (
     <ThemeProvider value={theme}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />

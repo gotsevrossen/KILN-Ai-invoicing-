@@ -5,7 +5,8 @@ import { AiError, checkInput, isTask, runTask } from './tasks.ts';
 
 // POST /functions/v1/ai  { task, input }  ->  the task's checked answer, or { error: code }.
 // The Claude key lives only here (supabase/.env locally, project secrets when hosted).
-// Each request must come from a signed-in owner, and counts toward the business's daily limit.
+// Each request must come from a signed-in owner or manager (crew: receipts only), and counts toward
+// the business's daily limit.
 // Job text and photos are passed through to Claude and never stored or logged here.
 
 const cors = {
@@ -46,8 +47,13 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: auth } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const quota = await supabase.rpc('use_ai_quota');
-    if (quota.error) throw new AiError(quota.error.code === 'KL429' ? 429 : 401, quota.error.code === 'KL429' ? 'limit' : 'signed_out');
+    // crew members may only read and check receipts; owners and managers may use every task
+    const quota = await supabase.rpc('use_ai_quota_for', { p_task: body.task });
+    if (quota.error) {
+      if (quota.error.code === 'KL429') throw new AiError(429, 'limit');
+      if (quota.error.code === '42501') throw new AiError(403, 'owner_only');
+      throw new AiError(401, 'signed_out');
+    }
 
     const client = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 1 });
     return reply(200, await runTask(client, body.task, input));

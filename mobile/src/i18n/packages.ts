@@ -1,6 +1,6 @@
 export const packagesEn = {
   create: 'New package', workHelp: 'Add priced work to this job. These lines are charged in addition to logged hours and receipt materials; check for duplicates. The minimum covers package work lines only.',
-  title: 'Service packages', help: 'Reuse your own quantities, prices and customer scope. Added lines stay editable.',
+  title: 'Service packages', row: 'Add saved work, scope and callout pricing', help: 'Reuse your own quantities, prices and customer scope. Added lines stay editable.',
   empty: 'No saved packages yet. Build an estimate, then save its lines as a package.',
   saveCurrent: 'Save these lines as a package', name: 'Package name', save: 'Save package', saved: 'Package saved.',
   apply: 'Review package', add: 'Add to estimate', added: 'Package added. Review the lines and customer scope before sending.',
@@ -11,7 +11,8 @@ export const packagesEn = {
   scope: 'Customer scope', exclusions: 'Exclusions', details: 'Details',
   replaceScope: 'Use this package’s customer scope', scopeHelp: 'Replaces the current customer description, details and exclusions. Keep off to retain your current scope.',
   edit: 'Edit package', remove: 'Delete package', confirmRemove: 'Delete this saved package? Existing estimates keep their copied lines.',
-  confirmDelete: 'Yes, delete package', cancel: 'Cancel', addLine: 'Add line', removeLine: 'Remove line',
+  confirmDelete: 'Yes, delete package', cancel: 'Cancel', addLine: 'Add line', removeLine: 'Remove line %{n} from package',
+  lineTitle: 'Line %{n}', lineNamed: 'Line %{n}: %{name}',
   quantity: 'Quantity', price: 'Unit price', description: 'Description', unpriced: 'Blank price means it needs a price before sending.',
   invalid: 'Check the name, descriptions, quantities and prices. Use up to two decimal places.',
   failed: 'Could not save or load packages. Check your connection and try again.', retry: 'Try again', loading: 'Loading packages…',
@@ -19,7 +20,7 @@ export const packagesEn = {
 };
 export const packagesEs: typeof packagesEn = {
   create: 'Nuevo paquete', workHelp: 'Añade trabajo con precio. Estas líneas se cobran además de las horas y materiales de recibos; revisa duplicados. El mínimo solo cubre líneas de trabajo del paquete.',
-  title: 'Paquetes de servicios', help: 'Reutiliza tus cantidades, precios y alcance para el cliente. Las líneas añadidas se pueden editar.',
+  title: 'Paquetes de servicios', row: 'Añade trabajo, alcance y precios de visita guardados', help: 'Reutiliza tus cantidades, precios y alcance para el cliente. Las líneas añadidas se pueden editar.',
   empty: 'Aún no hay paquetes guardados. Crea un presupuesto y guarda sus líneas como paquete.',
   saveCurrent: 'Guardar estas líneas como paquete', name: 'Nombre del paquete', save: 'Guardar paquete', saved: 'Paquete guardado.',
   apply: 'Revisar paquete', add: 'Añadir al presupuesto', added: 'Paquete añadido. Revisa las líneas y el alcance antes de enviar.',
@@ -30,7 +31,8 @@ export const packagesEs: typeof packagesEn = {
   scope: 'Alcance para el cliente', exclusions: 'Exclusiones', details: 'Detalles',
   replaceScope: 'Usar el alcance de este paquete', scopeHelp: 'Sustituye la descripción, los detalles y las exclusiones actuales. Desactívalo para conservar el alcance actual.',
   edit: 'Editar paquete', remove: 'Eliminar paquete', confirmRemove: '¿Eliminar este paquete guardado? Los presupuestos conservan sus líneas copiadas.',
-  confirmDelete: 'Sí, eliminar paquete', cancel: 'Cancelar', addLine: 'Añadir línea', removeLine: 'Quitar línea',
+  confirmDelete: 'Sí, eliminar paquete', cancel: 'Cancelar', addLine: 'Añadir línea', removeLine: 'Quitar la línea %{n} del paquete',
+  lineTitle: 'Línea %{n}', lineNamed: 'Línea %{n}: %{name}',
   quantity: 'Cantidad', price: 'Precio unitario', description: 'Descripción', unpriced: 'Un precio vacío debe completarse antes de enviar.',
   invalid: 'Revisa el nombre, las descripciones, las cantidades y los precios. Usa hasta dos decimales.',
   failed: 'No se pudieron guardar o cargar los paquetes. Revisa tu conexión e inténtalo de nuevo.', retry: 'Intentar de nuevo', loading: 'Cargando paquetes…',

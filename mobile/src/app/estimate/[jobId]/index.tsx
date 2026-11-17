@@ -1,6 +1,5 @@
 import { DeliveryStatus } from '@/components/delivery-status';
 import { SendEstimateSheet } from '@/components/send-estimate';
-import { ServicePackages } from '@/components/service-packages';
 import { OfflineStatus } from '@/components/offline-status';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -97,9 +96,10 @@ function EstimateBuilder() {
 
       <SendEstimateSheet open={sendOpen} onClose={() => setSendOpen(false)} jobId={job.id} customer={customer} />
       <OfflineStatus />
-      <ServicePackages jobId={job.id} />
       <Card style={{ paddingVertical: 6 }}>
         <ListRow icon="clipboard" iconTone={draft.scope?.jobTypeId ? 'soft' : 'accent'} title={t('estimate.details')} sub={detailsSub} onPress={openDetails} />
+        <Hair />
+        <ListRow icon="package" iconTone="soft" title={t('packages.title')} sub={t('packages.row')} onPress={() => router.push(`/estimate/${job.id}/packages`)} />
       </Card>
 
       <T v="eyebrow" style={{ marginTop: 8 }}>{t('estimate.fromList')}</T>

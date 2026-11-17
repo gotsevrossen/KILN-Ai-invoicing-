@@ -58,7 +58,7 @@ export function OperationsScreen() {
   };
   return <Screen header={<PageHeader title={c.title} back={() => router.back()} />}>
     <Notice text={c.ownerHelp} icon="lock" tone="soft" />
-    {op.connected && op.ready ? <Button label={teamText(lang).admin} icon="users" variant="outline" onPress={() => router.push('/team-admin')} /> : null}
+    {op.connected && op.ready ? <Button label={teamText(lang).teamTitle} icon="users" variant="outline" onPress={() => router.push('/team')} /> : null}
     {!op.connected ? <Notice text={c.preview} tone="soft" /> : null}
     {op.error ? <><Notice text={op.error} tone="danger" /><Button label={c.retry} variant="outline" disabled={op.busy} onPress={op.retry} /></> : null}
     {!op.ready && !op.error ? <T>{c.loading}</T> : null}

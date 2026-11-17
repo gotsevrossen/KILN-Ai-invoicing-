@@ -13,7 +13,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useLang } from '@/i18n';
 import { font, radius, space, tap, type Palette } from '@/theme/tokens';
@@ -91,7 +91,10 @@ export function Screen({
   noTopInset?: boolean;
 }) {
   const p = usePalette();
-  const content = { padding: space.lg, gap: 14, paddingBottom: tabs ? 120 : space.xxl };
+  const insets = useSafeAreaInsets();
+  // room for the floating menu (64), the gap below it, the phone's home area, and the fade above
+  // the bar (40, components/tab-bar.tsx), so the last card can scroll fully clear of it
+  const content = { padding: space.lg, gap: 14, paddingBottom: tabs ? 64 + Math.max(insets.bottom, 12) + 40 + space.lg : space.xxl };
   const sheetOpen = useSheetOpen();
   const top: ('top' | 'bottom')[] = noTopInset ? [] : ['top'];
   return (

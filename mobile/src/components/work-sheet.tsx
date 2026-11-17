@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useStore } from '@/data/store';
+import { priceOnly } from '@/data/trades';
 import type { PriceItem, Unit } from '@/data/types';
 import { useLang } from '@/i18n';
 import { priceLooksOff, usualPrice, workItemValid } from '@/lib/billing';
@@ -45,7 +46,8 @@ export function WorkSheet({ jobId, open, onClose, onEstimate }: {
     qty: '1', price: item.unitCents === null ? '' : (item.unitCents / 100).toFixed(2), kind: 'labor',
   });
 
-  const qty = draft ? parseQty(draft.qty) : 0;
+  const fixedQty = priceOnly(draft?.priceItemId);
+  const qty = !draft ? 0 : fixedQty ? 100 : parseQty(draft.qty);
   const cents = draft ? parseDollars(draft.price) : null;
   const usual = draft ? usualPrice(draft, state.priceList) : null;
   const valid = !!draft && cents !== null && workItemValid({ description: draft.description, qtyHundredths: qty, unitCents: cents });
@@ -65,9 +67,9 @@ export function WorkSheet({ jobId, open, onClose, onEstimate }: {
           <Field label={t('work.description')} value={draft.description} onChangeText={(description) => set({ description })}
             placeholder={t('work.descriptionPlaceholder')} autoCapitalize="sentences" maxLength={300} autoFocus={!draft.priceItemId} />
           <Row gap={12} style={{ alignItems: 'flex-start' }}>
-            <View style={{ flex: 1 }}>
+            {fixedQty ? null : <View style={{ flex: 1 }}>
               <Field label={`${t('work.qty')} ${unitLabel}`.trim()} value={draft.qty} onChangeText={(text) => set({ qty: text })} keyboardType="decimal-pad" />
-            </View>
+            </View>}
             <View style={{ flex: 1 }}>
               <Field label={t('work.price')} value={draft.price} onChangeText={(price) => set({ price })} placeholder={t('estimate.pricePlaceholder')}
                 keyboardType="decimal-pad" autoFocus={!!draft.priceItemId && !draft.price} />

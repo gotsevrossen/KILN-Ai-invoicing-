@@ -32,6 +32,10 @@ export interface TradeDef {
   jobTypes: JobTypeDef[];
 }
 
+/** Items charged by price alone: always one, so the owner is never asked how many. */
+const PRICE_ONLY = new Set(['haul']);
+export const priceOnly = (itemId?: string | null): boolean => !!itemId && PRICE_ONLY.has(itemId);
+
 /** Every starter item and its unit. Ids are shared, so two trades can use the same item. */
 export const ITEM_UNITS: Record<string, Unit> = {
   trip: 'flat',

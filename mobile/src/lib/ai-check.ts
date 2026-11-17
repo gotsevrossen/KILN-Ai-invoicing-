@@ -1,6 +1,7 @@
-import { tradeById, type TradeId } from '../data/trades.ts';
+import { priceOnly, tradeById, type TradeId } from '../data/trades.ts';
 import type { PhotoTag, Unit } from '../data/types.ts';
 import { lineTotal, type LineKind } from './money.ts';
+import { receiptEligibility, type ReceiptEligibility } from './receipt-policy.ts';
 
 // The app's own check on what the AI server sends back, before anything reaches a screen.
 // The server checks too; this keeps a bad or tampered reply from becoming a line or a price.
@@ -56,7 +57,7 @@ export function checkGuess(raw: unknown, trades: TradeId[], itemIds: string[]): 
     const qty = whole(x?.qtyHundredths, 1, 100_000_000);
     if (!x || typeof x.itemId !== 'string' || !itemIds.includes(x.itemId) || seen.has(x.itemId) || qty === null) continue;
     seen.add(x.itemId);
-    quantities.push({ itemId: x.itemId, qtyHundredths: qty });
+    quantities.push({ itemId: x.itemId, qtyHundredths: priceOnly(x.itemId) ? 100 : qty });
   }
   return { tradeId, jobTypeId, quantities: quantities.slice(0, 20) };
 }
@@ -112,18 +113,24 @@ export interface ScannedReceipt {
   taxCents: number;
   /** The receipt's printed total, to check the items against. Null if unreadable. */
   totalCents: number | null;
-  items: { name: string; costCents: number; unclear: boolean }[];
+  items: { name: string; costCents: number; unclear: boolean; eligibility: ReceiptEligibility }[];
 }
 
 /** A receipt read from a photo: readable lines with whole-cent prices before tax. */
 export function checkReceipt(raw: unknown): ScannedReceipt | null {
   const r = record(raw);
   if (!r) return null;
+  if (list(r.items).length > 200 || list(r.items).some((item) => {
+    const x = record(item);
+    return x?.eligibility === 'non_work' && (!str(x.name, 160) || whole(x.costCents, 0, 100_000_000) === null);
+  })) return null;
   const items = list(r.items).flatMap((i) => {
     const x = record(i);
     const name = str(x?.name, 160);
     const cents = whole(x?.costCents, 0, 100_000_000);
-    return x && name && cents !== null ? [{ name, costCents: cents, unclear: x.unclear === true }] : [];
+    const eligibility = receiptEligibility(x?.eligibility);
+    return x && name && cents !== null ? [{ name, costCents: cents, unclear: x.unclear === true,
+      eligibility: eligibility === 'work' && x.unclear === true ? 'uncertain' as const : eligibility }] : [];
   }).slice(0, 200);
   return {
     store: str(r.store, 120) ?? '',
@@ -183,7 +190,7 @@ export function checkCommands(raw: unknown, jobIds: string[], itemIds: string[])
       const kind = (['labor', 'material', 'fee'] as const).find((k) => k === x.kind) ?? 'labor';
       const itemId = typeof x.itemId === 'string' && itemIds.includes(x.itemId) ? x.itemId : null;
       return description && qty !== null
-        ? [{ type: 'work', jobId, description, qtyHundredths: qty, unitCents: whole(x.unitCents, 0, 100_000_000), itemId, kind }]
+        ? [{ type: 'work', jobId, description, qtyHundredths: priceOnly(itemId) ? 100 : qty, unitCents: whole(x.unitCents, 0, 100_000_000), itemId, kind }]
         : [];
     }
     if (x.type === 'note') {

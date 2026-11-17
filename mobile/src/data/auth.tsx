@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { errorDetails, type ErrorDetails } from '@/lib/user-errors';
 
 import { loadAll } from './db';
-import { loadTeamMembership } from './team-access';
+import { loadTeamMembership, type TeamMembership, type TeamRole } from './team-access';
 import { currentState, storeActions } from './store';
 
 /** Why a password-reset step failed, so the screen can explain it in the owner's language. */
@@ -26,8 +26,16 @@ type Auth = {
   /** True once we know who's signed in and their data has loaded. */
   ready: boolean;
   session: Session | null;
-  role: 'owner' | 'helper' | null;
+  /** Role in the business. Null in example mode or before setup. */
+  role: TeamRole | null;
+  /** Joined with an invite code and waiting for an owner or manager to approve. */
+  pending: boolean;
   businessId: string | null;
+  businessName: string;
+  /** This person's name on the team (from their invite). */
+  memberName: string;
+  /** Crew see prices on estimates, invoices and the price list (the owner's switch). */
+  crewSeesPrices: boolean;
   /** Why the business data couldn't load, if it didn't. */
   loadError: ErrorDetails | null;
   retryLoad: () => void;
@@ -46,7 +54,7 @@ const Ctx = createContext<Auth | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [membership, setMembership] = useState<{ userId: string; role: 'owner' | 'helper'; businessId: string } | null>(null);
+  const [membership, setMembership] = useState<(TeamMembership & { userId: string }) | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [sessionError, setSessionError] = useState<ErrorDetails | null>(null);
   // false until we know whether someone is already signed in (avoids flashing the sign-in screen)
@@ -95,13 +103,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (error) {
           let cached: unknown = null;
           try { cached = JSON.parse(localStorage.getItem(`kiln.membership:${userId}`) ?? 'null'); } catch { /* No cached authority. */ }
-          const value = cached as { role?: string; businessId?: string } | null;
-          if (value?.role !== 'owner' || typeof value.businessId !== 'string') throw error;
-          member = { role: 'owner', businessId: value.businessId };
+          // offline: owners and managers can keep working from this phone's copy
+          const value = cached as Partial<TeamMembership> | null;
+          if ((value?.role !== 'owner' && value?.role !== 'manager') || value.status !== 'active' || typeof value.businessId !== 'string') throw error;
+          member = value as TeamMembership;
         }
         if (cancelled) return;
         setMembership(member ? { ...member, userId } : null);
-        if (member?.role === 'helper') {
+        // crew and people waiting for approval never load business tables
+        if (member && (member.role === 'crew' || member.status === 'pending')) {
           storeActions.startHelper(member.businessId);
           setLoaded({ userId, error: null });
           return;
@@ -133,8 +143,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       configured: !!supabase,
       ready,
       session,
-      role: membership?.userId === userId ? membership.role : null,
+      role: membership?.userId === userId && membership.status === 'active' ? membership.role : null,
+      pending: membership?.userId === userId && membership.status === 'pending',
       businessId: membership?.userId === userId ? membership.businessId : null,
+      businessName: membership?.userId === userId ? membership.businessName : '',
+      memberName: membership?.userId === userId ? membership.name : '',
+      crewSeesPrices: membership?.userId === userId ? membership.crewSeesPrices : false,
       loadError,
       retryLoad: () => { setSessionError(null); setLoaded(null); setAttempt((n) => n + 1); },
       async signIn(email, password) {

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { useStore } from '@/data/store';
+import { priceOnly } from '@/data/trades';
 import type { EstimateLine } from '@/data/types';
 import { useLang } from '@/i18n';
 import { priceLooksOff, usualPrice } from '@/lib/billing';
@@ -16,9 +17,14 @@ export function EstimateLineEditor({ jobId, line }: { jobId: string; line: Estim
   const f = useFormat();
   const p = usePalette();
   const { state, actions } = useStore();
+  const fixedQty = priceOnly(line.priceItemId);
   const [qty, setQty] = useState(String(line.qtyHundredths / 100));
   const [price, setPrice] = useState(line.unitCents === null ? '' : (line.unitCents / 100).toFixed(2));
-  const q = /^\d{1,6}([.,]\d{1,2})?$/.test(qty) ? Math.round(Number(qty.replace(',', '.')) * 100) : 0;
+  const q = fixedQty ? 100 : /^\d{1,6}([.,]\d{1,2})?$/.test(qty) ? Math.round(Number(qty.replace(',', '.')) * 100) : 0;
+  // charged by price alone: an older line with another quantity is set back to one
+  useEffect(() => {
+    if (fixedQty && !line.excluded && line.qtyHundredths !== 100) actions.updateLine(jobId, line.id, { qtyHundredths: 100 });
+  }, [fixedQty, line.excluded, line.qtyHundredths, line.id, jobId, actions]);
   const cents = /^\d{1,6}([.,]\d{1,2})?$/.test(price) ? Math.round(Number(price.replace(',', '.')) * 100) : null;
   const usual = usualPrice(line, state.priceList);
   return <>
@@ -29,12 +35,12 @@ export function EstimateLineEditor({ jobId, line }: { jobId: string; line: Estim
       <Button label={t('review.restore')} variant="outline" onPress={() => actions.updateLine(jobId, line.id, { excluded: false })} />
     </> : <>
       <Row style={{ alignItems: 'flex-start' }} gap={12}>
-        <View style={{ flex: 1 }}><Field label={line.kind === 'fee' ? t('review.feeQty') : `${t('estimate.qty')} ${t(`estimate.units.${line.unit}`)}`.trim()}
+        {fixedQty ? null : <View style={{ flex: 1 }}><Field label={line.kind === 'fee' ? t('review.feeQty') : `${t('estimate.qty')} ${t(`estimate.units.${line.unit}`)}`.trim()}
           value={qty} keyboardType="decimal-pad" style={{ flex: 1 }} onChangeText={(text) => {
             setQty(text);
             const parsed = /^\d{1,6}([.,]\d{1,2})?$/.test(text) ? Math.round(Number(text.replace(',', '.')) * 100) : 0;
             actions.updateLine(jobId, line.id, { qtyHundredths: parsed });
-          }} /></View>
+          }} /></View>}
         <View style={{ flex: 1 }}><Field label={t('estimate.price')} value={price} keyboardType="decimal-pad" style={{ flex: 1 }} onChangeText={(text) => {
           setPrice(text);
           const parsed = /^\d{1,6}([.,]\d{1,2})?$/.test(text) ? Math.round(Number(text.replace(',', '.')) * 100) : null;

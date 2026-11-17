@@ -1,5 +1,5 @@
-import { ServicePackages } from '@/components/service-packages';
 import { JobPayments } from '@/components/job-payments';
+import { JobTeam } from '@/features/team/job-team';
 import { OfflineStatus } from '@/components/offline-status';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -217,6 +217,7 @@ function JobDetail() {
           </Row>
         ) : null}
       </Card>
+      <JobTeam jobId={job.id} />
 
       <Card tone={stage === 'paid' ? 'inverse' : 'plain'} style={{ gap: 6 }}>
         <T v="h2" color={stage === 'paid' ? p.onInverse : undefined}>{next.title}</T>
@@ -224,7 +225,11 @@ function JobDetail() {
         {next.extra}
       </Card>
 
-      {canLogWork && !state.estimates[job.id]?.signed ? <ServicePackages jobId={job.id} target="work" /> : null}
+      {canLogWork && !state.estimates[job.id]?.signed ? (
+        <Card style={{ paddingVertical: 6 }}>
+          <ListRow icon="package" iconTone="soft" title={t('packages.title')} sub={t('packages.row')} onPress={() => router.push(`/job/${job.id}/packages`)} />
+        </Card>
+      ) : null}
       {canLogWork ? (
         <Row gap={8}>
           <Button label={t('flow.workDone')} icon="tool" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setWorkOpen(true)} />

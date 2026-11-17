@@ -39,12 +39,13 @@ function PackageEditor({ initial, busy, onSave, onCancel }: { initial: ServicePa
   return <>
     <Field label={t('packages.name')} value={name} onChangeText={setName} maxLength={120} />
     {lines.map((line, index) => <Card key={index} style={{ gap: 8 }}>
+      <T v="label">{line.description.trim() ? t('packages.lineNamed', { n: index + 1, name: line.description.trim() }) : t('packages.lineTitle', { n: index + 1 })}</T>
       <Field label={t('packages.description')} value={line.description} onChangeText={(description) => patch(index, { description })} maxLength={300} />
       <T v="small" muted>{t(`estimate.units.${line.unit}`)}</T>
       <Field label={t('packages.quantity')} value={line.qty} onChangeText={(qty) => patch(index, { qty })} keyboardType="decimal-pad" />
       <Field label={t('packages.price')} value={line.price} onChangeText={(price) => patch(index, { price })} keyboardType="decimal-pad" />
       <T v="small" muted>{t(`review.${line.kind ?? 'labor'}`)}</T>
-      <Button label={t('packages.removeLine')} variant="outline" disabled={busy} onPress={() => setLines((old) => old.filter((_, i) => i !== index))} />
+      <Button label={t('packages.removeLine', { n: index + 1 })} icon="trash-2" variant="outline" disabled={busy} onPress={() => setLines((old) => old.filter((_, i) => i !== index))} />
     </Card>)}
     <T v="small" muted>{t('packages.unpriced')}</T>
     <Button label={t('packages.addLine')} variant="outline" disabled={busy || lines.length >= 100} onPress={() => setLines((old) => [...old, { description: '', unit: 'flat', kind: 'labor', qty: '1', price: '' }])} />

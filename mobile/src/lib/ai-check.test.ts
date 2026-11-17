@@ -100,7 +100,24 @@ describe('receipts, change orders, and commands', () => {
     const r = checkReceipt({ store: 'Lowe’s', number: '', date: '2026-13-01', taxCents: 120, totalCents: 1620,
       items: [{ name: 'Wax ring', costCents: 500, unclear: false }, { name: 'Shims', costCents: 1000, unclear: true }, { name: 'Bad', costCents: -1 }] });
     assert.deepEqual(r, { store: 'Lowe’s', number: '', date: null, taxCents: 120, totalCents: 1620,
-      items: [{ name: 'Wax ring', costCents: 500, unclear: false }, { name: 'Shims', costCents: 1000, unclear: true }] });
+      items: [{ name: 'Wax ring', costCents: 500, unclear: false, eligibility: 'uncertain' }, { name: 'Shims', costCents: 1000, unclear: true, eligibility: 'uncertain' }] });
+  });
+
+  it('keeps food visible for removal and never assumes a missing work classification is approval', () => {
+    const receipt = checkReceipt({ items: [
+      { name: 'PVC pipe', costCents: 2000, eligibility: 'work' },
+      { name: 'Sandwich', costCents: 800, eligibility: 'non_work' },
+      { name: 'Miscellaneous', costCents: 300 },
+    ] });
+    assert.deepEqual(receipt?.items.map((item) => [item.name, item.eligibility]), [
+      ['PVC pipe', 'work'], ['Sandwich', 'non_work'], ['Miscellaneous', 'uncertain'],
+    ]);
+  });
+
+  it('does not hide a refused item with a bad price, or trust an unreadable work item', () => {
+    assert.equal(checkReceipt({ items: [{ name: 'Sandwich', costCents: -1, eligibility: 'non_work' }] }), null);
+    assert.equal(checkReceipt({ items: Array(201).fill({ name: 'Pipe', costCents: 100, eligibility: 'work' }) }), null);
+    assert.equal(checkReceipt({ items: [{ name: 'Smudged tool', costCents: 100, unclear: true, eligibility: 'work' }] })?.items[0].eligibility, 'uncertain');
   });
 
   const list = [{ id: 'outlet', unitCents: 8500 }, { id: 'trip', unitCents: 4500 }, { id: 'haul', unitCents: null }];
@@ -118,6 +135,14 @@ describe('receipts, change orders, and commands', () => {
   it('leaves the price empty when an item has no price yet, and says which', () => {
     const draft = checkChange({ description: 'Haul it away.', quantities: [{ itemId: 'haul', qtyHundredths: 100 }, { itemId: 'trip', qtyHundredths: 100 }] }, ['haul', 'trip'])!;
     assert.deepEqual(priceChange(draft, list), { cents: null, unpriced: ['haul'] });
+  });
+
+  it('charges haul-away once by price, whatever quantity the AI suggests', () => {
+    const draft = checkChange({ description: 'Haul away two loads.', quantities: [{ itemId: 'haul', qtyHundredths: 200 }] }, ['haul'])!;
+    assert.deepEqual(draft.quantities, [{ itemId: 'haul', qtyHundredths: 100 }]);
+    assert.deepEqual(priceChange(draft, [{ id: 'haul', unitCents: 15000 }]), { cents: 15000, unpriced: [] });
+    const [work] = checkCommands({ actions: [{ type: 'work', description: 'Haul away', qtyHundredths: 300, unitCents: 9000, itemId: 'haul', kind: 'fee' }] }, [], ['haul']);
+    assert.equal(work.type === 'work' && work.qtyHundredths, 100);
   });
 
   it('leaves the price empty when nothing matched the list', () => {

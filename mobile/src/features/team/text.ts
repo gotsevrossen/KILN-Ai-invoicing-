@@ -1,9 +1,145 @@
+// Team screens' words, in English and Spanish. The Spanish object must have every English key.
 const en = {
- title: 'My assigned jobs', help: 'Log your own hours, notes and photos for jobs the owner assigns to you. Pricing and company finances stay with the owner.', loading: 'Loading your jobs…', retry: 'Try again', signOut: 'Sign out', noJobs: 'No jobs assigned yet. Ask the owner to assign your next job.', noAccess: 'Sign in with your invited helper account to see assigned jobs.', chooseJob: 'Choose a job', closed: 'Invoice sent: this job is read-only.', hours: 'Log hours', hoursField: 'Hours worked today', note: 'Work note', save: 'Save', saving: 'Saving…', saved: 'Saved for the owner.', badHours: 'Enter between 0.01 and 24 hours.', addNote: 'Save note', badNote: 'Write a note before saving.', myHours: 'My logged hours', myNotes: 'My notes', photo: 'Take photos', library: 'Choose photos', before: 'Before', during: 'During', after: 'After', photoTag: 'Photo stage', cameraDenied: 'Allow camera access in your phone settings, then try again.', photosSaved: 'Photos saved for the owner.', pendingPhotos: 'Photos are still on this phone. Keep this page open and retry when connected.', retryPhotos: 'Retry photos', discardPhotos: 'Discard pending photos', noConnection: 'Connect to save. Wait for the saved message before leaving this page.', call: 'Call customer',
- admin: 'Helper access', adminHelp: 'Invite a worker to a helper login and assign specific jobs. Helpers can save their own hours, notes and photos. They cannot see prices, internal costs or other jobs, or send customer documents.', invite: 'Create helper invitation', email: 'Worker email', chooseWorker: 'Choose a worker', createLink: 'Create private join link', share: 'Share join link', linkReady: 'Share this private link with the invited worker. It expires in 7 days and only works for that email after an email-code check.', inviteHelp: 'Create the worker in Team & schedule first. An invitation does not send email automatically.', badInvite: 'Choose an available worker and enter their email.', noPreview: 'Sign in as an owner to manage real helper access.', members: 'Helpers', assign: 'Assigned jobs', none: 'No helpers have joined yet.', pending: 'Pending invitations', revoke: 'Revoke invitation', remove: 'Remove access', removeConfirm: 'Confirm remove access', removeHelp: 'This removes access immediately. Past hours and job evidence stay with your business.', cancel: 'Cancel', inviteSent: 'Invitation created', revoked: 'Invitation revoked', assigned: 'Assigned', unassigned: 'Not assigned', expired: 'Expired', join: 'Join the team', joinHelp: 'Sign in or create an account using the invited email, then verify that email here with a fresh code.', signIn: 'Sign in or create account', returnLink: 'After signing in, reopen this same invitation link to continue.', sendCode: 'Email me a code', code: 'Email code', codeSent: 'Check your inbox for a sign-in code. Enter it here to join.', accept: 'Verify email & join', joined: 'You joined the team.', invalidLink: 'This invitation is unavailable. Ask the owner for a new link for your email.', accountHasBusiness: 'This account already belongs to a business. Use a separate email account for this team invitation.', badCode: 'That code did not work. Request a new code and enter the latest one.', emailUnavailable: 'The verification email could not be sent. Ask the owner to check email delivery, then try again.', tooMany: 'Too many attempts. Wait a minute, then try again.', addWorkers: 'Add workers in Team & schedule first.', plan: 'Team & schedule', expiredSession: 'Sign in again, then reopen this invitation link.', customer: 'Customer', selectJob: 'Choose an open job before saving.', language: 'Language', ownRecords: 'Only your own entries appear here.',
+  // common
+  loading: 'Loading…', retry: 'Try again', cancel: 'Cancel', save: 'Save', saving: 'Saving…', saved: 'Saved.', done: 'Done',
+  signOut: 'Sign out', you: 'You', someone: 'Someone', remove: 'Remove', close: 'Close',
+  owner: 'Owner', manager: 'Manager', crew: 'Crew member',
+  managerHelp: 'Runs jobs, estimates, invoices and the price list. Can invite crew.',
+  crewHelp: 'Works on jobs assigned to them: work done, hours, photos and notes. No invoices or estimates.',
+
+  // joining
+  joinTitle: 'Join a team', joinHelp: 'Type the invite code you were sent. It looks like KILN-7K4P-2QXM-9TRB.',
+  code: 'Invite code', join: 'Join', badCode: 'Check the code: it has 12 letters and numbers after KILN.',
+  invalidInvite: "This code doesn't work anymore. Ask for a new one.",
+  accountHasBusiness: 'This account already belongs to a business. Sign out and make a new account with another email to join.',
+  signInFirst: 'Sign in or create your own account first. Then enter your code.', signIn: 'Sign in or create account',
+  invited: 'I was invited to a team',
+  waitingTitle: 'Waiting for approval', waitingBody: 'You asked to join %{business}. You can start as soon as the owner or a manager approves you.',
+  checkAgain: 'Check again', cancelRequest: 'Cancel my request',
+
+  // team tab
+  teamTitle: 'Team', invite: 'Invite someone', needsApproval: 'Waiting for your approval', approve: 'Approve', decline: 'Decline',
+  people: 'People', lastActive: 'Last upload %{when}', noActivity: 'Nothing uploaded yet', openJobs: '%{count} open jobs',
+  invites: 'Codes not used yet', cancelInvite: 'Cancel code', expires: 'Expires %{date}',
+  schedule: 'Schedule and pay rates', noPeople: 'Nobody has joined yet. Invite your crew with a code.',
+  review: 'To check', newItem: 'New price item from %{name}', noPrice: 'No price', looksGood: 'Looks good', editPrices: 'Edit prices',
+  changeFrom: 'Change suggested by %{name}', openJob: 'Open job', markDone: 'Handled', dismiss: 'Dismiss',
+  failed: "Team couldn't load. Check your connection and try again.",
+
+  // invite sheet
+  inviteTitle: 'Invite someone', theirName: 'Their name', role: 'Role', makeCode: 'Make invite code',
+  codeReady: 'Send this code to %{name}. It works once and expires in 7 days. You approve them after they enter it.',
+  send: 'Send code', shareMessage: 'Join %{business} on KILN. Install KILN, tap "I was invited to a team" and enter this code: %{code}',
+  badName: 'Type their name.',
+
+  // person page
+  assigned: 'Assigned jobs', assign: 'Assign jobs', notAssigned: 'Not on any jobs yet.', managerSeesAll: 'Managers see every job.',
+  activity: 'What they added', nothingYet: 'Nothing added yet.', makeManager: 'Make manager', makeCrew: 'Make crew member',
+  removePerson: 'Remove from team', removeConfirm: 'Yes, remove', removeHelp: 'They lose access right away. What they added stays on the jobs.',
+  notOnTeam: 'This person is no longer on the team.',
+  photo: 'Photo', note: 'Note', hours: '%{hours} h', work: 'Work done', onJob: 'on %{job}',
+
+  // job page
+  assignedTo: 'Assigned to', nobody: 'Nobody assigned', whoWorks: 'Who works on this job?', noCrew: 'Invite crew members on the Team tab first.',
+
+  // settings
+  teamSection: 'Team', hasTeam: 'I have a team', hasTeamHelp: 'Shows the Team tab, where you invite your crew and see what they add.',
+  crewPrices: 'Crew see prices', crewPricesHelp: 'Crew see prices on estimates, invoices and the price list.',
+  managerCosts: 'Managers see pay and profit', managerCostsHelp: 'Managers see pay rates, labor costs and job profit.',
+  ownerOnly: 'Only the owner can change this.', leaveTeam: 'Leave this team', leaveConfirm: 'Yes, leave', leaveHelp: 'You lose access to this business right away.',
+
+  // setup
+  teamQuestion: 'Do you work alone or with a team?', alone: 'Just me', withTeam: 'Me and a team',
+  teamQuestionHelp: 'With a team you get a Team tab to invite workers and see what they do. You can change this later in Settings.',
+
+  // crew
+  hello: 'Hi %{name}', yourJobs: 'Your jobs', noJobs: 'No jobs assigned yet. Ask the office to assign your next job.',
+  jobs: 'Jobs', home: 'Home', capture: 'Add', settings: 'Settings', pickJob: 'Which job?',
+  call: 'Call', text: 'Text', officeNote: 'Note from the office', agreed: 'What the customer agreed to',
+  details: 'Details', exclusions: 'Not included', closed: 'Invoice sent: this job is closed.',
+  addWork: 'Work done', addHours: 'Hours', addNote: 'Note', takePhoto: 'Take photo', choosePhotos: 'Choose photos',
+  suggest: 'Suggest a change', suggestHelp: 'Describe what the customer asked for. The office prices it and sends it.',
+  suggestion: 'What changed?', sent: 'Sent to the office.', estimate: 'Estimate %{number}', invoice: 'Invoice %{number}',
+  signed: 'Signed', notSigned: 'Not signed yet', notSent: 'Not sent yet', paid: 'Paid', unpaid: 'Not paid yet', excluded: 'Not included',
+  pricesHidden: 'Prices are shown only to the office.', photos: 'Photos', notes: 'Notes', hoursTitle: 'Hours', workTitle: 'Work done',
+  changes: 'Suggested changes', hoursField: 'Hours worked', noteField: 'Note', badHours: 'Enter between 0.01 and 24 hours.',
+  badNote: 'Write something first.', pickItem: 'Pick from the price list', needsPrice: 'Needs a price from the office',
+  qty: 'How many', badQty: 'Enter a number above zero.', addItem: 'Add a new item to the price list', itemName: 'Item name',
+  unit: 'Charged by', price: 'Price (optional)', itemAdded: 'Added. The office will check it.', badItem: 'Type a name and a valid price.',
+  stage: 'Photo stage', before: 'Before', during: 'During', after: 'After', photosSaved: 'Photos saved.',
+  cameraDenied: 'Allow camera access in your phone settings, then try again.',
+  pendingPhotos: "Some photos didn't upload. Keep this page open and try again when you have signal.", retryPhotos: 'Try photos again',
+  language: 'Language', theme: 'Look',
 };
+
 const es: Record<keyof typeof en, string> = {
- title: 'Mis trabajos asignados', help: 'Registra tus horas, notas y fotos para los trabajos que te asigne el propietario. Los precios y las finanzas quedan con el propietario.', loading: 'Cargando tus trabajos…', retry: 'Intentar de nuevo', signOut: 'Cerrar sesión', noJobs: 'Aún no tienes trabajos asignados. Pide al propietario que te asigne el próximo.', noAccess: 'Inicia sesión con tu cuenta de ayudante invitado para ver los trabajos.', chooseJob: 'Elige un trabajo', closed: 'Factura enviada: este trabajo es de solo lectura.', hours: 'Registrar horas', hoursField: 'Horas trabajadas hoy', note: 'Nota de trabajo', save: 'Guardar', saving: 'Guardando…', saved: 'Guardado para el propietario.', badHours: 'Escribe entre 0.01 y 24 horas.', addNote: 'Guardar nota', badNote: 'Escribe una nota antes de guardar.', myHours: 'Mis horas registradas', myNotes: 'Mis notas', photo: 'Tomar fotos', library: 'Elegir fotos', before: 'Antes', during: 'Durante', after: 'Después', photoTag: 'Etapa de la foto', cameraDenied: 'Permite el acceso a la cámara en los ajustes del teléfono e inténtalo de nuevo.', photosSaved: 'Fotos guardadas para el propietario.', pendingPhotos: 'Las fotos siguen en este teléfono. Mantén esta página abierta y reintenta al conectarte.', retryPhotos: 'Reintentar fotos', discardPhotos: 'Descartar fotos pendientes', noConnection: 'Conéctate para guardar. Espera el mensaje de guardado antes de salir de esta página.', call: 'Llamar al cliente',
- admin: 'Acceso de ayudantes', adminHelp: 'Invita a un trabajador a una cuenta de ayudante y asígnale trabajos concretos. Puede guardar sus horas, notas y fotos. No puede ver precios, costos internos u otros trabajos, ni enviar documentos al cliente.', invite: 'Crear invitación de ayudante', email: 'Correo del trabajador', chooseWorker: 'Elige un trabajador', createLink: 'Crear enlace privado', share: 'Compartir enlace', linkReady: 'Comparte este enlace privado con el trabajador invitado. Caduca en 7 días y solo funciona con ese correo después de verificarlo con un código.', inviteHelp: 'Primero crea el trabajador en Equipo y agenda. La invitación no envía un correo automáticamente.', badInvite: 'Elige un trabajador disponible y escribe su correo.', noPreview: 'Inicia sesión como propietario para administrar el acceso real de ayudantes.', members: 'Ayudantes', assign: 'Trabajos asignados', none: 'Aún no se ha unido ningún ayudante.', pending: 'Invitaciones pendientes', revoke: 'Revocar invitación', remove: 'Quitar acceso', removeConfirm: 'Confirmar quitar acceso', removeHelp: 'Esto quita el acceso de inmediato. Las horas y pruebas anteriores quedan con tu negocio.', cancel: 'Cancelar', inviteSent: 'Invitación creada', revoked: 'Invitación revocada', assigned: 'Asignado', unassigned: 'Sin asignar', expired: 'Caducada', join: 'Unirse al equipo', joinHelp: 'Inicia sesión o crea una cuenta con el correo invitado y verifícalo aquí con un código nuevo.', signIn: 'Iniciar sesión o crear cuenta', returnLink: 'Después de iniciar sesión, vuelve a abrir este mismo enlace para continuar.', sendCode: 'Enviarme un código', code: 'Código por correo', codeSent: 'Busca el código de inicio de sesión en tu correo. Escríbelo aquí para unirte.', accept: 'Verificar correo y unirme', joined: 'Te uniste al equipo.', invalidLink: 'Esta invitación no está disponible. Pide al propietario un enlace nuevo para tu correo.', accountHasBusiness: 'Esta cuenta ya pertenece a un negocio. Usa otra cuenta de correo para esta invitación de equipo.', badCode: 'El código no funcionó. Solicita uno nuevo y escribe el más reciente.', emailUnavailable: 'No se pudo enviar el correo de verificación. Pide al propietario que revise la entrega del correo y vuelve a intentarlo.', tooMany: 'Demasiados intentos. Espera un minuto y vuelve a intentarlo.', addWorkers: 'Primero agrega trabajadores en Equipo y agenda.', plan: 'Equipo y agenda', expiredSession: 'Inicia sesión de nuevo y vuelve a abrir este enlace de invitación.', customer: 'Cliente', selectJob: 'Elige un trabajo abierto antes de guardar.', language: 'Idioma', ownRecords: 'Aquí solo aparecen tus propias entradas.',
+  loading: 'Cargando…', retry: 'Intentar de nuevo', cancel: 'Cancelar', save: 'Guardar', saving: 'Guardando…', saved: 'Guardado.', done: 'Listo',
+  signOut: 'Cerrar sesión', you: 'Tú', someone: 'Alguien', remove: 'Quitar', close: 'Cerrar',
+  owner: 'Dueño', manager: 'Encargado', crew: 'Miembro del equipo',
+  managerHelp: 'Maneja trabajos, presupuestos, facturas y la lista de precios. Puede invitar al equipo.',
+  crewHelp: 'Trabaja en los trabajos asignados: trabajo hecho, horas, fotos y notas. Sin facturas ni presupuestos.',
+
+  joinTitle: 'Unirse a un equipo', joinHelp: 'Escribe el código de invitación que te enviaron. Se ve así: KILN-7K4P-2QXM-9TRB.',
+  code: 'Código de invitación', join: 'Unirme', badCode: 'Revisa el código: tiene 12 letras y números después de KILN.',
+  invalidInvite: 'Este código ya no funciona. Pide uno nuevo.',
+  accountHasBusiness: 'Esta cuenta ya pertenece a un negocio. Cierra sesión y crea otra cuenta con otro correo para unirte.',
+  signInFirst: 'Primero inicia sesión o crea tu propia cuenta. Luego escribe tu código.', signIn: 'Iniciar sesión o crear cuenta',
+  invited: 'Me invitaron a un equipo',
+  waitingTitle: 'Esperando aprobación', waitingBody: 'Pediste unirte a %{business}. Puedes empezar en cuanto el dueño o un encargado te apruebe.',
+  checkAgain: 'Revisar de nuevo', cancelRequest: 'Cancelar mi solicitud',
+
+  teamTitle: 'Equipo', invite: 'Invitar a alguien', needsApproval: 'Esperan tu aprobación', approve: 'Aprobar', decline: 'Rechazar',
+  people: 'Personas', lastActive: 'Último envío %{when}', noActivity: 'Todavía no ha subido nada', openJobs: '%{count} trabajos abiertos',
+  invites: 'Códigos sin usar', cancelInvite: 'Cancelar código', expires: 'Vence %{date}',
+  schedule: 'Agenda y pagos', noPeople: 'Nadie se ha unido todavía. Invita a tu equipo con un código.',
+  review: 'Para revisar', newItem: 'Artículo nuevo de %{name}', noPrice: 'Sin precio', looksGood: 'Está bien', editPrices: 'Editar precios',
+  changeFrom: 'Cambio sugerido por %{name}', openJob: 'Abrir trabajo', markDone: 'Atendido', dismiss: 'Descartar',
+  failed: 'No se pudo cargar el equipo. Revisa tu conexión e inténtalo de nuevo.',
+
+  inviteTitle: 'Invitar a alguien', theirName: 'Su nombre', role: 'Puesto', makeCode: 'Crear código de invitación',
+  codeReady: 'Envía este código a %{name}. Sirve una vez y vence en 7 días. Lo apruebas después de que lo escriba.',
+  send: 'Enviar código', shareMessage: 'Únete a %{business} en KILN. Instala KILN, toca "Me invitaron a un equipo" y escribe este código: %{code}',
+  badName: 'Escribe su nombre.',
+
+  assigned: 'Trabajos asignados', assign: 'Asignar trabajos', notAssigned: 'Todavía no está en ningún trabajo.', managerSeesAll: 'Los encargados ven todos los trabajos.',
+  activity: 'Lo que agregó', nothingYet: 'Todavía no ha agregado nada.', makeManager: 'Hacer encargado', makeCrew: 'Hacer miembro del equipo',
+  removePerson: 'Quitar del equipo', removeConfirm: 'Sí, quitar', removeHelp: 'Pierde el acceso de inmediato. Lo que agregó se queda en los trabajos.',
+  notOnTeam: 'Esta persona ya no está en el equipo.',
+  photo: 'Foto', note: 'Nota', hours: '%{hours} h', work: 'Trabajo hecho', onJob: 'en %{job}',
+
+  assignedTo: 'Asignado a', nobody: 'Nadie asignado', whoWorks: '¿Quién trabaja en este trabajo?', noCrew: 'Primero invita a tu equipo en la pestaña Equipo.',
+
+  teamSection: 'Equipo', hasTeam: 'Tengo un equipo', hasTeamHelp: 'Muestra la pestaña Equipo, donde invitas a tu equipo y ves lo que agregan.',
+  crewPrices: 'El equipo ve precios', crewPricesHelp: 'El equipo ve precios en presupuestos, facturas y la lista de precios.',
+  managerCosts: 'Los encargados ven pagos y ganancias', managerCostsHelp: 'Los encargados ven tarifas de pago, costos de mano de obra y ganancias.',
+  ownerOnly: 'Solo el dueño puede cambiar esto.', leaveTeam: 'Salir de este equipo', leaveConfirm: 'Sí, salir', leaveHelp: 'Pierdes el acceso a este negocio de inmediato.',
+
+  teamQuestion: '¿Trabajas solo o con un equipo?', alone: 'Solo yo', withTeam: 'Yo y un equipo',
+  teamQuestionHelp: 'Con un equipo tienes una pestaña Equipo para invitar trabajadores y ver lo que hacen. Puedes cambiarlo luego en Ajustes.',
+
+  hello: 'Hola, %{name}', yourJobs: 'Tus trabajos', noJobs: 'Todavía no tienes trabajos asignados. Pide a la oficina que te asigne el próximo.',
+  jobs: 'Trabajos', home: 'Inicio', capture: 'Agregar', settings: 'Ajustes', pickJob: '¿Qué trabajo?',
+  call: 'Llamar', text: 'Mensaje', officeNote: 'Nota de la oficina', agreed: 'Lo que aceptó el cliente',
+  details: 'Detalles', exclusions: 'No incluido', closed: 'Factura enviada: este trabajo está cerrado.',
+  addWork: 'Trabajo hecho', addHours: 'Horas', addNote: 'Nota', takePhoto: 'Tomar foto', choosePhotos: 'Elegir fotos',
+  suggest: 'Sugerir un cambio', suggestHelp: 'Describe lo que pidió el cliente. La oficina le pone precio y lo envía.',
+  suggestion: '¿Qué cambió?', sent: 'Enviado a la oficina.', estimate: 'Presupuesto %{number}', invoice: 'Factura %{number}',
+  signed: 'Firmado', notSigned: 'Sin firmar', notSent: 'Sin enviar', paid: 'Pagada', unpaid: 'Sin pagar', excluded: 'No incluido',
+  pricesHidden: 'Los precios solo los ve la oficina.', photos: 'Fotos', notes: 'Notas', hoursTitle: 'Horas', workTitle: 'Trabajo hecho',
+  changes: 'Cambios sugeridos', hoursField: 'Horas trabajadas', noteField: 'Nota', badHours: 'Escribe entre 0.01 y 24 horas.',
+  badNote: 'Escribe algo primero.', pickItem: 'Elegir de la lista de precios', needsPrice: 'Necesita precio de la oficina',
+  qty: 'Cuántos', badQty: 'Escribe un número mayor que cero.', addItem: 'Agregar un artículo nuevo a la lista', itemName: 'Nombre del artículo',
+  unit: 'Se cobra por', price: 'Precio (opcional)', itemAdded: 'Agregado. La oficina lo revisará.', badItem: 'Escribe un nombre y un precio válido.',
+  stage: 'Etapa de la foto', before: 'Antes', during: 'Durante', after: 'Después', photosSaved: 'Fotos guardadas.',
+  cameraDenied: 'Permite el acceso a la cámara en los ajustes del teléfono e inténtalo de nuevo.',
+  pendingPhotos: 'Algunas fotos no se subieron. Deja esta página abierta e inténtalo de nuevo cuando tengas señal.', retryPhotos: 'Reintentar fotos',
+  language: 'Idioma', theme: 'Apariencia',
 };
-export const teamText = (lang: 'en' | 'es') => lang === 'es' ? es : en;
+
+export type TeamText = typeof en;
+export const teamText = (lang: 'en' | 'es'): TeamText => (lang === 'es' ? es : en);
+
+/** Fills %{name} style blanks. */
+export function fill(text: string, values: Record<string, string | number>): string {
+  return text.replace(/%\{(\w+)\}/g, (_, key: string) => String(values[key] ?? ''));
+}
