@@ -1,3 +1,4 @@
+import { OfflineStatus } from '@/components/offline-status';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
@@ -62,6 +63,7 @@ export default function Jobs() {
       header={
         <PageHeader title={t('jobs.title')} right={<IconButton icon="plus" label={t('common.newJob')} tone="accent" onPress={() => router.push('/new-job')} />} />
       } tabs>
+      <OfflineStatus />
       <Field value={query} onChangeText={setQuery} placeholder={t('jobs.search')} accessibilityLabel={t('jobs.search')} returnKeyType="search" />
       <Segmented
         label={t('jobs.title')}

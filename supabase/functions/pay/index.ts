@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { balance, cors, hashToken, type LineRow, Refused, reply, serviceClient, setting, tokenShape, totalsOf } from '../_shared/invoice.ts';
+import { jobRequestAction, requestByToken } from '../_shared/job-payments.ts';
+import { validPaymentProof } from '../_shared/payment-proof.ts';
 import { stripe, StripeError } from '../_shared/stripe.ts';
 
 // POST /functions/v1/pay  — the customer's invoice page. No sign-in: the link's code is the key,
@@ -41,12 +43,19 @@ async function loadInvoice(db: SupabaseClient, link: Link) {
   if (!invoice?.sent_at) throw new Refused(404, 'not_found');
   const [lines, payments, account] = await Promise.all([
     db.from('invoice_lines').select('description, kind, qty_hundredths, unit_cents, unit, position').eq('invoice_id', invoice.id).order('position').returns<LineRow[]>(),
-    db.from('payments').select('amount_cents, status, method').eq('invoice_id', invoice.id).returns<{ amount_cents: number; status: 'processing' | 'succeeded' | 'failed'; method: string }[]>(),
+    db.from('payments').select('amount_cents, status, method').eq('job_id', invoice.job_id).returns<{ amount_cents: number; status: 'processing' | 'succeeded' | 'failed'; method: string }[]>(),
     db.from('stripe_accounts').select('account_id, wallet_ready, bank_ready').eq('business_id', invoice.business_id).maybeSingle<{ account_id: string; wallet_ready: boolean; bank_ready: boolean }>(),
   ]);
   if (lines.error || payments.error || account.error) throw new Error('load failed');
   const totals = totalsOf(lines.data, invoice);
+  const advances = await db.from('job_payment_requests').select('id,amount_cents,intent_id,intent_method').eq('job_id', invoice.job_id).not('intent_method', 'is', null);
+  if (advances.error) throw new Error('load failed');
+  const settled = await db.from('payments').select('request_id,status').eq('job_id', invoice.job_id);
+  if (settled.error) throw new Error('load failed');
+  const unresolved = (advances.data ?? []).filter(r => !(settled.data ?? []).some(p => p.request_id === r.id && (p.status === 'succeeded' || p.status === 'processing'))).reduce((sum,r)=>sum+r.amount_cents,0);
   const money = balance(totals.total, payments.data);
+  money.pending += unresolved;
+  money.due = Math.max(0, money.due - unresolved);
   // paid in cash (marked by the owner) means nothing is left to pay online
   const due = invoice.paid_at ? 0 : money.due;
   return { invoice, lines: lines.data, totals, money: { ...money, due }, account: account.data };
@@ -108,10 +117,21 @@ async function start(db: SupabaseClient, link: Link, method: unknown) {
   // one payment at a time: a bank payment on its way blocks a second one
   if (money.due <= 0 || money.pending > 0) throw new Refused(409, 'nothing_due');
 
+  const reservation = await db.rpc('reserve_invoice_payment', { p_invoice: invoice.id, p_method: method });
+  if (reservation.error || !Number.isSafeInteger(reservation.data) || reservation.data <= 0) throw new Refused(409, 'nothing_due');
+  const amount = reservation.data as number;
+  const savedReservation = await db.from('invoice_payment_reservations').select('intent_id,created_at').eq('invoice_id',invoice.id).single<{intent_id:string|null;created_at:string}>();
+  if(savedReservation.error) throw new Error('load failed');
+  if(savedReservation.data.intent_id) {
+    const existing = await stripe<{id:string;client_secret:string;amount:number;currency:string;metadata:Record<string,string>}>(key,{method:'GET',path:`/v1/payment_intents/${savedReservation.data.intent_id}`,account:account.account_id});
+    if(existing.metadata?.invoice_id!==invoice.id || existing.metadata.business_id!==invoice.business_id || existing.amount!==amount || existing.currency!=='usd') throw new Refused(409,'not_ready');
+    return {clientSecret:existing.client_secret,amount};
+  }
+  if(Date.now()-Date.parse(savedReservation.data.created_at)>23*60*60*1000) throw new Refused(409,'not_ready');
   const intent = await stripe<{ id: string; client_secret: string }>(key, {
-    method: 'POST', path: '/v1/payment_intents', account: account.account_id,
+    method: 'POST', path: '/v1/payment_intents', account: account.account_id, idempotencyKey: `kiln-invoice-${invoice.id}`,
     body: {
-      amount: money.due,
+      amount,
       currency: 'usd',
       // Apple Pay and Google Pay are paid through the card network; the page shows only those buttons
       payment_method_types: [method === 'wallet' ? 'card' : 'us_bank_account'],
@@ -120,7 +140,9 @@ async function start(db: SupabaseClient, link: Link, method: unknown) {
       ...(method === 'bank' ? { payment_method_options: { us_bank_account: { financial_connections: { permissions: ['payment_method'] } } } } : {}),
     },
   });
-  return { clientSecret: intent.client_secret, amount: money.due };
+  const bound = await db.from('invoice_payment_reservations').update({intent_id:intent.id}).eq('invoice_id',invoice.id);
+  if(bound.error) throw new Error('save failed');
+  return { clientSecret: intent.client_secret, amount };
 }
 
 async function check(db: SupabaseClient, link: Link, intentId: unknown) {
@@ -129,12 +151,13 @@ async function check(db: SupabaseClient, link: Link, intentId: unknown) {
   if (!key) throw new Refused(503, 'not_set_up');
   const { invoice, totals, account } = await loadInvoice(db, link);
   if (!account) throw new Refused(409, 'not_ready');
-  const intent = await stripe<{ id: string; status: string; amount_received: number; amount: number; metadata: Record<string, string> }>(key, {
+  const intent = await stripe<{ id: string; status: string; amount_received: number; amount: number; currency:string; metadata: Record<string, string> }>(key, {
     method: 'GET', path: `/v1/payment_intents/${intentId}`, account: account.account_id,
   });
   // only a payment made for this invoice counts
-  if (intent.metadata?.invoice_id !== invoice.id) throw new Refused(404, 'not_found');
+  if (intent.metadata?.invoice_id !== invoice.id || intent.metadata.business_id !== invoice.business_id || intent.currency !== 'usd') throw new Refused(404, 'not_found');
   const status = intent.status === 'succeeded' ? 'succeeded' : intent.status === 'processing' ? 'processing' : null;
+  if (status && !validPaymentProof(intent,status)) throw new Refused(409,'not_ready');
   if (status) {
     const saved = await db.rpc('record_stripe_payment', {
       p_business: invoice.business_id, p_invoice: invoice.id, p_intent: intent.id, p_amount_cents: intent.amount,
@@ -158,6 +181,8 @@ Deno.serve(async (req) => {
       throw new Refused(400, 'bad_request');
     }
     const db = serviceClient();
+    const request = await requestByToken(db, body.token);
+    if (request) return reply(200, await jobRequestAction(db, request, body));
     const link = await openLink(db, body.token);
     if (body.action === 'view') return reply(200, await view(db, link));
     if (body.action === 'start') return reply(200, await start(db, link, body.method));

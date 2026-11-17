@@ -141,14 +141,25 @@ Deno.serve(async (req) => {
   const auth = req.headers.get('Authorization');
   if (!auth) return reply(401, { error: 'signed_out' });
   try {
-    let body: { action?: unknown; invoiceId?: unknown };
+    let body: { action?: unknown; invoiceId?: unknown; requestId?: unknown };
     try {
       body = JSON.parse(await req.text());
     } catch {
       throw new Refused(400, 'bad_request');
     }
     const who = await whoIs(auth);
+    if (!who.isOwner) throw new Refused(403, 'owner_only');
     const db = serviceClient();
+    if (body.action === 'requestLink') {
+      if (!who.isOwner || typeof body.requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(body.requestId)) throw new Refused(403, 'owner_only');
+      const request = await db.from('job_payment_requests').select('id').eq('id', body.requestId).eq('business_id', who.businessId).maybeSingle();
+      if (request.error || !request.data) throw new Refused(404, 'not_found');
+      const token = newToken();
+      const expiresAt = new Date(Date.now() + LINK_DAYS * 86400000).toISOString();
+      const saved = await db.from('job_payment_requests').update({token_hash: await hashToken(token), expires_at: expiresAt}).eq('id', request.data.id);
+      if (saved.error) throw new Error('save failed');
+      return reply(200, {url: `${payUrl()}/collect/${token}`, expiresAt});
+    }
     if (body.action === 'connect') return reply(200, await connect(db, who));
     if (body.action === 'status') return reply(200, await status(db, who));
     if (body.action === 'link') return reply(200, await link(db, who, body.invoiceId));

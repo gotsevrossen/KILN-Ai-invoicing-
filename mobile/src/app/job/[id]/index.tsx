@@ -1,5 +1,8 @@
+import { ServicePackages } from '@/components/service-packages';
+import { JobPayments } from '@/components/job-payments';
+import { OfflineStatus } from '@/components/offline-status';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { aiErrorText } from '@/components/ai-parts';
@@ -32,6 +35,7 @@ function JobDetail() {
   const { t } = useLang();
   const f = useFormat();
   const { state, actions } = useStore();
+  useEffect(() => { const timer = setInterval(() => { void actions.refreshDocuments().catch(() => {}); }, 15000); return () => clearInterval(timer); }, [actions]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const job = jobById(id);
   const customer = customerOf(job);
@@ -59,7 +63,7 @@ function JobDetail() {
   const [changeOpen, setChangeOpen] = useState(false);
   const [changeDescription, setChangeDescription] = useState('');
   const [changePrice, setChangePrice] = useState('');
-  const changeCents = /^\d{1,6}([.,]\d{1,2})?$/.test(changePrice)
+  const changeCents = /^-?\d{1,6}([.,]\d{1,2})?$/.test(changePrice)
     ? Math.round(Number(changePrice.replace(',', '.')) * 100) : null;
   // KILN writes up the owner's quick note for the customer and prices it from the owner's own list
   const [changeDraft, setChangeDraft] = useState<ChangeDraft | null>(null);
@@ -119,6 +123,7 @@ function JobDetail() {
         return {
           title: t('flow.estimateWaiting', { name: customer.firstName }),
           body: t('flow.estimateWaitingBody'),
+          extra: <Button label={t('estimate.send')} icon="send" variant="outline" onPress={() => router.push(builderRoute)} />,
           action: { label: t('flow.openEstimate'), icon: 'eye', onPress: () => router.push(customerEstimateRoute) },
         };
       case 'working':
@@ -145,7 +150,7 @@ function JobDetail() {
         return {
           title: t('flow.invoiceSent'),
           body: t('flow.invoiceSentBody'),
-          action: invoice ? { label: t('flow.markPaid'), icon: 'dollar-sign', onPress: () => actions.markPaid(invoice.id) } : undefined,
+          action: invoice ? { label: t('flow.markPaid'), icon: 'dollar-sign', onPress: () => router.push(`/invoice/${invoice.id}`) } : undefined,
           extra: invoice ? <Button label={t('flow.viewInvoice')} variant="outline" onPress={() => router.push(`/invoice/${invoice.id}`)} /> : undefined,
         };
       default:
@@ -193,6 +198,8 @@ function JobDetail() {
         </>
       }
       footer={next.action ? <Button label={next.action.label} icon={next.action.icon} big onPress={next.action.onPress} /> : undefined}>
+      <OfflineStatus />
+      {state.estimates[job.id]?.signed ? <JobPayments jobId={job.id} /> : null}
       <Card style={{ paddingVertical: 6, gap: 0 }}>
         <ListRow
           icon="user"
@@ -217,6 +224,7 @@ function JobDetail() {
         {next.extra}
       </Card>
 
+      {canLogWork && !state.estimates[job.id]?.signed ? <ServicePackages jobId={job.id} target="work" /> : null}
       {canLogWork ? (
         <Row gap={8}>
           <Button label={t('flow.workDone')} icon="tool" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setWorkOpen(true)} />
@@ -244,6 +252,10 @@ function JobDetail() {
         onPress={() => pendingChange ? router.push(`/change-order/${pendingChange.id}`) : setChangeOpen(true)} /> : null}
 
       <Card style={{ gap: 4 }}>
+        <ListRow icon="bar-chart-2" title={t('improvements.profitability')} sub={t('improvements.profitabilityHelp')} onPress={() => router.push(`/job/${job.id}/profitability`)} />
+        <Hair />
+        <ListRow icon="clipboard" title={t('improvements.tradeTools')} sub={t('improvements.tradeToolsHelp')} onPress={() => router.push(`/job/${job.id}/trade-tools`)} />
+        <Hair />
         <ListRow icon="dollar-sign" title={t('job.costs')} sub={costSub} onPress={() => router.push(`/job/${job.id}/costs`)} />
         <Hair />
         <ListRow icon="folder" iconTone={pendingChange ? 'flag' : 'soft'} title={t('job.documents')} sub={docsSub}
@@ -353,5 +365,6 @@ function JobDetail() {
 /** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
 export default function JobDetailRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  return <RecordGate found={() => hasJob(id)}><JobDetail /></RecordGate>;
+  const { state } = useStore();
+  return <RecordGate found={() => hasJob(id)}><JobDetail key={`${state.businessId ?? 'example'}:${id}`} /></RecordGate>;
 }

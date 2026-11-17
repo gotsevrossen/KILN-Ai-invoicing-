@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
@@ -16,6 +16,8 @@ const RESEND_WAIT = 60;
 export default function SignIn() {
   const p = usePalette();
   const { t, lang, setLang } = useLang();
+  const { join } = useLocalSearchParams<{ join?: string }>();
+  const destination: Href = typeof join === 'string' && /^[a-f0-9]{64}$/.test(join) ? `/join/${join}` : '/';
   const auth = useAuth();
   const [mode, setMode] = useState<'in' | 'up' | 'reset'>('in');
   const [email, setEmail] = useState('');
@@ -74,7 +76,7 @@ export default function SignIn() {
     try {
       const err = mode === 'in' ? await auth.signIn(email, password) : await auth.signUp(email, password);
       if (err) setError(userError(t, err));
-      else router.replace('/');
+      else router.replace(destination);
     } catch (e) {
       setError(userError(t, e));
     } finally {
@@ -120,7 +122,7 @@ export default function SignIn() {
         setError(problem.kind === 'other' ? t('auth.passwordNotSaved', { reason: userError(t, problem) }) : resetMessage(problem));
         return;
       }
-      router.replace('/');
+      router.replace(destination);
     } catch (e) {
       setError(userError(t, e));
     } finally {

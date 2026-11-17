@@ -1,12 +1,12 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { CustomerPage } from '@/components/customer-page';
 import { ScopeCard } from '@/components/job-scope';
 import { estimateReady } from '@/lib/billing';
 import { RecordGate } from '@/components/record-gate';
-import { SignaturePad } from '@/components/signature-pad';
+import { SignaturePad, type SignatureInk } from '@/components/signature-pad';
 import { Button, Card, Checkbox, Field, Hair, LineRow, Notice, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { customerOf, estimateDocLines, estimateDraft, hasCustomerEstimate, jobById } from '@/data/selectors';
@@ -43,8 +43,12 @@ function CustomerEstimate() {
   const depositBps = draft ? draft.depositBps : state.settings.depositBps;
   const deposit = askDeposit ? percentOf(total, depositBps) : 0;
 
+  const [ink, setInk] = useState<SignatureInk>([]);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [name, setName] = useState('');
   const [hasInk, setHasInk] = useState(false);
+  const markInk = useCallback(() => setHasInk(true), []);
   const [drawing, setDrawing] = useState(false);
   const [padKey, setPadKey] = useState(0);
   const [agreed, setAgreed] = useState(false);
@@ -93,6 +97,7 @@ function CustomerEstimate() {
         </Card>
       ) : null}
 
+      {saveError ? <Notice text={tc('improvements.approvalFailed')} tone="danger" /> : null}
       {done ? (
         <Notice text={askDeposit ? tc('customer.signedDeposit', { business: state.profile.businessName }) : tc('customer.signed')} icon="check-circle" />
       ) : canAccept ? (
@@ -101,21 +106,21 @@ function CustomerEstimate() {
           <View style={{ gap: 6 }}>
             <Row style={{ justifyContent: 'space-between' }}>
               <T v="label">{tc('customer.signFinger')}</T>
-              <Pressable onPress={() => { setPadKey((k) => k + 1); setHasInk(false); }} accessibilityRole="button" style={{ minHeight: tap.min, justifyContent: 'center', paddingHorizontal: 8 }}>
+              <Pressable onPress={() => { setPadKey((k) => k + 1); setHasInk(false); setInk([]); }} accessibilityRole="button" style={{ minHeight: tap.min, justifyContent: 'center', paddingHorizontal: 8 }}>
                 <T v="label" style={{ textDecorationLine: 'underline' }}>{tc('changeOrder.clear')}</T>
               </Pressable>
             </Row>
-            <SignaturePad key={padKey} placeholder={tc('customer.signHere')} label={tc('customer.signFinger')} onInk={() => setHasInk(true)} onDrawing={setDrawing} />
+            <SignaturePad key={padKey} placeholder={tc('customer.signHere')} label={tc('customer.signFinger')} onInk={markInk} onDrawing={setDrawing} onChange={setInk} />
           </View>
           <Checkbox
             label={tc('customer.accept', { total: fc.money(total), deposit: fc.money(deposit) })}
             value={agreed}
             onChange={setAgreed}
           />
-          <Button label={tc('customer.signPay')} big disabled={!ready} onPress={() => {
-              // signing a draft moves the job on to the work step
-              if (!saved) actions.signEstimate(job.id, name.trim());
-              setDone(true);
+          <Button label={tc('customer.signPay')} big disabled={!ready || busy || ink.flat().length < 2} onPress={async () => {
+              setBusy(true); setSaveError(false);
+              try { if (!saved) await actions.signEstimate(job.id, name.trim(), ink); setDone(true); }
+              catch { setSaveError(true); } finally { setBusy(false); }
             }} style={{ borderRadius: radius.sm }} />
           <Pressable onPress={() => router.back()} accessibilityRole="button" style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center' }}>
             <T v="label" style={{ textDecorationLine: 'underline' }}>{tc('customer.decline')}</T>
@@ -129,5 +134,6 @@ function CustomerEstimate() {
 /** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
 export default function CustomerEstimateRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  return <RecordGate found={() => hasCustomerEstimate(id)}><CustomerEstimate /></RecordGate>;
+  const { state } = useStore();
+  return <RecordGate found={() => hasCustomerEstimate(id)}><CustomerEstimate key={`${state.businessId ?? 'example'}:${id}`} /></RecordGate>;
 }

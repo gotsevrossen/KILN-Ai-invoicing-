@@ -4,6 +4,8 @@ import { AppState, Platform } from 'react-native';
 import { errorDetails, type ErrorDetails } from '@/lib/user-errors';
 import type { Cents, TaxRule } from '@/lib/money';
 import { SaveQueue } from '@/lib/save-queue';
+import { OfflineJournal } from '@/lib/offline-journal';
+import { command, executeCommand, type OfflineCommand } from './offline-commands';
 import { copyDocument, estimateReady, needsActualHours, receiptShares, workItemValid } from '@/lib/billing';
 import { businessDate } from '@/lib/invoice-aging';
 import type { NewPhoto } from '@/lib/job-photos';
@@ -142,6 +144,9 @@ export interface State {
   businessId: string | null;
   /** Last save that failed, shown to the owner. */
   syncError: ErrorDetails | null;
+  /** A local save is separate from confirmation by the server. */
+  localSave: 'confirmed' | 'waiting' | 'failed';
+  pendingSaves: number;
 }
 
 function initialState(): State {
@@ -193,6 +198,8 @@ function initialState(): State {
     mode: 'example',
     businessId: null,
     syncError: null,
+    localSave: 'confirmed',
+    pendingSaves: 0,
   };
 }
 
@@ -237,6 +244,8 @@ function connectedState(base: State): State {
     priceList: [],
     mode: 'connected',
     syncError: null,
+    localSave: 'confirmed',
+    pendingSaves: 0,
   };
 }
 
@@ -274,25 +283,96 @@ const subscribe = (l: () => void) => {
 // Saves and delayed typing belong to the account that scheduled them.
 const saveQueue = new SaveQueue((error) => set((s) => ({ ...s, syncError: errorDetails(error) })));
 
-function persist(task: (businessId: string) => Promise<void>): void {
-  const { mode, businessId } = get();
-  if (mode === 'connected' && businessId) saveQueue.enqueue(() => task(businessId));
+interface LocalSnapshot {
+  state: State;
+  lists: {
+    jobs: Job[]; customers: Customer[]; receipts: Receipt[]; invoices: Invoice[];
+    changeOrders: ChangeOrder[];
+  };
 }
-
-function persistSoon(key: string, task: (businessId: string) => Promise<void>, ms = 700): void {
-  const { mode, businessId } = get();
-  if (mode === 'connected' && businessId) saveQueue.debounce(key, () => task(businessId), ms);
-}
-
-const flushSoon = (key: string) => saveQueue.flush(key);
-AppState.addEventListener('change', (next) => {
-  if (next !== 'active') saveQueue.flushAll();
-  else if (get().mode === 'connected') set((s) => ({ ...s, version: s.version + 1 }));
+let accountId: string | null = null;
+let journalReady = false;
+let volatileCommands: OfflineCommand[] = [];
+const journal = new OfflineJournal<LocalSnapshot, OfflineCommand>({
+  getItem: (key) => localStorage.getItem(key),
+  setItem: (key, value) => localStorage.setItem(key, value),
 });
-const saveEstimateSoon = (jobId: string) => persistSoon(`estimate:${jobId}`, (bid) => {
+function localSnapshot(): LocalSnapshot {
+  return { state: get(), lists: { jobs: sample.jobs, customers: sample.customers,
+    receipts: sample.receipts, invoices: sample.invoices, changeOrders: sample.changeOrders } };
+}
+function cacheCurrent(): void {
+  if (!journalReady || !get().businessId || volatileCommands.length) return;
+  try { journal.save(localSnapshot()); }
+  catch (error) { set((s) => ({ ...s, localSave: 'failed', syncError: errorDetails(error) })); }
+}
+function persist(input: OfflineCommand | OfflineCommand[]): void {
+  if (get().mode !== 'connected' || !get().businessId) return;
+  try {
+    const commands = Array.isArray(input) ? input : [input];
+    // Even a failed startup read must not drop edits made while the owner keeps
+    // the app open. They stay explicitly unconfirmed until storage works again.
+    volatileCommands.push(...JSON.parse(JSON.stringify(commands)) as OfflineCommand[]);
+    if (!journalReady) throw new Error('offline_storage_unavailable');
+    journal.append(volatileCommands.map((c) => ({ id: newId(), command: c })), localSnapshot());
+    volatileCommands = [];
+    set((s) => ({ ...s, localSave: 'waiting', pendingSaves: journal.pending }));
+    void retryOffline().catch(() => {});
+  } catch (error) {
+    set((s) => ({ ...s, localSave: 'failed', pendingSaves: journal.pending + volatileCommands.length, syncError: errorDetails(error) }));
+  }
+}
+async function retryOffline(): Promise<void> {
+  if (get().mode !== 'connected' || !get().businessId) return;
+  const active = saveQueue.scope();
+  try {
+    if (!journalReady) {
+      if (!accountId) throw new Error('offline_storage_unavailable');
+      // Reopen only this session's journal. Preserve edits currently shown on
+      // screen; importing an older cached snapshot here would overwrite them.
+      journal.resume(accountId, volatileCommands.map((c) => ({ id: newId(), command: c })), localSnapshot());
+      journalReady = true;
+      volatileCommands = [];
+    } else if (volatileCommands.length) {
+      journal.append(volatileCommands.map((c) => ({ id: newId(), command: c })), localSnapshot());
+      volatileCommands = [];
+    }
+    await journal.flush(executeCommand, () => localSnapshot());
+    if (!active()) throw Object.assign(new Error('signed_out'), { code: 'signed_out' });
+    saveQueue.clearFailure();
+    set((s) => ({ ...s, pendingSaves: journal.pending, localSave: journal.pending ? 'waiting' : 'confirmed', syncError: null }));
+    cacheCurrent();
+  } catch (error) {
+    if (active()) set((s) => ({ ...s, pendingSaves: journal.pending + volatileCommands.length, localSave: !journalReady || volatileCommands.length ? 'failed' : 'waiting', syncError: errorDetails(error) }));
+    throw error;
+  }
+}
+/** Refresh only an idle, unchanged view; never overwrite an edit made while the request ran. */
+async function refreshDocuments(): Promise<void> {
+  if (get().mode !== 'connected' || !get().businessId) return;
+  const active = saveQueue.scope();
+  await retryOffline();
+  const before = get();
+  const loaded = await dbApi.loadAll();
+  if (!active() || get() !== before || journal.pending || volatileCommands.length || !loaded) return;
+  applyLoaded(loaded);
+  cacheCurrent();
+}
+const flushSoon = (_key: string) => {};
+const saveEstimateSoon = (jobId: string) => {
   const draft = get().estimates[jobId];
-  return draft ? docsApi.saveEstimate(bid, jobId, draft) : Promise.resolve();
+  if (draft) persist(command('saveEstimate', get().businessId!, jobId, draft));
+};
+AppState.addEventListener('change', (next) => {
+  if (next !== 'active') { saveQueue.flushAll(); cacheCurrent(); }
+  else if (get().mode === 'connected') {
+    set((s) => ({ ...s, version: s.version + 1 }));
+    void retryOffline().catch(() => {});
+  }
 });
+if (typeof localStorage !== 'undefined') setInterval(() => {
+  if (journal.pending || volatileCommands.length) void retryOffline().catch(() => {});
+}, 30_000);
 
 // ---------- job photos waiting to upload ----------
 // A photo stays on the phone until it's on the server, and the list of those waiting is kept
@@ -357,13 +437,13 @@ async function flushPhotos(): Promise<void> {
         const now = get().photos.find((p) => p.id === id);
         if (!now) {
           // deleted while it was uploading
-          persist(() => photosApi.deletePhoto(id, path));
+          persist(command('deletePhoto', id, path));
           continue;
         }
         set((x) => ({ ...x, photos: x.photos.map((p) => (p.id === id ? { ...p, path, localUri: undefined } : p)) }));
         if (photo.localUri) removeFromPhone(photo.localUri);
         // the tag changed while it was uploading
-        if (now.tag !== photo.tag) persist(() => photosApi.updatePhotoTag(id, now.tag));
+        if (now.tag !== photo.tag) persist(command('updatePhotoTag', id, now.tag));
         savePhotoQueue();
       } catch {
         // no signal, or the server said no: it stays waiting
@@ -390,7 +470,7 @@ function changeTag(id: string, tag: PhotoTag, byOwner: boolean): void {
   const photo = get().photos.find((p) => p.id === id);
   if (!photo || photo.tag === tag || workLocked(get(), photo.jobId) || (!byOwner && photo.tagByOwner)) return;
   set((x) => ({ ...x, photos: x.photos.map((p) => (p.id === id ? { ...p, tag, tagByOwner: p.tagByOwner || byOwner } : p)) }));
-  if (photo.path) persist(() => photosApi.updatePhotoTag(id, tag));
+  if (photo.path) persist(command('updatePhotoTag', id, tag));
   else savePhotoQueue();
 }
 
@@ -430,6 +510,11 @@ function applyLoaded(loaded: dbApi.Loaded): void {
     cardFee: loaded.cardFee,
     aiScope: loaded.aiScope,
     priceList: loaded.priceList,
+    // Loading server data cannot repair unavailable local storage. Keep the
+    // durability warning until the journal is usable rather than claiming a save.
+    localSave: journalReady ? (journal.pending ? 'waiting' : 'confirmed') : 'failed',
+    pendingSaves: journal.pending + volatileCommands.length,
+    syncError: journalReady ? null : s.syncError,
     version: s.version + 1,
   }));
   void flushPhotos();
@@ -467,7 +552,7 @@ function makeActions() {
       if (assignment.type === 'jobs' && assignment.jobIds.some((jobId) => workLocked(get(), jobId))) return;
       if (assignment.type === 'jobs') receiptShares(0, assignment);
       set((s) => ({ ...s, assignments: { ...s.assignments, [itemId]: assignment } }));
-      persist((bid) => docsApi.assignReceiptItem(bid, itemId, assignment));
+      persist(command('assignReceiptItem', get().businessId!, itemId, assignment));
     },
     resetReceipt(allIds: string[]) {
       const itemIds = allIds.filter((id) => {
@@ -483,40 +568,43 @@ function makeActions() {
         }
         return { ...s, assignments, fixedNames };
       });
-      persist(async (bid) => {
-        for (const id of itemIds) {
-          await docsApi.assignReceiptItem(bid, id, null);
-          await docsApi.updateReceiptItem(id, { fixedName: null });
-        }
-      });
+      persist(itemIds.flatMap((id) => [command('assignReceiptItem', get().businessId!, id, null), command('updateReceiptItem', id, { fixedName: null })]));
     },
     fixItem(itemId: string, name: string) {
       set((s) => ({ ...s, fixedNames: { ...s.fixedNames, [itemId]: name } }));
-      persist(() => docsApi.updateReceiptItem(itemId, { fixedName: name }));
+      persist(command('updateReceiptItem', itemId, { fixedName: name }));
     },
     toggleMarkup(itemId: string) {
       set((s) => ({ ...s, markupOff: { ...s.markupOff, [itemId]: !s.markupOff[itemId] } }));
-      persist(() => docsApi.updateReceiptItem(itemId, { markupOff: !!get().markupOff[itemId] }));
+      persist(command('updateReceiptItem', itemId, { markupOff: !!get().markupOff[itemId] }));
     },
     logHours(jobId: string, hundredths: number, note: string) {
       if (workLocked(get(), jobId)) return;
       const entry: TimeEntry = { id: newId(), jobId, date: sample.TODAY, hundredths, note };
       set((s) => ({ ...s, timeEntries: [...s.timeEntries, entry] }));
-      persist((bid) => docsApi.insertTimeEntry(bid, entry));
+      persist(command('insertTimeEntry', get().businessId!, entry));
     },
     /** Work done on the job, priced. Returns false if it isn't complete or the invoice was sent. */
     addWorkItem(jobId: string, input: Omit<WorkItem, 'id' | 'jobId' | 'date'>): boolean {
       const item: WorkItem = { ...input, description: input.description.trim(), id: newId(), jobId, date: sample.TODAY };
       if (!jobs.some((j) => j.id === jobId) || workLocked(get(), jobId) || !workItemValid(item)) return false;
       set((s) => ({ ...s, workItems: [...s.workItems, item] }));
-      persist((bid) => docsApi.insertWorkItem(bid, item));
+      persist(command('insertWorkItem', get().businessId!, item));
+      return true;
+    },
+    addWorkItems(jobId: string, inputs: Omit<WorkItem, 'id' | 'jobId' | 'date'>[]): boolean {
+      if (!inputs.length || !jobs.some((job) => job.id === jobId) || workLocked(get(), jobId)) return false;
+      const items = inputs.map((input) => ({ ...input, description: input.description.trim(), id: newId(), jobId, date: sample.TODAY }));
+      if (!items.every(workItemValid)) return false;
+      set((s) => ({ ...s, workItems: [...s.workItems, ...items] }));
+      persist(items.map((item) => command('insertWorkItem', get().businessId!, item)));
       return true;
     },
     removeWorkItem(id: string) {
       const item = get().workItems.find((w) => w.id === id);
       if (!item || workLocked(get(), item.jobId)) return;
       set((s) => ({ ...s, workItems: s.workItems.filter((w) => w.id !== id) }));
-      persist(() => docsApi.deleteWorkItem(id));
+      persist(command('deleteWorkItem', id));
     },
     /**
      * A receipt typed in by hand. With a job, every item goes to it (the owner can still
@@ -540,7 +628,7 @@ function makeActions() {
         for (const item of receipt.items) assignments[item.id] = { type: 'jobs', jobIds: [jobId] };
         return { ...s, assignments, version: s.version + 1 };
       });
-      persist((bid) => docsApi.insertReceipt(bid, receipt, jobId));
+      persist(command('insertReceipt', get().businessId!, receipt, jobId));
       return receipt.id;
     },
     /**
@@ -576,7 +664,7 @@ function makeActions() {
       const photo = get().photos.find((p) => p.id === id);
       if (!photo || workLocked(get(), photo.jobId)) return false;
       set((x) => ({ ...x, photos: x.photos.filter((p) => p.id !== id), version: x.version + 1 }));
-      if (photo.path) persist(() => photosApi.deletePhoto(id, photo.path!));
+      if (photo.path) persist(command('deletePhoto', id, photo.path!));
       if (photo.localUri) removeFromPhone(photo.localUri);
       savePhotoQueue();
       return true;
@@ -597,7 +685,7 @@ function makeActions() {
         }
         return { ...s, assignments, fixedNames, markupOff, version: s.version + 1 };
       });
-      persist(() => docsApi.deleteReceipt(receiptId));
+      persist(command('deleteReceipt', receiptId));
       return true;
     },
     acceptSuggestion(id: string) {
@@ -609,15 +697,16 @@ function makeActions() {
     setMaterialsMode(invoiceId: string, mode: 'items' | 'total') {
       if (get().issuedInvoices[invoiceId]) return;
       set((s) => ({ ...s, materialsMode: { ...s.materialsMode, [invoiceId]: mode } }));
-      persist(() => docsApi.updateInvoice(invoiceId, { materialsMode: mode }));
+      persist(command('updateInvoice', invoiceId, { materialsMode: mode }));
     },
     setShowLocation(invoiceId: string, on: boolean) {
       if (get().issuedInvoices[invoiceId]) return;
       set((s) => ({ ...s, showLocation: { ...s.showLocation, [invoiceId]: on } }));
-      persist(() => docsApi.updateInvoice(invoiceId, { showLocation: on }));
+      persist(command('updateInvoice', invoiceId, { showLocation: on }));
     },
     async sendInvoice(invoiceId: string): Promise<void> {
       const connected = get().mode === 'connected';
+      const active = saveQueue.scope();
       const s = get();
       const invoice = invoices.find((i) => i.id === invoiceId);
       if (!invoice || s.sentInvoices.includes(invoiceId) || !invoiceBilling(s, invoice).reviewed) return;
@@ -634,7 +723,7 @@ function makeActions() {
       // the summary being typed is saved first; then the lines and frozen copy
       flushSoon(`summary:${invoiceId}`);
       const markSent = () => set((x) => ({ ...x, issuedInvoices: { ...x.issuedInvoices, [invoiceId]: snapshot }, sentInvoices: [...x.sentInvoices, invoiceId] }));
-      if (connected) await saveQueue.commit(() => docsApi.sendInvoice(invoiceId, snapshot, !!s.showLocation[invoiceId]), markSent);
+      if (connected) { await retryOffline(); if (!active() || get().businessId !== s.businessId) throw new Error('signed_out'); await saveQueue.commit(() => docsApi.sendInvoice(invoiceId, snapshot, !!s.showLocation[invoiceId]), markSent); cacheCurrent(); }
       else markSent();
     },
     setInvoiceBilling(invoiceId: string, patch: Partial<InvoiceBilling>) {
@@ -642,42 +731,43 @@ function makeActions() {
       const invoice = invoices.find((i) => i.id === invoiceId);
       if (!invoice || s.issuedInvoices[invoiceId]) return;
       set((x) => ({ ...x, invoiceBilling: { ...x.invoiceBilling, [invoiceId]: { ...invoiceBilling(x, invoice), ...patch } } }));
-      persist(() => docsApi.updateInvoice(invoiceId, { billing: get().invoiceBilling[invoiceId] }));
+      persist(command('updateInvoice', invoiceId, { billing: get().invoiceBilling[invoiceId] }));
     },
     setInvoiceSummary(invoiceId: string, summary: string) {
       if (get().issuedInvoices[invoiceId]) return;
       set((s) => ({ ...s, invoiceSummaries: { ...s.invoiceSummaries, [invoiceId]: summary } }));
-      persistSoon(`summary:${invoiceId}`, () => docsApi.updateInvoice(invoiceId, { summary: get().invoiceSummaries[invoiceId] ?? summary }));
+      persist(command('updateInvoice', invoiceId, { summary }));
     },
-    sendEstimate(jobId: string) {
-      const s = get();
-      const draft = s.estimates[jobId];
-      if (!draft || draft.sent || !estimateReady(draft) ||
-        invoices.some((invoice) => invoice.jobId === jobId && s.sentInvoices.includes(invoice.id))) return;
+    async sendEstimate(jobId: string): Promise<void> {
+      const active = saveQueue.scope();
+      const s = get(); const draft = s.estimates[jobId];
+      if (draft?.sent) return;
+      if (!draft || !estimateReady(draft) || invoices.some((i) => i.jobId === jobId && s.sentInvoices.includes(i.id))) throw new Error('Estimate is not ready');
       const issued = copyDocument({ ...draft, sent: true, tax: s.settings.tax });
-      set((x) => ({ ...x, estimates: { ...x.estimates, [jobId]: issued } }));
-      // The latest draft is saved first, in the same step, so the server checks and freezes exactly
-      // what the owner sees. (A save still waiting on typing would now find it marked sent and skip.)
-      saveQueue.cancel(`estimate:${jobId}`);
-      persist(async (bid) => {
-        await docsApi.saveEstimate(bid, jobId, draft);
-        await docsApi.sendEstimate(bid, jobId, s.settings.tax);
-      });
+      const apply = () => set((x) => ({ ...x, estimates: { ...x.estimates, [jobId]: issued } }));
+      if (s.mode === 'connected') {
+        await retryOffline();
+        if (!active() || get().businessId !== s.businessId) throw new Error('signed_out');
+        await saveQueue.commit(() => docsApi.sendEstimate(s.businessId!, jobId, s.settings.tax), apply);
+        cacheCurrent();
+      } else apply();
     },
     confirmVoice() {
       set((s) => ({ ...s, voiceConfirmed: true }));
     },
-    sign(changeOrderId: string, name: string) {
-      const co = sample.changeOrders.find((change) => change.id === changeOrderId);
-      if (!co || !name.trim() || get().signed[changeOrderId] || get().declinedChanges.includes(changeOrderId) ||
-        sample.invoices.some((invoice) => invoice.jobId === co.jobId && get().sentInvoices.includes(invoice.id))) return;
-      set((s) => ({ ...s, signed: { ...s.signed, [changeOrderId]: { name, at: new Date().toISOString() } } }));
-      persist(() => docsApi.signChangeOrder(co.id, name));
+    async sign(changeOrderId: string, name: string, ink: [number, number][][]): Promise<void> {
+      const active = saveQueue.scope();
+      const s = get(); const co = sample.changeOrders.find((change) => change.id === changeOrderId);
+      if (!co || name.trim().length < 2 || s.declinedChanges.includes(changeOrderId) || sample.invoices.some((i) => i.jobId === co.jobId && s.sentInvoices.includes(i.id))) throw new Error('Change cannot be accepted');
+      if (s.signed[changeOrderId]) return;
+      const apply = () => set((x) => ({ ...x, signed: { ...x.signed, [changeOrderId]: { name: name.trim(), at: new Date().toISOString() } } }));
+      if (s.mode === 'connected') { await retryOffline(); if (!active() || get().businessId !== s.businessId) throw new Error('signed_out'); await saveQueue.commit(() => docsApi.signChangeOrder(co.id, name.trim(), ink), apply); cacheCurrent(); }
+      else apply();
     },
     declineChange(changeOrderId: string) {
       if (get().signed[changeOrderId] || get().declinedChanges.includes(changeOrderId)) return;
       set((s) => ({ ...s, declinedChanges: [...s.declinedChanges, changeOrderId] }));
-      persist((bid) => docsApi.declineChangeOrder(bid, changeOrderId));
+      persist(command('declineChangeOrder', get().businessId!, changeOrderId));
     },
     updateEstimate(jobId: string, patch: Partial<EstimateDraft>) {
       set((s) => withDraft(s, jobId, (d) => ({ ...d, ...patch })));
@@ -706,16 +796,16 @@ function makeActions() {
       if (workLocked(get(), jobId)) return;
       const capture: Capture = { id: newId(), jobId, kind, text, date: sample.TODAY };
       set((s) => ({ ...s, captures: [...s.captures, capture] }));
-      if (kind === 'note' && text?.trim()) persist((bid) => docsApi.insertNote(bid, { id: capture.id, jobId, text: text.trim() }));
+      if ((kind === 'note' || kind === 'voice') && text?.trim()) persist(command('insertNote', get().businessId!, { id: capture.id, jobId, text: text.trim() }));
     },
     skipEstimate(jobId: string) {
       set((s) => (s.skippedEstimates.includes(jobId) ? s : { ...s, skippedEstimates: [...s.skippedEstimates, jobId] }));
-      persist(() => docsApi.setJobFlags(jobId, { estimate_skipped: true }));
+      persist(command('setJobFlags', jobId, { estimate_skipped: true }));
     },
     /** Undo "Skip estimate" (the job screen only offers it before anything is signed or invoiced). */
     unskipEstimate(jobId: string) {
       set((s) => ({ ...s, skippedEstimates: s.skippedEstimates.filter((id) => id !== jobId) }));
-      persist(() => docsApi.setJobFlags(jobId, { estimate_skipped: false }));
+      persist(command('setJobFlags', jobId, { estimate_skipped: false }));
     },
     /**
      * Back to the Work step from an invoice draft that hasn't been sent, to add hours, photos,
@@ -723,28 +813,32 @@ function makeActions() {
      */
     reopenWork(jobId: string) {
       set((s) => (s.reopenedJobs.includes(jobId) ? s : { ...s, reopenedJobs: [...s.reopenedJobs, jobId] }));
-      persist(() => docsApi.setJobFlags(jobId, { reopened: true }));
+      persist(command('setJobFlags', jobId, { reopened: true }));
     },
     /** The customer signed the estimate (for now on the owner's phone, from the customer page). */
-    signEstimate(jobId: string, signer: string) {
-      const draft = get().estimates[jobId];
-      if (!draft?.sent || draft.signed || !estimateReady(draft) || signer.trim().length < 2) return;
-      set((s) => ({ ...s, estimates: { ...s.estimates, [jobId]: { ...draft, signed: true } } }));
-      persist(() => docsApi.signEstimate(jobId, signer.trim()));
+    async signEstimate(jobId: string, signer: string, ink: [number, number][][]): Promise<void> {
+      const active = saveQueue.scope();
+      const s = get(); const draft = s.estimates[jobId];
+      if (!draft?.sent || !estimateReady(draft) || signer.trim().length < 2) throw new Error('Estimate cannot be accepted');
+      if (draft.signed) return;
+      const apply = () => set((x) => ({ ...x, estimates: { ...x.estimates, [jobId]: { ...draft, signed: true } } }));
+      if (s.mode === 'connected') { await retryOffline(); if (!active() || get().businessId !== s.businessId) throw new Error('signed_out'); await saveQueue.commit(() => docsApi.signEstimate(jobId, signer.trim(), ink), apply); cacheCurrent(); }
+      else apply();
     },
     createChangeOrder(jobId: string, description: string, amountCents: number): string | null {
       const s = get();
       const job = jobs.find((j) => j.id === jobId);
-      if (!job || !description.trim() || description.length > 2000 || !Number.isSafeInteger(amountCents) || amountCents < 0 ||
+      if (!job || !description.trim() || description.length > 2000 || !Number.isSafeInteger(amountCents) || Math.abs(amountCents) > 100_000_000 ||
         sample.invoices.some((i) => i.jobId === jobId && s.sentInvoices.includes(i.id))) return null;
       const changes = sample.changeOrders.filter((c) => c.jobId === jobId);
       // Resolve outstanding changes before proposing another revised total.
       if (changes.some((c) => !s.signed[c.id] && !s.declinedChanges.includes(c.id))) return null;
+      if (changeOrderBase(s, job) + amountCents < 0) return null;
       const co: ChangeOrder = { id: newId(), jobId, number: Math.max(0, ...changes.map((c) => c.number)) + 1,
         description: description.trim(), amountCents, baseCents: changeOrderBase(s, job) };
       sample.changeOrders.push(co);
       set((x) => ({ ...x, version: x.version + 1 }));
-      persist((bid) => docsApi.insertChangeOrder(bid, co));
+      persist(command('insertChangeOrder', get().businessId!, co));
       return co.id;
     },
     /**
@@ -756,7 +850,7 @@ function makeActions() {
       // done again after going back to work: same draft, now with the new hours and receipts
       if (get().reopenedJobs.includes(jobId)) {
         set((s) => ({ ...s, reopenedJobs: s.reopenedJobs.filter((id) => id !== jobId) }));
-        persist(() => docsApi.setJobFlags(jobId, { reopened: false }));
+        persist(command('setJobFlags', jobId, { reopened: false }));
       }
       const existing = invoices.find((i) => i.jobId === jobId);
       if (existing) return existing.id;
@@ -772,7 +866,7 @@ function makeActions() {
       };
       invoices.push(invoice);
       set((s) => ({ ...s, version: s.version + 1 }));
-      persist((bid) => docsApi.insertInvoice(bid, invoice));
+      persist(command('insertInvoice', get().businessId!, invoice));
       return invoice.id;
     },
     /**
@@ -819,22 +913,32 @@ function makeActions() {
       });
       // a typed edit still waiting would recreate the estimate after the job is gone
       saveQueue.cancel(`estimate:${jobId}`);
-      persist(async (bid) => {
-        for (const [itemId, next] of moved) await docsApi.assignReceiptItem(bid, itemId, next);
-        await docsApi.deleteJob(bid, jobId);
-        await photosApi.deletePhotoFiles(jobPhotos.flatMap((p) => (p.path ? [p.path] : [])));
-      });
+      persist([
+        ...moved.map(([itemId, next]) => command('assignReceiptItem', get().businessId!, itemId, next)),
+        command('deleteJob', get().businessId!, jobId),
+        command('deletePhotoFiles', jobPhotos.flatMap((p) => (p.path ? [p.path] : []))),
+      ]);
       savePhotoQueue();
       return true;
     },
-    /** Paid in cash: records what's left after any online payment. */
-    markPaid(invoiceId: string) {
+    /** Final cash collection requires a server response. A stale or reserved
+     * balance is rejected for review rather than stored in the ordinary outbox.
+     */
+    async markPaid(invoiceId: string, confirmedCents?: number): Promise<void> {
       const s = get();
+      const active = saveQueue.scope();
       const invoice = invoices.find((i) => i.id === invoiceId);
-      if (!invoice || s.paidInvoices.includes(invoiceId) || !s.sentInvoices.includes(invoiceId)) return;
+      if (!invoice || !s.sentInvoices.includes(invoiceId)) throw new Error('Invoice is not ready for payment');
+      if (s.paidInvoices.includes(invoiceId)) return;
       const left = Math.max(0, invoiceTotals(s, invoice).total - paidOnline(s, invoiceId).paid);
-      set((x) => ({ ...x, paidInvoices: [...x.paidInvoices, invoiceId] }));
-      persist(() => docsApi.markInvoicePaid(invoiceId, left));
+      if (confirmedCents !== undefined && confirmedCents !== left) throw new Error('Balance changed. Refresh first');
+      const apply = () => set((x) => ({ ...x, paidInvoices: [...new Set([...x.paidInvoices, invoiceId])] }));
+      if (s.mode === 'example') { apply(); return; }
+      await retryOffline();
+      if (!active() || get().businessId !== s.businessId) throw new Error('signed_out');
+      await saveQueue.commit(() => docsApi.markInvoicePaid(invoiceId, left), apply);
+      cacheCurrent();
+      void refreshPay();
     },
     refreshPay,
     /**
@@ -859,7 +963,7 @@ function makeActions() {
     },
     updateSettings(patch: Partial<PricingSettings>) {
       set((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
-      persist((bid) => dbApi.saveSettings(bid, get().settings, get().cardFee, get().aiScope));
+      persist(command('saveSettings', get().businessId!, get().settings, get().cardFee, get().aiScope));
     },
     /**
      * Adds a job (and a new customer if needed) and returns the job id.
@@ -892,10 +996,10 @@ function makeActions() {
       jobs.unshift(job);
       set((s) => ({ ...s, version: s.version + 1 }));
       // a new customer is saved first, then the job that points at it
-      persist(async (bid) => {
-        if (newCustomer) await dbApi.insertCustomer(bid, newCustomer);
-        await dbApi.insertJob(bid, job);
-      });
+      persist([
+        ...(newCustomer ? [command('insertCustomer', get().businessId!, newCustomer)] : []),
+        command('insertJob', get().businessId!, job),
+      ]);
       return job.id;
     },
     async completeSetup(input: SetupInput): Promise<void> {
@@ -907,6 +1011,7 @@ function makeActions() {
         if (!active()) throw Object.assign(new Error('signed_out'), { code: 'signed_out' });
         if (!loaded) throw new Error('Setup was saved but could not be loaded');
         applyLoaded(loaded);
+        cacheCurrent();
         return;
       }
       set((s) => ({
@@ -925,14 +1030,14 @@ function makeActions() {
     setPrice(itemId: string, cents: Cents | null) {
       set((s) => ({ ...s, priceList: s.priceList.map((p) => (p.id === itemId ? { ...p, unitCents: cents } : p)) }));
       const item = get().priceList.find((p) => p.id === itemId);
-      if (item) persist((bid) => dbApi.savePrice(bid, item));
+      if (item) persist(command('savePrice', get().businessId!, item));
     },
     /** The owner's own price list item (not a trade starter item). No price is fine; KILN flags it. */
     addPriceItem(name: string, unit: Unit, unitCents: Cents | null): PriceItem {
       const item: PriceItem = { id: `own-${newId()}`, name: name.trim().slice(0, 160), unit, unitCents };
       set((s) => ({ ...s, priceList: [...s.priceList, item] }));
       // saved like a starter item the owner added: its id is kept, so it loads back the same
-      persist((bid) => dbApi.savePrice(bid, item));
+      persist(command('savePrice', get().businessId!, item));
       return item;
     },
     /**
@@ -945,15 +1050,15 @@ function makeActions() {
         profile: { ...s.profile, trades },
         priceList: [...s.priceList.filter((i) => !removedItemIds.includes(i.id)), ...newItems],
       }));
-      persist((bid) => dbApi.saveTrades(bid, trades, newItems, removedItemIds));
+      persist(command('saveTrades', get().businessId!, trades, newItems, removedItemIds));
     },
     setCardFee(on: boolean) {
       set((s) => ({ ...s, cardFee: on }));
-      persist((bid) => dbApi.saveSettings(bid, get().settings, on, get().aiScope));
+      persist(command('saveSettings', get().businessId!, get().settings, on, get().aiScope));
     },
     setAiScope(on: boolean) {
       set((s) => ({ ...s, aiScope: on }));
-      persist((bid) => dbApi.saveSettings(bid, get().settings, get().cardFee, on));
+      persist(command('saveSettings', get().businessId!, get().settings, get().cardFee, on));
     },
     clearSyncError() {
       set((s) => ({ ...s, syncError: null }));
@@ -962,16 +1067,47 @@ function makeActions() {
     // ---------- connected mode ----------
 
     /** Signed in: show this account's data only (none yet until it loads). */
-    startConnected() {
-      saveQueue.reset();
-      clearExampleData();
+    clearAccountView() {
+      cacheCurrent();
+      journal.close(); journalReady = false; volatileCommands = []; accountId = null;
+      saveQueue.reset(); clearExampleData();
       set((s) => ({ ...connectedState(s), businessId: null, version: s.version + 1 }));
     },
+    startHelper(businessId: string) {
+      set((s) => ({ ...connectedState(s), businessId, profile: { ...s.profile, onboarded: true }, version: s.version + 1 }));
+    },
+    startConnected(userId: string) {
+      saveQueue.reset();
+      journal.close(); journalReady = false; volatileCommands = []; accountId = userId;
+      clearExampleData();
+      set((s) => ({ ...connectedState(s), businessId: null, version: s.version + 1 }));
+      try {
+        const cached = journal.open(userId);
+        journalReady = true;
+        if (cached) {
+          sample.jobs.push(...cached.lists.jobs); sample.customers.push(...cached.lists.customers);
+          sample.receipts.push(...cached.lists.receipts); sample.invoices.push(...cached.lists.invoices);
+          sample.changeOrders.push(...cached.lists.changeOrders);
+          sample.setToday(docsApi.localDate());
+          set((s) => ({ ...cached.state, mode: 'connected', online: { connected: false, walletReady: false, bankReady: false },
+            localSave: journal.pending ? 'waiting' : 'confirmed', pendingSaves: journal.pending, version: s.version + 1 }));
+        }
+      } catch (error) { set((s) => ({ ...s, localSave: 'failed', syncError: errorDetails(error) })); }
+    },
+    retryOffline,
+    refreshDocuments,
+    hasOfflineCache() { return !!accountId && !!get().businessId; },
+    offlineLoadFailed(error: unknown) { set((s) => ({ ...s, syncError: errorDetails(error) })); },
     /** Puts the loaded business data in place. */
     hydrate(loaded: dbApi.Loaded) {
+      // Never overwrite locally pending edits with a stale startup response.
+      if (journal.pending || volatileCommands.length) return;
       applyLoaded(loaded);
+      cacheCurrent();
     },
     signedOut() {
+      cacheCurrent();
+      journal.close(); journalReady = false; volatileCommands = []; accountId = null;
       saveQueue.reset();
       clearExampleData();
       set((s) => ({ ...connectedState(s), businessId: null, version: s.version + 1 }));

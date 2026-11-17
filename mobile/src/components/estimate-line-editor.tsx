@@ -52,8 +52,14 @@ export function EstimateLineEditor({ jobId, line }: { jobId: string; line: Estim
       {cents !== null && q > 0 ? <T v="money">{f.money(lineTotal(q, cents))}</T> : null}
       <ButtonRow>
         <Button label={t('review.exclude')} variant="outline" onPress={() => actions.updateLine(jobId, line.id, { excluded: true })} />
-        {line.priceItemId ? <Button label={t('estimate.saveToList')} variant="soft" disabled={cents === null}
-          onPress={() => actions.setPrice(line.priceItemId!, cents)} /> : null}
+        <Button label={t('estimate.saveToList')} variant="soft" disabled={cents === null || !line.description.trim()}
+          onPress={() => {
+            if (line.priceItemId) actions.setPrice(line.priceItemId, cents);
+            else {
+              const item = actions.addPriceItem(line.description.trim(), line.unit, cents);
+              actions.updateLine(jobId, line.id, { priceItemId: item.id });
+            }
+          }} />
       </ButtonRow>
     </>}
   </>;

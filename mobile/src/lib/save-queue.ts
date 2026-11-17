@@ -26,6 +26,9 @@ export class SaveQueue {
     void this.schedule(task);
   }
 
+  /** Durable prerequisites have been replayed successfully; a prior network error is resolved. */
+  clearFailure(): void { this.failure = null; }
+
   private schedule(task: () => Promise<void>, requiresClean = false): Promise<SaveResult> {
     const active = this.scope();
     const operation = this.tail.then(async (): Promise<SaveResult> => {

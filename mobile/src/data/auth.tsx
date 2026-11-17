@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { errorDetails, type ErrorDetails } from '@/lib/user-errors';
 
 import { loadAll } from './db';
-import { storeActions } from './store';
+import { loadTeamMembership } from './team-access';
+import { currentState, storeActions } from './store';
 
 /** Why a password-reset step failed, so the screen can explain it in the owner's language. */
 export type ResetProblem = ErrorDetails & { kind: 'badCode' | 'tooMany' | 'samePassword' | 'weakPassword' | 'other' };
@@ -25,6 +26,8 @@ type Auth = {
   /** True once we know who's signed in and their data has loaded. */
   ready: boolean;
   session: Session | null;
+  role: 'owner' | 'helper' | null;
+  businessId: string | null;
   /** Why the business data couldn't load, if it didn't. */
   loadError: ErrorDetails | null;
   retryLoad: () => void;
@@ -43,6 +46,7 @@ const Ctx = createContext<Auth | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const [membership, setMembership] = useState<{ userId: string; role: 'owner' | 'helper'; businessId: string } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [sessionError, setSessionError] = useState<ErrorDetails | null>(null);
   // false until we know whether someone is already signed in (avoids flashing the sign-in screen)
@@ -63,7 +67,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionError(errorDetails(e));
       setSessionKnown(true);
     });
-    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'SIGNED_OUT') { setLoaded(null); setMembership(null); }
+      setSession(s);
+    });
     return () => { live = false; data.subscription.unsubscribe(); };
   }, [attempt]);
 
@@ -76,16 +83,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     let cancelled = false;
-    storeActions.startConnected();
-    loadAll()
-      .then((data) => {
+    // Membership is resolved before any owner data is loaded. Helpers use isolated RPCs.
+    storeActions.clearAccountView();
+    void (async () => {
+      try {
+        let member: Awaited<ReturnType<typeof loadTeamMembership>>;
+        try {
+          member = await loadTeamMembership();
+          if (cancelled) return;
+          try { localStorage.setItem(`kiln.membership:${userId}`, JSON.stringify(member)); } catch { /* Offline recovery remains optional if storage is unavailable. */ }
+        } catch (error) {
+          let cached: unknown = null;
+          try { cached = JSON.parse(localStorage.getItem(`kiln.membership:${userId}`) ?? 'null'); } catch { /* No cached authority. */ }
+          const value = cached as { role?: string; businessId?: string } | null;
+          if (value?.role !== 'owner' || typeof value.businessId !== 'string') throw error;
+          member = { role: 'owner', businessId: value.businessId };
+        }
         if (cancelled) return;
-        if (data) storeActions.hydrate(data);
+        setMembership(member ? { ...member, userId } : null);
+        if (member?.role === 'helper') {
+          storeActions.startHelper(member.businessId);
+          setLoaded({ userId, error: null });
+          return;
+        }
+        storeActions.startConnected(userId);
+        await storeActions.retryOffline();
+        const before = currentState();
+        const data = await loadAll();
+        if (cancelled) return;
+        if (data && currentState() === before) storeActions.hydrate(data);
         setLoaded({ userId, error: null });
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setLoaded({ userId, error: errorDetails(e) });
-      });
+      } catch (e) {
+        if (!cancelled) {
+          storeActions.offlineLoadFailed(e);
+          setLoaded({ userId, error: storeActions.hasOfflineCache() ? null : errorDetails(e) });
+        }
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -99,6 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       configured: !!supabase,
       ready,
       session,
+      role: membership?.userId === userId ? membership.role : null,
+      businessId: membership?.userId === userId ? membership.businessId : null,
       loadError,
       retryLoad: () => { setSessionError(null); setLoaded(null); setAttempt((n) => n + 1); },
       async signIn(email, password) {
@@ -131,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return error ? resetProblem(error) : null;
       },
     }),
-    [ready, session, loadError],
+    [ready, session, loadError, membership, userId],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

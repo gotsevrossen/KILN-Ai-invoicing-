@@ -146,7 +146,11 @@ select throws_ok($$ delete from public.work_items $$, 'P0001', 'this job''s invo
 -- hours, notes, and payments stay inside the business
 select lives_ok($$ insert into public.time_entries (business_id, job_id, hundredths) select business_id, id, 250 from public.jobs $$, 'A logs hours on its job');
 select lives_ok($$ insert into public.notes (business_id, job_id, body) select business_id, id, 'Gate code 1234' from public.jobs $$, 'A adds a note to its job');
-select lives_ok($$ insert into public.payments (business_id, invoice_id, amount_cents, method) select business_id, id, 19000, 'cash' from public.invoices $$, 'A records a payment');
+select throws_ok($$ insert into public.payments (business_id, invoice_id, amount_cents, method) select business_id, id, 19000, 'cash' from public.invoices $$, '42501', null, 'cash records require the validated RPC');
+-- This legacy fixture has already been marked paid above. Seed its immutable historical ledger as the service for the later append-only assertions.
+reset role;
+insert into public.payments(business_id,invoice_id,amount_cents,method) select business_id,id,19000,'cash' from public.invoices;
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
 select is((select count(*)::int from public.estimates) + (select count(*)::int from public.invoices) + (select count(*)::int from public.time_entries)
   + (select count(*)::int from public.notes) + (select count(*)::int from public.signatures) + (select count(*)::int from public.payments)
@@ -155,7 +159,7 @@ select is((select count(*)::int from public.estimates) + (select count(*)::int f
 reset role;
 select throws_ok(
   $$ insert into public.payments (business_id, invoice_id, amount_cents, method) select ids.b, i.id, 100, 'cash' from ids, public.invoices i $$,
-  'P0001', 'invoices must belong to the same business', 'a payment can''t point at another business''s invoice');
+  'P0001', 'Payment does not match', 'a payment can''t point at another business''s invoice');
 select throws_ok(
   $$ insert into public.work_items (business_id, job_id, description, qty_hundredths, unit_cents) select ids.b, j.id, 'Sneaky', 100, 100 from ids, public.jobs j $$,
   'P0001', 'jobs must belong to the same business', 'work can''t be filed on another business''s job');

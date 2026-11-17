@@ -71,6 +71,10 @@ export default function Settings() {
       </Card>
 
       <Card style={{ gap: 4 }}>
+        <ListRow icon="users" title={t('improvements.operations')} sub={t('improvements.operationsHelp')} onPress={() => router.push('/operations')} />
+        <Hair />
+        <ListRow icon="layers" title={t('improvements.packages')} sub={t('improvements.packagesHelp')} onPress={() => router.push('/settings/packages')} />
+        <Hair />
         <ListRow
           icon="tool"
           title={t('settings.trades')}

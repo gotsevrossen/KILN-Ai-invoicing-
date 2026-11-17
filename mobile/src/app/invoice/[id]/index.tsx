@@ -1,9 +1,12 @@
+import { DeliveryStatus } from '@/components/delivery-status';
+import { OfflineStatus } from '@/components/offline-status';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 
 import { FixList } from '@/components/fix-list';
 import { useInvoice } from '@/components/invoice-parts';
 import { RecordGate } from '@/components/record-gate';
+import { Sheet } from '@/components/sheet';
 import { SendInvoiceSheet } from '@/components/send-invoice';
 import { Button, ButtonRow, Card, Hair, Icon, IconButton, LineRow, ListRow, Notice, PageHeader, Pill, Row, Screen, T } from '@/components/ui';
 import { billedPrice, hasInvoice, hoursFor, invoiceSources, invoiceSummary, invoiceTax, invoiceTotals, paidOnline, receiptItemById, suggestionOpen, taxScope } from '@/data/selectors';
@@ -33,6 +36,9 @@ function InvoiceDraft() {
   const { invoice, job, customer, sent, paid, billing, agreed, lines, fixes, mode, dueDays, dueDate } = useInvoice();
   const sources = invoiceSources(state, invoice);
   const [sendOpen, setSendOpen] = useState(false);
+  const [cashOpen, setCashOpen] = useState(false);
+  const [cashBusy, setCashBusy] = useState(false);
+  const [cashFailed, setCashFailed] = useState(false);
   const online = paidOnline(state, invoice.id);
   const opened = state.opened[invoice.id];
   const waiting = sent && !paid && state.mode === 'connected';
@@ -89,7 +95,7 @@ function InvoiceDraft() {
             <Row gap={10}>
               <IconButton icon="eye" label={t('invoice.seeAsCustomer', { name: customer.firstName })} onPress={seeAsCustomer} />
               {state.mode === 'connected' ? <Button label={t('invoice.sendAgain')} variant="outline" icon="send" flex onPress={() => setSendOpen(true)} /> : null}
-              <Button label={t('invoice.markPaidCash')} icon="dollar-sign" variant="dark" flex onPress={() => actions.markPaid(invoice.id)} />
+              <Button label={t('invoice.markPaidCash')} icon="dollar-sign" variant="dark" flex disabled={online.pending > 0} onPress={() => { setCashFailed(false); setCashOpen(true); }} />
             </Row>
           </>
         ) : (
@@ -99,6 +105,8 @@ function InvoiceDraft() {
           </Row>
         )
       }>
+      <OfflineStatus />
+      {sent ? <DeliveryStatus invoiceId={invoice.id} /> : null}
       <T v="small" muted>
         {t('invoice.builtFrom', { photos: sources.photos, voice: sources.voice, receipts: sources.receipts, hours: f.qty(hoursFor(state, job.id)) })}
       </T>
@@ -163,6 +171,16 @@ function InvoiceDraft() {
           onPress={() => router.push(`/invoice/${invoice.id}/options`)} />
       </Card>
 
+      <Sheet open={cashOpen} onClose={() => { if (!cashBusy) setCashOpen(false); }} title={t('improvements.cashConfirm')}>
+        <T>{t('improvements.cashHelp', { amount: f.money(totals.due) })}</T>
+        {cashFailed ? <Notice text={t('improvements.cashFailed')} tone="danger" /> : null}
+        <Button label={cashBusy ? t('common.loading') : t('improvements.cashReceived')} disabled={cashBusy || online.pending > 0 || paid} onPress={async () => {
+          setCashBusy(true); setCashFailed(false);
+          try { await actions.markPaid(invoice.id, totals.due); setCashOpen(false); } catch { setCashFailed(true); }
+          finally { setCashBusy(false); }
+        }} />
+        <Button label={t('common.cancel')} variant="outline" disabled={cashBusy} onPress={() => setCashOpen(false)} />
+      </Sheet>
       <SendInvoiceSheet open={sendOpen} onClose={() => setSendOpen(false)} invoiceId={invoice.id} number={invoice.number}
         customer={customer} totalCents={totals.total} />
     </Screen>
@@ -172,5 +190,6 @@ function InvoiceDraft() {
 /** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
 export default function InvoiceDraftRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  return <RecordGate found={() => hasInvoice(id)}><InvoiceDraft /></RecordGate>;
+  const { state } = useStore();
+  return <RecordGate found={() => hasInvoice(id)}><InvoiceDraft key={`${state.businessId ?? 'example'}:${id}`} /></RecordGate>;
 }

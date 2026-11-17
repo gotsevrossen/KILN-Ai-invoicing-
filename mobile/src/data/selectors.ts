@@ -82,7 +82,14 @@ export function workLocked(state: State, jobId: string): boolean {
  * cash) and a bank payment still on its way. How it was paid is the latest successful payment's.
  */
 export function paidOnline(state: State, invoiceId: string) {
-  const mine = state.payments.filter((p) => p.invoiceId === invoiceId);
+  const jobId = sample.invoices.find((invoice) => invoice.id === invoiceId)?.jobId;
+  const seen = new Set<string>();
+  const mine = state.payments.filter((payment) => {
+    const belongs = payment.invoiceId === invoiceId || (!!jobId && payment.jobId === jobId);
+    if (!belongs || seen.has(payment.id)) return false;
+    seen.add(payment.id);
+    return true;
+  });
   const paid = mine.filter((p) => p.status === 'succeeded');
   return {
     paid: paid.reduce((a, p) => a + p.amountCents, 0),

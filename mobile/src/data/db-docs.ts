@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import type { LineKind, TaxRule } from '@/lib/money';
 import { localDate } from '@/lib/invoice-aging';
+import { confirmDecline, type ChangeAnswer } from '@/lib/change-order-decline';
 
 import { db, ok, one } from './db-client';
 import type {
@@ -261,19 +262,19 @@ export async function deleteJob(businessId: string, jobId: string): Promise<void
 }
 
 export async function insertTimeEntry(businessId: string, e: TimeEntry): Promise<void> {
-  ok(await db().from('time_entries').insert({ id: e.id, business_id: businessId, job_id: e.jobId, worked_on: e.date, hundredths: e.hundredths, note: e.note.slice(0, 500) }));
+  ok(await db().from('time_entries').upsert({ id: e.id, business_id: businessId, job_id: e.jobId, worked_on: e.date, hundredths: e.hundredths, note: e.note.slice(0, 500) }, { onConflict: 'id', ignoreDuplicates: true }));
 }
 
 export async function insertNote(businessId: string, n: { id: string; jobId: string; text: string }): Promise<void> {
-  ok(await db().from('notes').insert({ id: n.id, business_id: businessId, job_id: n.jobId, body: n.text.slice(0, 4000) }));
+  ok(await db().from('notes').upsert({ id: n.id, business_id: businessId, job_id: n.jobId, body: n.text.slice(0, 4000) }, { onConflict: 'id', ignoreDuplicates: true }));
 }
 
 /** The server refuses work on a job whose invoice was sent. */
 export async function insertWorkItem(businessId: string, w: WorkItem): Promise<void> {
-  ok(await db().from('work_items').insert({
+  ok(await db().from('work_items').upsert({
     id: w.id, business_id: businessId, job_id: w.jobId, worked_on: w.date, price_item_ref: w.priceItemId ?? null,
     description: w.description.slice(0, 300), unit: w.unit, qty_hundredths: w.qtyHundredths, unit_cents: w.unitCents, kind: w.kind,
-  }));
+  }, { onConflict: 'id', ignoreDuplicates: true }));
 }
 
 export async function deleteWorkItem(id: string): Promise<void> {
@@ -321,6 +322,8 @@ export async function saveEstimate(businessId: string, jobId: string, draft: Est
 
 /** Sends it: the server checks every included line is priced and freezes it from here on. */
 export async function sendEstimate(businessId: string, jobId: string, tax: TaxRule): Promise<void> {
+  const existing = one(await db().from('estimates').select('id,sent_at').eq('job_id', jobId).single<{ id: string; sent_at: string | null }>());
+  if (existing.sent_at) return;
   const est = one(await db().from('estimates')
     .update({ sent_at: new Date().toISOString(), tax_rate_bps: tax.rateBps, tax_labor: tax.labor, tax_materials: tax.materials })
     .eq('job_id', jobId).select('id').single<{ id: string }>());
@@ -328,36 +331,42 @@ export async function sendEstimate(businessId: string, jobId: string, tax: TaxRu
 }
 
 /** Signed, with the signature and its fingerprint of the saved estimate, in one step. */
-export async function signEstimate(jobId: string, signer: string): Promise<void> {
-  ok(await db().rpc('sign_estimate', { p_job_id: jobId, p_signer: signer.slice(0, 120), p_device: deviceInfo() }));
+export async function signEstimate(jobId: string, signer: string, ink: [number, number][][]): Promise<void> {
+  ok(await db().rpc('sign_estimate', { p_job_id: jobId, p_signer: signer.slice(0, 120), p_device: deviceInfo(), p_ink: ink }));
 }
 
 // ---------------------------------------------------------------- change orders
 
 export async function insertChangeOrder(businessId: string, co: ChangeOrder): Promise<void> {
-  ok(await db().from('change_orders').insert({
+  ok(await db().from('change_orders').upsert({
     id: co.id, business_id: businessId, job_id: co.jobId, number: co.number, description: co.description,
     amount_cents: co.amountCents, base_cents: co.baseCents, sent_at: new Date().toISOString(),
-  }));
+  }, { onConflict: 'id', ignoreDuplicates: true }));
   await audit(businessId, 'change_order.created', 'change_order', co.id);
 }
 
-export async function signChangeOrder(changeOrderId: string, signer: string): Promise<void> {
-  ok(await db().rpc('sign_change_order', { p_id: changeOrderId, p_signer: signer.slice(0, 120), p_device: deviceInfo() }));
+export async function signChangeOrder(changeOrderId: string, signer: string, ink: [number, number][][]): Promise<void> {
+  ok(await db().rpc('sign_change_order', { p_id: changeOrderId, p_signer: signer.slice(0, 120), p_device: deviceInfo(), p_ink: ink }));
 }
 
 export async function declineChangeOrder(businessId: string, changeOrderId: string): Promise<void> {
-  ok(await db().from('change_orders').update({ declined_at: new Date().toISOString() }).eq('id', changeOrderId));
+  await confirmDecline(async () => {
+    const row = ok(await db().from('change_orders')
+      .update({ declined_at: new Date().toISOString() }).eq('id', changeOrderId)
+      .is('signed_at', null).is('declined_at', null).select('id').maybeSingle<{ id: string }>());
+    return row !== null;
+  }, async () => ok(await db().from('change_orders').select('signed_at,declined_at')
+    .eq('id', changeOrderId).maybeSingle<ChangeAnswer>()));
   await audit(businessId, 'change_order.declined', 'change_order', changeOrderId);
 }
 
 // ---------------------------------------------------------------- invoices
 
 export async function insertInvoice(businessId: string, invoice: Invoice): Promise<void> {
-  ok(await db().from('invoices').insert({
+  ok(await db().from('invoices').upsert({
     id: invoice.id, business_id: businessId, job_id: invoice.jobId, number: invoice.number,
     summary: invoice.summary.slice(0, 4000), labor_description: invoice.laborDescription.slice(0, 300),
-  }));
+  }, { onConflict: 'id', ignoreDuplicates: true }));
   await audit(businessId, 'invoice.created', 'invoice', invoice.id);
 }
 
@@ -410,16 +419,16 @@ export async function markInvoicePaid(invoiceId: string, amountCents: number): P
 
 /** A receipt the owner typed in: the receipt, its items, and the job each item went to (if one). */
 export async function insertReceipt(businessId: string, r: Receipt, jobId: string | null): Promise<void> {
-  ok(await db().from('receipts').insert({
+  ok(await db().from('receipts').upsert({
     id: r.id, business_id: businessId, store: r.store.slice(0, 120), receipt_number: r.number.slice(0, 60), purchased_on: r.date,
     tax_cents: r.taxCents, total_cents: r.items.reduce((a, i) => a + i.costCents, 0) + r.taxCents, status: 'ready',
-  }));
-  ok(await db().from('receipt_items').insert(r.items.map((i) => ({
+  }, { onConflict: 'id', ignoreDuplicates: true }));
+  ok(await db().from('receipt_items').upsert(r.items.map((i) => ({
     id: i.id, business_id: businessId, receipt_id: r.id, line: i.line, name: i.name.slice(0, 160), qty_label: i.qtyLabel,
     cost_cents: i.costCents, assignment: jobId ? 'jobs' : null,
-  }))));
+  })), { onConflict: 'id', ignoreDuplicates: true }));
   if (jobId) {
-    ok(await db().from('receipt_item_jobs').insert(r.items.map((i) => ({ receipt_item_id: i.id, job_id: jobId, business_id: businessId }))));
+    ok(await db().from('receipt_item_jobs').upsert(r.items.map((i) => ({ receipt_item_id: i.id, job_id: jobId, business_id: businessId })), { onConflict: 'receipt_item_id,job_id', ignoreDuplicates: true }));
   }
 }
 

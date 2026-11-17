@@ -1,8 +1,25 @@
 import type { Dict } from './en';
+import { packagesEs } from './packages.ts';
 
 // Spanish text. Same keys as en.ts.
 
 const es: Dict = {
+  packages: packagesEs,
+  offlineSave: {
+    confirmed: 'Guardado en tu cuenta',
+    waiting: 'Guardado en este teléfono — %{count} cambios pendientes de sincronizar.',
+    failed: 'No se pudo guardar en este teléfono. Mantén KILN abierto y vuelve a intentar.',
+    retry: 'Volver a guardar',
+  },
+  improvements: {
+    cashConfirm: 'Confirmar efectivo recibido', cashHelp: 'Registra %{amount} solo después de recibir ese efectivo. Se necesita conexión; no se cobra al cliente.',
+    cashReceived: 'Recibí este efectivo', cashFailed: 'No se confirmó el efectivo. Actualiza la factura e inténtalo de nuevo. Si se inició un pago en línea, resuélvelo antes de registrar efectivo.',
+
+    approvalFailed: 'No se confirmó la aceptación. Comprueba tu conexión y vuelve a intentarlo.', operations: 'Equipo y agenda', operationsHelp: 'Trabajadores, visitas y asignaciones',
+    profitability: 'Rentabilidad del trabajo', profitabilityHelp: 'Costos laborales, presupuesto y margen real',
+    tradeTools: 'Medidas y finalización', tradeToolsHelp: 'Medidas por habitación, especificaciones y registros eléctricos',
+    packages: 'Paquetes de servicios', packagesHelp: 'Trabajo reutilizable, alcance y precios de visitas',
+  },
   common: {
     back: 'Atrás',
     cancel: 'Cancelar',
@@ -65,12 +82,12 @@ const es: Dict = {
     status: {
       invoiceReady: 'Factura lista',
       needsSignature: 'Falta firma',
-      estimateSent: 'Presupuesto enviado',
+      estimateSent: 'Presupuesto emitido',
       overdue: 'Vencida',
       repeat: 'Se repite',
       viewed: 'Vista',
       paid: 'Pagada',
-      sent: 'Factura enviada',
+      sent: 'Factura emitida',
       inProgress: 'En curso',
       needsEstimate: 'Falta presupuesto',
     },
@@ -119,7 +136,7 @@ const es: Dict = {
     noWork: 'Todavía no hay trabajo agregado.',
     workRemove: 'Quitar %{name}',
     workLocked: 'La factura de este trabajo ya se envió, así que su trabajo no puede cambiar.',
-    docStatus: { draft: 'Borrador', sent: 'Enviado', signed: 'Firmado', skipped: 'Omitido', pending: 'Esperando firma', declined: 'Rechazado', notSent: 'Sin enviar', paid: 'Pagado' },
+    docStatus: { draft: 'Borrador', sent: 'Emitido', signed: 'Firmado', skipped: 'Omitido', pending: 'Esperando firma', declined: 'Rechazado', notSent: 'Borrador', paid: 'Pagado' },
   },
   newJob: {
     title: 'Trabajo nuevo',
@@ -171,7 +188,7 @@ const es: Dict = {
     invoiceDraftBody: 'KILN la hizo con este trabajo. Revísala y envíala.',
     reviewInvoice: 'Revisar factura',
     invoiceSent: 'Esperando el pago',
-    invoiceSentBody: 'KILN te avisa cuando paguen. ¿Pagaron en efectivo o cheque? Márcala como pagada.',
+    invoiceSentBody: 'KILN te avisa cuando paguen. ¿Recibiste efectivo? Abre la factura para confirmar el importe.',
     viewInvoice: 'Ver factura',
     markPaid: 'Marcar pagada',
     paidDone: 'Pagado. Trabajo completo.',
@@ -553,7 +570,7 @@ const es: Dict = {
     depositBad: 'Escribe un número del 1 al 100',
     preview: 'Vista previa',
     send: 'Enviar',
-    sent: 'Presupuesto enviado a %{name}.',
+    sent: 'Presupuesto emitido a %{name}.',
     signedNotice: 'Firmado por %{name}. Siguiente: hacer el trabajo.',
     linesToFix: { one: 'Pon precio o excluye 1 artículo marcado', other: 'Pon precio o excluye %{count} artículos marcados' },
     priceOff: 'Normalmente cobras %{usual} por esto. Revisa el precio.',
@@ -561,8 +578,8 @@ const es: Dict = {
   },
   invoice: {
     title: 'Borrador de factura',
-    notSent: 'Sin enviar',
-    sentPill: 'Enviada',
+    notSent: 'Borrador',
+    sentPill: 'Emitida',
     builtFrom: 'Registro: %{photos} fotos, %{voice} notas de voz, %{receipts} recibos y %{hours} horas. Revisa los cargos y la descripción antes de enviar.',
     possiblyMissed: 'Posible olvido',
     missedValve: 'Está en el recibo de Home Depot de hoy y dijiste que la cambiaste, pero no está en esta factura.',
@@ -587,7 +604,7 @@ const es: Dict = {
     byEmail: 'Correo',
     sendTo: 'Enviar a %{name}',
     seeAsCustomer: 'Ver lo que ve %{name}',
-    sentDone: 'Enviada. Aquí verás cuando %{name} la abra.',
+    sentDone: 'Emitida. Comparte el enlace con %{name}; abrir un mensaje no confirma la entrega.',
     billing: 'Cómo se cobra',
     materialsIncluded: 'Materiales incluidos',
     materialsExtra: 'Materiales cobrados aparte',
@@ -603,7 +620,7 @@ const es: Dict = {
     shareIt: 'Compartir enlace',
     sendAgain: 'Enviar de nuevo',
     working: 'Creando el enlace…',
-    exampleSend: 'Datos de ejemplo: la marca como enviada. No sale nada.',
+    exampleSend: 'Datos de ejemplo: emite la copia. No se envía nada.',
     payOffHint: 'Los clientes todavía no pueden pagar en línea. Actívalo en Ajustes · Pagos.',
     linkFailed: "No se pudo compartir el enlace de la factura. %{reason}",
     openedOn: '%{name} la abrió el %{date}.',
@@ -655,7 +672,7 @@ const es: Dict = {
     total: 'Total',
     theWork: 'El trabajo',
     privateLink: 'Enlace privado · solo abre esta página · vence el %{date}',
-    sentWith: 'Enviado con KILN',
+    sentWith: 'Preparado con KILN',
     depositTitle: 'Depósito al firmar (%{pct}%)',
     depositSub: 'El resto se paga al terminar el trabajo',
     yourName: 'Su nombre completo',

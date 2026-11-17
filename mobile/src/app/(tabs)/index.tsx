@@ -1,3 +1,4 @@
+import { OfflineStatus } from '@/components/offline-status';
 import { router } from 'expo-router';
 
 import { LogoMark } from '@/components/logo';
@@ -44,6 +45,7 @@ export default function Home() {
         </Row>
       }>
 
+      <OfflineStatus />
       <Card tone="accent" style={{ padding: 22, gap: 6, borderRadius: radius.lg }}>
         <T v="eyebrow" color={p.onAccent}>{t('home.owedToYou')}</T>
         <T v="moneyBig" color={p.onAccent}>{f.money(summary.owed)}</T>
