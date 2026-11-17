@@ -65,6 +65,7 @@ export default function TabLayout() {
     if (!auth.ready) return <Loading text={t('auth.loading')} />;
     if (auth.loadError) return <Loading text={t('auth.loadFailed', { reason: userError(t, auth.loadError) })} retry={auth.retryLoad} retryLabel={t('auth.retry')} />;
     if (!auth.session) return <Redirect href="/sign-in" />;
+    if (auth.role === 'helper') return <Redirect href="/team-work" />;
   }
   // first run: set up the business before anything else
   if (!state.profile.onboarded) return <Redirect href="/setup" />;

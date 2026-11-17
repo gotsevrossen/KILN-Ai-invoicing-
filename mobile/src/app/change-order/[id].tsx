@@ -1,10 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RecordGate } from '@/components/record-gate';
-import { SignaturePad } from '@/components/signature-pad';
+import { SignaturePad, type SignatureInk } from '@/components/signature-pad';
 import { Button, Card, Checkbox, Field, Hair, Icon, LineRow, Notice, PhotoTile, Row, Screen, T } from '@/components/ui';
 import { changeOrderById, changeOrderTotal, customerOf, hasChangeOrder, jobById } from '@/data/selectors';
 import { useStore } from '@/data/store';
@@ -25,8 +25,12 @@ function ChangeOrderSign() {
   const tc = useTFor(customer.lang);
   const fc = formatters(customer.lang);
 
+  const [ink, setInk] = useState<SignatureInk>([]);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [name, setName] = useState(customer.name);
   const [hasInk, setHasInk] = useState(false);
+  const markInk = useCallback(() => setHasInk(true), []);
   const [drawing, setDrawing] = useState(false);
   const [padKey, setPadKey] = useState(0);
   const [agreed, setAgreed] = useState(false);
@@ -84,28 +88,29 @@ function ChangeOrderSign() {
 
           <Card style={{ gap: 6 }}>
             <LineRow label={tc('changeOrder.signedEstimate')} value={fc.money(co.baseCents)} />
-            <LineRow label={tc('changeOrder.thisChange')} value={`+${fc.money(co.amountCents)}`} strong />
+            <LineRow label={tc('changeOrder.thisChange')} value={`${co.amountCents >= 0 ? '+' : ''}${fc.money(co.amountCents)}`} strong />
             <Row style={{ justifyContent: 'space-between', backgroundColor: p.inverse, borderRadius: radius.sm, padding: 16, marginTop: 6 }}>
               <T v="eyebrow" color={p.onInverse}>{tc('changeOrder.newTotal')}</T>
               <T v="money" color={p.onInverse} style={{ fontFamily: font.black, fontSize: 26 }}>{newTotal}</T>
             </Row>
           </Card>
 
+          {saveError ? <Notice text={tc('improvements.approvalFailed')} tone="danger" /> : null}
           <Field label={tc('changeOrder.fullName')} value={name} onChangeText={setName} autoComplete="name" />
 
           <View style={{ gap: 6 }}>
             <Row style={{ justifyContent: 'space-between' }}>
               <T v="label">{tc('changeOrder.signFinger')}</T>
-              <Pressable onPress={() => { setPadKey((k) => k + 1); setHasInk(false); }} accessibilityRole="button" style={{ minHeight: tap.min, justifyContent: 'center', paddingHorizontal: 8 }}>
+              <Pressable onPress={() => { setPadKey((k) => k + 1); setHasInk(false); setInk([]); }} accessibilityRole="button" style={{ minHeight: tap.min, justifyContent: 'center', paddingHorizontal: 8 }}>
                 <T v="label" style={{ textDecorationLine: 'underline' }}>{tc('changeOrder.clear')}</T>
               </Pressable>
             </Row>
-            <SignaturePad key={padKey} placeholder={tc('changeOrder.signHere')} label={tc('changeOrder.signFinger')} onInk={() => setHasInk(true)} onDrawing={setDrawing} />
+            <SignaturePad key={padKey} placeholder={tc('changeOrder.signHere')} label={tc('changeOrder.signFinger')} onInk={markInk} onDrawing={setDrawing} onChange={setInk} />
           </View>
 
           <Checkbox label={tc('changeOrder.approve', { amount: newTotal })} value={agreed} onChange={setAgreed} />
 
-          <Button label={tc('changeOrder.signApprove')} big disabled={!ready} onPress={() => actions.sign(co.id, name.trim())} />
+          <Button label={tc('changeOrder.signApprove')} big disabled={!ready || busy || ink.flat().length < 2} onPress={async () => { setBusy(true); setSaveError(false); try { await actions.sign(co.id, name.trim(), ink); } catch { setSaveError(true); } finally { setBusy(false); } }} />
           <Button label={tc('customer.decline')} variant="outline" onPress={() => actions.declineChange(co.id)} />
           {!ready ? <T v="small" muted style={{ textAlign: 'center' }}>{tc('changeOrder.needAll')}</T> : null}
           <Hair />
@@ -119,5 +124,6 @@ function ChangeOrderSign() {
 /** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
 export default function ChangeOrderSignRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  return <RecordGate found={() => hasChangeOrder(id)}><ChangeOrderSign /></RecordGate>;
+  const { state } = useStore();
+  return <RecordGate found={() => hasChangeOrder(id)}><ChangeOrderSign key={`${state.businessId ?? 'example'}:${id}`} /></RecordGate>;
 }

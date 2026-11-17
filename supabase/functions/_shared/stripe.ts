@@ -31,6 +31,7 @@ interface Call {
   body?: Record<string, unknown>;
   /** The business's own Stripe account, for payments made on it. */
   account?: string;
+  idempotencyKey?: string;
 }
 
 /** One request to Stripe. A refusal is thrown as a StripeError with Stripe's error code. */
@@ -38,6 +39,7 @@ export async function stripe<T>(secretKey: string, call: Call): Promise<T> {
   const v2 = call.path.startsWith('/v2/');
   const headers: Record<string, string> = { Authorization: `Bearer ${secretKey}`, 'Stripe-Version': STRIPE_VERSION };
   if (call.account) headers['Stripe-Account'] = call.account;
+  if (call.idempotencyKey) headers['Idempotency-Key'] = call.idempotencyKey;
   let body: string | undefined;
   if (call.body && call.method === 'POST') {
     headers['Content-Type'] = v2 ? 'application/json' : 'application/x-www-form-urlencoded';

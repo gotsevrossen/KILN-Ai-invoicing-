@@ -1,4 +1,5 @@
 import { serviceClient, setting, totalsOf, type LineRow } from '../_shared/invoice.ts';
+import { validPaymentProof } from '../_shared/payment-proof.ts';
 import { verifyWebhook } from '../_shared/stripe.ts';
 
 // POST /functions/v1/stripe-webhook — Stripe telling KILN a payment changed: on its way (bank
@@ -9,7 +10,9 @@ import { verifyWebhook } from '../_shared/stripe.ts';
 interface Intent {
   id: string;
   amount: number;
-  metadata?: { invoice_id?: string; business_id?: string; kiln_method?: string };
+  amount_received:number;
+  currency:string;
+  metadata?: { invoice_id?: string; business_id?: string; kiln_method?: string; request_id?: string };
 }
 
 const STATUS: Record<string, 'processing' | 'succeeded' | 'failed'> = {
@@ -37,9 +40,10 @@ Deno.serve(async (req) => {
   const status = STATUS[event.type ?? ''];
   const intent = event.data?.object;
   // anything else (or a payment KILN didn't start) is acknowledged and ignored
-  if (!status || !intent?.metadata?.invoice_id || !intent.metadata.business_id) return new Response('ok');
+  if (!status || !intent?.metadata?.business_id || (!intent.metadata.invoice_id && !intent.metadata.request_id)) return new Response('ok');
+  if (!validPaymentProof(intent,status)) return new Response('invalid payment',{status:400});
   const { invoice_id: invoiceId, business_id: businessId, kiln_method: method } = intent.metadata;
-  if (!uuid.test(invoiceId) || !uuid.test(businessId)) return new Response('ok');
+  if ((invoiceId && !uuid.test(invoiceId)) || !uuid.test(businessId)) return new Response('ok');
 
   const db = serviceClient();
   // the payment must have been made on that business's own Stripe account
@@ -47,6 +51,16 @@ Deno.serve(async (req) => {
   if (account.error) return new Response('try again', { status: 500 });
   if (!account.data || account.data.account_id !== event.account) return new Response('ok');
 
+  if (intent.metadata.request_id) {
+    if (!uuid.test(intent.metadata.request_id)) return new Response('ok');
+    const r = await db.from('job_payment_requests').select('business_id,intent_id').eq('id',intent.metadata.request_id).maybeSingle();
+    if (r.error) return new Response('try again',{status:500});
+    if (!r.data || r.data.business_id!==businessId || (r.data.intent_id && r.data.intent_id!==intent.id)) return new Response('ok');
+    // A webhook may arrive between Stripe creating the intent and our durable bind. Retry it.
+    if (!r.data.intent_id) return new Response('try again',{status:500});
+    const saved=await db.rpc('record_job_payment',{p_id:intent.metadata.request_id,p_intent:intent.id,p_amount:intent.amount,p_method:method,p_status:status});
+    return new Response(saved.error?'try again':'ok',{status:saved.error?500:200});
+  }
   const [invoice, lines] = await Promise.all([
     db.from('invoices').select('tax_rate_bps, tax_labor, tax_materials').eq('id', invoiceId).eq('business_id', businessId)
       .maybeSingle<{ tax_rate_bps: number | null; tax_labor: boolean | null; tax_materials: boolean | null }>(),

@@ -61,7 +61,9 @@ export type PaymentMethod = 'wallet' | 'bank' | 'card' | 'cash' | 'check' | 'oth
 
 export interface PaymentRecord {
   id: string;
-  invoiceId: string;
+  invoiceId: string | null;
+  jobId?: string;
+  requestId?: string;
   amountCents: number;
   method: PaymentMethod;
   status: 'processing' | 'succeeded' | 'failed';
@@ -79,8 +81,8 @@ export interface PayState {
 /** Payments, opened links, and paid invoices as saved on the server (row rules limit it to this business). */
 export async function loadPayState(): Promise<PayState> {
   const [payments, links, invoices, account] = await Promise.all([
-    db().from('payments').select('id, invoice_id, amount_cents, method, status, paid_at').not('invoice_id', 'is', null).order('paid_at')
-      .returns<{ id: string; invoice_id: string; amount_cents: number; method: PaymentMethod; status: PaymentRecord['status']; paid_at: string }[]>(),
+    db().from('payments').select('id, invoice_id, job_id, request_id, amount_cents, method, status, paid_at').order('paid_at')
+      .returns<{ id: string; invoice_id: string | null; job_id: string | null; request_id: string | null; amount_cents: number; method: PaymentMethod; status: PaymentRecord['status']; paid_at: string }[]>(),
     db().from('share_links').select('document_id, opened_at').eq('document_type', 'invoice').not('opened_at', 'is', null)
       .returns<{ document_id: string; opened_at: string }[]>(),
     db().from('invoices').select('id').not('paid_at', 'is', null).returns<{ id: string }[]>(),
@@ -90,7 +92,7 @@ export async function loadPayState(): Promise<PayState> {
   for (const l of ok(links) ?? []) if (!opened[l.document_id] || l.opened_at < opened[l.document_id]) opened[l.document_id] = l.opened_at;
   const acct = ok(account);
   return {
-    payments: (ok(payments) ?? []).map((p) => ({ id: p.id, invoiceId: p.invoice_id, amountCents: p.amount_cents, method: p.method, status: p.status, paidAt: p.paid_at })),
+    payments: (ok(payments) ?? []).map((p) => ({ id: p.id, invoiceId: p.invoice_id, jobId: p.job_id ?? undefined, requestId: p.request_id ?? undefined, amountCents: p.amount_cents, method: p.method, status: p.status, paidAt: p.paid_at })),
     opened,
     paidInvoices: (ok(invoices) ?? []).map((i) => i.id),
     online: { connected: !!acct, walletReady: !!acct?.wallet_ready, bankReady: !!acct?.bank_ready },

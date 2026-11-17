@@ -61,17 +61,17 @@ async function shrink(asset: ImagePicker.ImagePickerAsset): Promise<{ uri: strin
  * Takes a photo, or lets the owner choose up to 10. A photo taken now gets the phone's location;
  * a chosen one keeps the location and time saved in it, if any.
  */
-export async function pickJobPhotos(camera: boolean): Promise<{ photos: NewPhoto[]; problem: 'denied' | null }> {
+export async function pickJobPhotos(camera: boolean, includeLocation = true): Promise<{ photos: NewPhoto[]; problem: 'denied' | null }> {
   if (camera && !(await ImagePicker.requestCameraPermissionsAsync()).granted) return { photos: [], problem: 'denied' };
   const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 1, exif: true, allowsMultipleSelection: !camera, selectionLimit: MAX_PICK };
   const result = camera ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
   if (result.canceled) return { photos: [], problem: null };
-  const here = camera ? await hereNow() : null;
+  const here = camera && includeLocation ? await hereNow() : null;
   const photos: NewPhoto[] = [];
   for (const asset of result.assets.slice(0, MAX_PICK)) {
     const id = Crypto.randomUUID();
     const { uri, small } = await shrink(asset);
-    const where = here ?? (camera ? null : exifLocation(asset.exif));
+    const where = includeLocation ? here ?? (camera ? null : exifLocation(asset.exif)) : null;
     photos.push({
       id,
       localUri: keepOnPhone(uri, id),

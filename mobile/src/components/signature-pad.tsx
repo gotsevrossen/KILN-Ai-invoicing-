@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PanResponder, View } from 'react-native';
 import Svg, { Line, Path } from 'react-native-svg';
 
@@ -8,6 +8,7 @@ import { usePalette } from '@/theme/use-palette';
 import { T } from './ui';
 
 type Point = { x: number; y: number };
+export type SignatureInk = [number, number][][];
 
 const HEIGHT = 150;
 
@@ -27,17 +28,24 @@ export function SignaturePad({
   label,
   onInk,
   onDrawing,
+  onChange,
 }: {
   placeholder: string;
   label: string;
   onInk: () => void;
   onDrawing: (drawing: boolean) => void;
+  onChange?: (ink: SignatureInk) => void;
 }) {
   const p = usePalette();
   const [width, setWidth] = useState(0);
   const [strokes, setStrokes] = useState<Point[][]>([]);
+  useEffect(() => {
+    if (width <= 0) return;
+    const clamp = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 10000) / 10000;
+    onChange?.(strokes.map((stroke) => stroke.map(({ x, y }) => [clamp(x / width), clamp(y / HEIGHT)])));
+  }, [strokes, width, onChange]);
 
-  const [responder] = useState(() =>
+  const responder = useMemo(() =>
     PanResponder.create({
       // claim the touch before the scrolling page can
       onStartShouldSetPanResponder: () => true,
@@ -49,16 +57,17 @@ export function SignaturePad({
       onPanResponderGrant: (e) => {
         const { locationX: x, locationY: y } = e.nativeEvent;
         onDrawing(true);
-        setStrokes((all) => [...all, [{ x, y }]]);
+        setStrokes((all) => all.length >= 100 ? all : [...all, [{ x, y }]]);
         onInk();
       },
       onPanResponderMove: (e) => {
         const { locationX: x, locationY: y } = e.nativeEvent;
-        setStrokes((all) => (all.length === 0 ? all : [...all.slice(0, -1), [...all[all.length - 1], { x, y }]]));
+        setStrokes((all) => (all.length === 0 || all.reduce((n, stroke) => n + stroke.length, 0) >= 5000 ? all : [...all.slice(0, -1), [...all[all.length - 1], { x, y }]]));
       },
       onPanResponderRelease: () => onDrawing(false),
       onPanResponderTerminate: () => onDrawing(false),
     }),
+    [onDrawing, onInk],
   );
 
   return (

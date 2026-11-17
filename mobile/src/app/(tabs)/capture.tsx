@@ -1,3 +1,4 @@
+import { OfflineStatus } from '@/components/offline-status';
 import Feather from '@expo/vector-icons/Feather';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -90,6 +91,7 @@ export default function Capture() {
         <PageHeader title={t('capture.title')} sub={t('capture.sub')} />
       } tabs>
 
+      <OfflineStatus />
       {/* same order as a job's capture buttons, with Voice in Log hours' place */}
       <Row gap={12}>
         {/* scanned or typed in on the form; it links to receipts waiting to sort */}

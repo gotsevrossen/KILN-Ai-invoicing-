@@ -216,12 +216,12 @@ export async function savePrice(businessId: string, item: PriceItem): Promise<vo
 }
 
 export async function insertCustomer(businessId: string, c: Customer): Promise<void> {
-  ok(await db().from('customers').insert({ id: c.id, business_id: businessId, name: c.name, phone: c.phone, lang: c.lang }));
+  ok(await db().from('customers').upsert({ id: c.id, business_id: businessId, name: c.name, phone: c.phone, lang: c.lang }, { onConflict: 'id', ignoreDuplicates: true }));
 }
 
 export async function insertJob(businessId: string, j: Job): Promise<void> {
   ok(
-    await db().from('jobs').insert({
+    await db().from('jobs').upsert({
       id: j.id,
       business_id: businessId,
       customer_id: j.customerId,
@@ -231,6 +231,6 @@ export async function insertJob(businessId: string, j: Job): Promise<void> {
       rate_cents: j.rateCents ?? null,
       work_order: j.workOrder ?? null,
       private_note: j.privateNote ?? null,
-    }),
+    }, { onConflict: 'id', ignoreDuplicates: true }),
   );
 }

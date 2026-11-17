@@ -21,7 +21,7 @@ function stateForInvoice(): State {
     timeEntries: [], workItems: [], assignments: {}, acceptedSuggestions: [], fixedNames: {}, markupOff: {},
     skippedEstimates: [], dismissedSuggestions: [], materialsMode: {}, showLocation: {}, invoiceSummaries: {},
     voiceConfirmed: false, captures: [], photos: [], cardFee: false, aiScope: false,
-    businessId: null, version: 0, syncError: null, priceList: [],
+    businessId: null, version: 0, syncError: null, priceList: [], localSave: 'confirmed', pendingSaves: 0,
     profile: { businessName: 'Test repair', phone: '', trades: ['handyman'], pricing: 'flat', rateCents: 8500, onboarded: true },
   };
 }
@@ -40,6 +40,16 @@ describe('overdue jobs and Home totals', () => {
     const summary = homeSummary(state);
     assert.equal(summary.owed, original.owed - 5000);
     assert.equal(summary.overdueCents, original.overdueCents - 5000);
+  });
+
+  it('credits deposit and milestone payments once on the final invoice, keeping processing separate', () => {
+    const state = stateForInvoice();
+    const invoice = invoiceById('inv-1042')!;
+    const deposit = { id: 'deposit', invoiceId: null, jobId: invoice.jobId, amountCents: 3000, method: 'cash' as const, status: 'succeeded' as const, paidAt: '2026-10-02' };
+    state.payments.push(deposit, deposit, { id: 'milestone', invoiceId: null, jobId: invoice.jobId, amountCents: 2000, method: 'bank', status: 'processing', paidAt: '2026-10-02' });
+    const totals = invoiceTotals(state, invoice);
+    assert.equal(totals.paid, 3000);
+    assert.equal(totals.due, 9500);
   });
 
   it('never shows a negative balance or an overdue invoice after its whole balance was paid', () => {

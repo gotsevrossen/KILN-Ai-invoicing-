@@ -1,3 +1,7 @@
+import { DeliveryStatus } from '@/components/delivery-status';
+import { SendEstimateSheet } from '@/components/send-estimate';
+import { ServicePackages } from '@/components/service-packages';
+import { OfflineStatus } from '@/components/offline-status';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -36,6 +40,7 @@ function EstimateBuilder() {
   const { job, customer, draft, totals, issuedInvoice, locked } = useEstimate();
   const { unitLabel, fromItem, priceItem } = useLineMaker(customer.lang);
 
+  const [sendOpen, setSendOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customDesc, setCustomDesc] = useState('');
@@ -57,10 +62,13 @@ function EstimateBuilder() {
   const header = <PageHeader title={t('estimate.title')} sub={`${job.title} · ${customer.name}`} back={() => router.back()} />;
 
   if (locked) return <Screen header={header}>
+    <DeliveryStatus jobId={job.id} />
     <Notice text={t('review.frozen')} tone="soft" />
     <T v="money">{f.money(totals.total)}</T>
     <Button label={issuedInvoice ? t('flow.viewInvoice') : t('estimate.preview')}
       onPress={() => router.push(issuedInvoice ? `/customer/invoice/${issuedInvoice.id}` : `/customer/estimate/${job.id}`)} />
+    <SendEstimateSheet open={sendOpen} onClose={() => setSendOpen(false)} jobId={job.id} customer={customer} />
+    <Button label={t('estimate.send')} icon="send" onPress={() => setSendOpen(true)} />
   </Screen>;
 
   const openDetails = () => router.push(`/estimate/${job.id}/details`);
@@ -83,10 +91,13 @@ function EstimateBuilder() {
         </Row>
         <ButtonRow gap={10}>
           <Button label={t('estimate.preview')} variant="outline" onPress={() => router.push(`/customer/estimate/${job.id}`)} />
-          <Button label={t('estimate.send')} icon="send" flex big disabled={!ready} onPress={() => actions.sendEstimate(job.id)} />
+          <Button label={t('estimate.send')} icon="send" flex big disabled={!ready} onPress={() => { if (state.mode === 'connected') setSendOpen(true); else void actions.sendEstimate(job.id).catch(() => {}); }} />
         </ButtonRow>
       </>}>
 
+      <SendEstimateSheet open={sendOpen} onClose={() => setSendOpen(false)} jobId={job.id} customer={customer} />
+      <OfflineStatus />
+      <ServicePackages jobId={job.id} />
       <Card style={{ paddingVertical: 6 }}>
         <ListRow icon="clipboard" iconTone={draft.scope?.jobTypeId ? 'soft' : 'accent'} title={t('estimate.details')} sub={detailsSub} onPress={openDetails} />
       </Card>
@@ -163,5 +174,6 @@ function EstimateBuilder() {
 /** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */
 export default function EstimateBuilderRoute() {
   const { jobId } = useLocalSearchParams<{ jobId: string }>();
-  return <RecordGate found={() => hasJob(jobId)}><EstimateBuilder /></RecordGate>;
+  const { state } = useStore();
+  return <RecordGate found={() => hasJob(jobId)}><EstimateBuilder key={`${state.businessId ?? 'example'}:${jobId}`} /></RecordGate>;
 }
