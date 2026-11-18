@@ -87,6 +87,11 @@ export const inputs = {
     jobs: z.array(z.object({ id, title: text(200), customer: text(120), address: text(300) })).max(100),
     items,
   }),
+  /** Jobs that match what the owner typed, e.g. "sink repair" finds drain cleaning and leak fixes. */
+  findJobs: z.object({
+    query: text(200).refine((s) => s.trim().length > 0),
+    jobs: z.array(z.object({ id, title: text(200), jobType: text(80), trade: text(80), scope: text(600) })).max(300),
+  }),
 };
 
 export type Task = keyof typeof inputs;
@@ -494,6 +499,27 @@ async function tags(client: Anthropic, input: z.infer<typeof inputs.tags>) {
 }
 
 /** The request checked against its task's limits, or a 400. Checked before any request is counted. */
+const FIND_JOBS = `A small trades business owner is searching their own job list. You get what they typed and their jobs (id, title, job type, trade, short description; English or Spanish).
+
+Return the ids of every job that is the same kind of work as the search, including related work a tradesperson would group with it. For example "sink repair" matches drain cleaning, a leaking pipe under a sink, a faucet replacement or a clogged kitchen drain, but not a water heater install or a bathroom repaint. A search may also name a place in the home, a material, or a part.
+
+Only use ids from the list. When nothing matches, return an empty list. Don't guess about jobs with too little text to tell.`;
+
+async function findJobs(client: Anthropic, input: z.infer<typeof inputs.findJobs>) {
+  const ids = input.jobs.map((j) => j.id);
+  if (!ids.length) return { ids: [] };
+  const out = await ask(client, {
+    system: FIND_JOBS,
+    content: [data('search', input.query), data('jobs', input.jobs)],
+    schema: z.object({ ids: z.array(oneOf(ids)) }),
+    effort: 'low',
+    maxTokens: 3000,
+  });
+  // only jobs the app sent, each once, in the app's order
+  const found = new Set(out.ids.filter((x) => ids.includes(x)));
+  return { ids: ids.filter((x) => found.has(x)) };
+}
+
 export function checkInput(task: Task, input: unknown): unknown {
   const parsed = inputs[task].safeParse(input);
   if (!parsed.success) throw new AiError(400, 'bad_request');
@@ -511,5 +537,6 @@ export function runTask(client: Anthropic, task: Task, input: unknown) {
     case 'receiptReview': return receiptReview(client, input as z.infer<typeof inputs.receiptReview>);
     case 'change': return change(client, input as z.infer<typeof inputs.change>);
     case 'command': return command(client, input as z.infer<typeof inputs.command>);
+    case 'findJobs': return findJobs(client, input as z.infer<typeof inputs.findJobs>);
   }
 }

@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
 
 import { Sheet } from '@/components/sheet';
@@ -7,6 +7,7 @@ import { Button, Card, Checkbox, Hair, ListRow, Notice, PageHeader, Row, Screen,
 import { useAuth } from '@/data/auth';
 import * as sample from '@/data/sample';
 import * as api from '@/data/team-access';
+import { onLiveRefresh } from '@/data/live-events';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 import { can, canManagePerson } from '@/lib/permissions';
@@ -51,12 +52,19 @@ export function PersonScreen() {
   const member = team.data?.members.find((m) => m.user_id === userId);
   const businessId = team.businessId;
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!businessId || !userId) return;
     let live = true;
-    api.loadActivity(businessId, userId).then((a) => { if (live) setActivity(a); }, (e: unknown) => { if (live) setActivityError(userError(t, e)); });
-    return () => { live = false; };
-  }, [businessId, userId, t]);
+    let request = 0;
+    const reload = () => {
+      const token = ++request;
+      api.loadActivity(businessId, userId).then((a) => { if (live && token === request) { setActivity(a); setActivityError(''); } },
+        (e: unknown) => { if (live && token === request) setActivityError(userError(t, e)); });
+    };
+    reload();
+    const unsubscribe = onLiveRefresh(reload);
+    return () => { live = false; unsubscribe(); };
+  }, [businessId, userId, t]));
 
   const header = <PageHeader title={member?.name ?? c.teamTitle} sub={member ? `${member.role === 'owner' ? c.owner : member.role === 'manager' ? c.manager : c.crew} · ${member.email}` : undefined} back={() => router.back()} />;
   if (!member) return <Screen header={header}>{team.data ? <Notice text={c.notOnTeam} tone="soft" /> : <T muted>{c.loading}</T>}</Screen>;
@@ -76,7 +84,8 @@ export function PersonScreen() {
     <Screen header={header}>
       {action.error ? <Notice text={action.error} tone="danger" icon="alert-circle" /> : null}
 
-      {member.role === 'crew' ? <>
+      {member.status === 'active' ? <>
+        {member.role === 'manager' ? <Notice text={c.managerSeesAll} tone="soft" icon="info" /> : null}
         <T v="eyebrow">{c.assigned}</T>
         <Card style={{ paddingVertical: 4 }}>
           {jobs.length ? jobs.map((j, i) => <View key={j.id}>
@@ -92,7 +101,7 @@ export function PersonScreen() {
           ))}
           <Button label={c.done} onPress={() => setAssignOpen(false)} />
         </Sheet>
-      </> : member.role === 'manager' ? <Notice text={c.managerSeesAll} tone="soft" icon="info" /> : null}
+      </> : null}
 
       <T v="eyebrow">{c.activity}</T>
       {activityError ? <Notice text={activityError} tone="danger" icon="alert-circle" /> : null}

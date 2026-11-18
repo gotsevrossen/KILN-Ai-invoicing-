@@ -4,7 +4,7 @@ import * as photos from './db-photos';
 
 // Explicit allowlist: authentication, public links, and payment-provider requests never persist.
 const writes = {
-  insertCustomer: database.insertCustomer, insertJob: database.insertJob,
+  insertCustomer: database.insertCustomer, updateCustomerEmail: database.updateCustomerEmail, insertJob: database.insertJob,
   saveSettings: database.saveSettings, saveTrades: database.saveTrades, savePrice: database.savePrice,
   assignReceiptItem: documents.assignReceiptItem, updateReceiptItem: documents.updateReceiptItem,
   insertTimeEntry: documents.insertTimeEntry, insertNote: documents.insertNote,

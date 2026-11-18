@@ -276,3 +276,29 @@ Deno.test('only KILN’s own task names are tasks', () => {
   assertEquals(isTask('receipt'), true);
   for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'nope', 1]) assertEquals(isTask(name), false);
 });
+
+const findInput = {
+  query: 'sink repair',
+  jobs: [
+    { id: 'j1', title: 'Kitchen drain clog', jobType: 'Drain cleaning', trade: 'Plumbing', scope: '' },
+    { id: 'j2', title: 'Repaint bathroom', jobType: 'Interior', trade: 'Painting', scope: '' },
+    { id: 'j3', title: 'Leak under vanity', jobType: 'Leak repair', trade: 'Plumbing', scope: 'Replace P-trap' },
+  ],
+};
+
+Deno.test('findJobs: keeps only jobs the app sent, once each, in the app’s order', async () => {
+  const { client } = fake({ ids: ['j3', 'j1', 'j3'] });
+  assertEquals(await run(client, 'findJobs', findInput), { ids: ['j1', 'j3'] });
+});
+
+Deno.test('findJobs: an empty search is refused before asking Claude', async () => {
+  const { client, sent } = fake({ ids: [] });
+  await assertRejects(async () => await run(client, 'findJobs', { ...findInput, query: '   ' }), AiError);
+  assertEquals(sent.length, 0);
+});
+
+Deno.test('findJobs: no jobs means no question to Claude', async () => {
+  const { client, sent } = fake({ ids: ['j1'] });
+  assertEquals(await run(client, 'findJobs', { ...findInput, jobs: [] }), { ids: [] });
+  assertEquals(sent.length, 0);
+});

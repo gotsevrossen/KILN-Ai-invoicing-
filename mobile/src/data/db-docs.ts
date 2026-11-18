@@ -64,6 +64,7 @@ interface WorkRow {
 interface EstimateRow {
   id: string; job_id: string; number: string; deposit_on: boolean; deposit_bps: number; sent_at: string | null; signed_at: string | null;
   scope: unknown; tax_rate_bps: number | null; tax_labor: boolean | null; tax_materials: boolean | null;
+  declined_at: string | null;
 }
 interface EstimateLineRow {
   id: string; estimate_id: string; price_item_ref: string | null; description: string; unit: Unit; qty_hundredths: number;
@@ -119,7 +120,7 @@ export async function loadDocs(): Promise<LoadedDocs> {
     db().from('time_entries').select('id, job_id, worked_on, hundredths, note').order('created_at').returns<TimeRow[]>(),
     db().from('notes').select('id, job_id, body, created_at').order('created_at').returns<NoteRow[]>(),
     db().from('work_items').select('id, job_id, worked_on, price_item_ref, description, unit, qty_hundredths, unit_cents, kind').order('created_at').returns<WorkRow[]>(),
-    db().from('estimates').select('id, job_id, number, deposit_on, deposit_bps, sent_at, signed_at, scope, tax_rate_bps, tax_labor, tax_materials').returns<EstimateRow[]>(),
+    db().from('estimates').select('id, job_id, number, deposit_on, deposit_bps, sent_at, signed_at, declined_at, scope, tax_rate_bps, tax_labor, tax_materials').returns<EstimateRow[]>(),
     db().from('estimate_lines').select('id, estimate_id, price_item_ref, description, unit, qty_hundredths, unit_cents, from_voice, kind, excluded').order('position').returns<EstimateLineRow[]>(),
     db().from('change_orders').select('id, job_id, number, description, amount_cents, base_cents, signed_at, declined_at').order('number').returns<ChangeRow[]>(),
     db().from('signatures').select('document_type, document_id, signer_name, signed_at').returns<SignatureRow[]>(),
@@ -178,6 +179,7 @@ export async function loadDocs(): Promise<LoadedDocs> {
       depositBps: e.deposit_bps,
       sent: !!e.sent_at,
       signed: !!e.signed_at,
+      declinedAt: e.declined_at ?? undefined,
       scope: scopeFrom(e.scope),
       tax: taxFrom(e),
     };

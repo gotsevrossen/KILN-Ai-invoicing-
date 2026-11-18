@@ -5,7 +5,8 @@
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 
-// No realtime: the app doesn't use it. /auth/v1/admin needs the admin key, refused below anyway.
+// Hosted clients use Realtime; laptop clients use automatic polling. Keep local socket upgrades closed.
+// /auth/v1/admin needs the admin key, refused below anyway.
 export const ALLOWED_PREFIXES = ['/auth/v1/', '/rest/v1/', '/storage/v1/', '/functions/v1/'];
 const BLOCKED_PREFIXES = ['/auth/v1/admin'];
 const USER_ROLES = new Set(['anon', 'authenticated']);
@@ -65,7 +66,7 @@ export function startGate(listenPort, targetPort) {
     });
     req.pipe(upstream);
   });
-  // Live connections aren't used by the app; refuse upgrades rather than pass them through unchecked.
+  // Hosted Realtime connects directly. Local builds recover by polling; no unchecked socket proxy.
   server.on('upgrade', (_req, socket) => socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n'));
   server.headersTimeout = 30_000;
   server.requestTimeout = 300_000;

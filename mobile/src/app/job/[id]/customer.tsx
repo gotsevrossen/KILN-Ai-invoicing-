@@ -1,12 +1,16 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import { RecordGate } from '@/components/record-gate';
-import { Button, ButtonRow, Card, Hair, Icon, ListRow, PageHeader, Screen, T } from '@/components/ui';
+import { Button, ButtonRow, Card, Field, Hair, Icon, ListRow, PageHeader, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { customerOf, hasJob, jobById } from '@/data/selectors';
+import { useStore } from '@/data/store';
+import type { Customer } from '@/data/types';
 import { useLang } from '@/i18n';
 import { callNumber, dialable, textNumber } from '@/lib/contact';
+import { validEmailAddress } from '@/lib/email-address';
 import { usePalette } from '@/theme/use-palette';
 
 /** Who the job is for and where: phone, address, language, the private note, and their other jobs. */
@@ -25,6 +29,8 @@ function JobCustomer() {
       <Card style={{ gap: 4 }}>
         <T v="h2">{customer.name}</T>
         <ListRow icon="phone" title={customer.phone || '—'} sub={t('newJob.phone')} />
+        <Hair />
+        <CustomerEmail key={`${customer.id}:${customer.email ?? ''}`} customer={customer} />
         <Hair />
         <ListRow icon="map-pin" title={job.address}
           sub={job.workOrder ? `${t('newJob.address')} · ${t('job.workOrder', { number: job.workOrder })}` : t('newJob.address')} />
@@ -65,6 +71,27 @@ function JobCustomer() {
       ) : null}
     </Screen>
   );
+}
+
+function CustomerEmail({ customer }: { customer: Customer }) {
+  const { lang } = useLang();
+  const { actions } = useStore();
+  const es = lang === 'es';
+  const [editing, setEditing] = useState(false);
+  const [email, setEmail] = useState(customer.email ?? '');
+  const value = email.trim();
+  const label = es ? 'Correo electrónico del cliente' : 'Customer email';
+  if (!editing) return <ListRow icon="mail" title={customer.email || (es ? 'Añadir correo' : 'Add email')} sub={label} onPress={() => setEditing(true)} />;
+  return <>
+    <Field label={label} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" maxLength={254} />
+    <ButtonRow>
+      <Button label={es ? 'Guardar correo' : 'Save email'} disabled={!!value && !validEmailAddress(value)} onPress={() => {
+        actions.setCustomerEmail(customer.id, value);
+        setEditing(false);
+      }} />
+      <Button label={es ? 'Cancelar' : 'Cancel'} variant="outline" onPress={() => { setEmail(customer.email ?? ''); setEditing(false); }} />
+    </ButtonRow>
+  </>;
 }
 
 /** Waits for the record to load (a link or refresh can arrive first) instead of crashing. */

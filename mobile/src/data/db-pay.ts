@@ -8,7 +8,7 @@ import { db, ok } from './db-client';
 // (supabase/functions/payments for the owner, pay for the customer's page), and Stripe's
 // notices land in the database. The app reads the results like any other saved data.
 
-export type PayErrorCode = 'not_set_up' | 'not_sent' | 'owner_only' | 'stripe_failed' | 'signed_out' | 'not_found' | 'nothing_due' | 'not_ready' | 'offline' | 'failed';
+export type PayErrorCode = 'not_set_up' | 'not_sent' | 'owner_only' | 'stripe_failed' | 'signed_out' | 'not_found' | 'nothing_due' | 'not_ready' | 'offline' | 'failed' | 'email_not_set_up' | 'email_changed' | 'email_wait';
 
 export class PayFailed extends Error {
   constructor(readonly code: PayErrorCode) {
@@ -16,7 +16,7 @@ export class PayFailed extends Error {
   }
 }
 
-const CODES: PayErrorCode[] = ['not_set_up', 'not_sent', 'owner_only', 'stripe_failed', 'signed_out', 'not_found', 'nothing_due', 'not_ready'];
+const CODES: PayErrorCode[] = ['not_set_up', 'not_sent', 'owner_only', 'stripe_failed', 'signed_out', 'not_found', 'nothing_due', 'not_ready', 'email_not_set_up', 'email_changed', 'email_wait'];
 
 export async function callFunction(name: 'payments' | 'pay', body: Record<string, unknown>): Promise<unknown> {
   if (!supabase) throw new PayFailed('not_set_up');
@@ -45,6 +45,7 @@ export async function stripeSetupUrl(): Promise<string> {
 }
 
 export interface OnlinePay {
+  configured?: boolean;
   connected: boolean;
   /** Apple Pay and Google Pay. */
   walletReady: boolean;
@@ -54,7 +55,18 @@ export interface OnlinePay {
 /** Asks Stripe (through the server) what the owner's account can take now. */
 export async function checkStripe(): Promise<OnlinePay> {
   const res = await callFunction('payments', { action: 'status' }) as Partial<OnlinePay>;
-  return { connected: !!res?.connected, walletReady: !!res?.walletReady, bankReady: !!res?.bankReady };
+  return { configured: res?.configured, connected: !!res?.connected, walletReady: !!res?.walletReady, bankReady: !!res?.bankReady };
+}
+
+export type InvoiceEmailStatus = 'sending' | 'accepted' | 'delivered' | 'delayed' | 'failed' | 'unknown';
+export type InvoiceEmailResult = { status: InvoiceEmailStatus | null; stale?: boolean };
+
+export function sendInvoiceEmail(invoiceId: string, attemptId: string, recipient: string): Promise<InvoiceEmailResult> {
+  return callFunction('payments', { action: 'invoiceEmail', invoiceId, attemptId, recipient }) as Promise<InvoiceEmailResult>;
+}
+
+export function invoiceEmailStatus(invoiceId: string): Promise<InvoiceEmailResult> {
+  return callFunction('payments', { action: 'invoiceEmailStatus', invoiceId }) as Promise<InvoiceEmailResult>;
 }
 
 export type PaymentMethod = 'wallet' | 'bank' | 'card' | 'cash' | 'check' | 'other';

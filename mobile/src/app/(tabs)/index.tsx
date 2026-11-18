@@ -8,6 +8,7 @@ import { changeOrderTotal, homeSummary, invoiceForJob, invoiceTotals, jobAmount,
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { userError } from '@/lib/user-errors';
+import { LeavingJobs } from '@/features/cleanup/leaving-card';
 import { TeamInbox } from '@/features/team/job-team';
 import { useFormat } from '@/lib/format';
 import { font, radius } from '@/theme/tokens';
@@ -48,6 +49,7 @@ export default function Home() {
 
       <OfflineStatus />
       <TeamInbox />
+      <LeavingJobs />
       <Card tone="accent" style={{ padding: 22, gap: 6, borderRadius: radius.lg }}>
         <T v="eyebrow" color={p.onAccent}>{t('home.owedToYou')}</T>
         <T v="moneyBig" color={p.onAccent}>{f.money(summary.owed)}</T>

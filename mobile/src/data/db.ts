@@ -1,6 +1,6 @@
 import * as Crypto from 'expo-crypto';
 
-import { db, ok } from './db-client';
+import { db, ok, one } from './db-client';
 import { loadDocs, type LoadedDocs } from './db-docs';
 import { loadPhotos } from './db-photos';
 
@@ -44,6 +44,7 @@ interface CustomerRow {
   id: string;
   name: string;
   phone: string;
+  email: string;
   lang: 'en' | 'es';
 }
 
@@ -77,7 +78,7 @@ export interface Loaded {
 
 const toPriceItem = (r: PriceRow): PriceItem => ({ id: r.catalog_id ?? r.id, dbId: r.id, name: r.name, unit: r.unit, unitCents: r.unit_cents });
 
-const toCustomer = (r: CustomerRow): Customer => ({ id: r.id, name: r.name, firstName: r.name.split(' ')[0], phone: r.phone, lang: r.lang });
+const toCustomer = (r: CustomerRow): Customer => ({ id: r.id, name: r.name, firstName: r.name.split(' ')[0], phone: r.phone, email: r.email || undefined, lang: r.lang });
 
 const toJob = (r: JobRow): Job => ({
   id: r.id,
@@ -98,7 +99,7 @@ export async function loadAll(): Promise<Loaded | null> {
   if (!b) return null;
   const [items, customers, jobs, photos, docs] = await Promise.all([
     db().from('price_list_items').select('id, catalog_id, name, unit, unit_cents').order('created_at').returns<PriceRow[]>(),
-    db().from('customers').select('id, name, phone, lang').order('created_at').returns<CustomerRow[]>(),
+    db().from('customers').select('id, name, phone, email, lang').order('created_at').returns<CustomerRow[]>(),
     db().from('jobs').select('id, customer_id, title, address, pricing, rate_cents, work_order, private_note, estimate_skipped, reopened').order('created_at', { ascending: false }).returns<JobRow[]>(),
     loadPhotos(),
     loadDocs(),
@@ -216,7 +217,11 @@ export async function savePrice(businessId: string, item: PriceItem): Promise<vo
 }
 
 export async function insertCustomer(businessId: string, c: Customer): Promise<void> {
-  ok(await db().from('customers').upsert({ id: c.id, business_id: businessId, name: c.name, phone: c.phone, lang: c.lang }, { onConflict: 'id', ignoreDuplicates: true }));
+  ok(await db().from('customers').upsert({ id: c.id, business_id: businessId, name: c.name, phone: c.phone, email: c.email ?? '', lang: c.lang }, { onConflict: 'id', ignoreDuplicates: true }));
+}
+
+export async function updateCustomerEmail(businessId: string, id: string, email: string): Promise<void> {
+  one(await db().from('customers').update({ email }).eq('business_id', businessId).eq('id', id).select('id').single());
 }
 
 export async function insertJob(businessId: string, j: Job): Promise<void> {

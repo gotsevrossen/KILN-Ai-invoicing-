@@ -53,7 +53,7 @@ function CustomerEstimate() {
   const [padKey, setPadKey] = useState(0);
   const [agreed, setAgreed] = useState(false);
   const [done, setDone] = useState(false);
-  const canAccept = saved ? true : !!draft?.sent && !draft.signed && estimateReady(draft);
+  const canAccept = saved ? true : !!draft?.sent && !draft.signed && !draft.declinedAt && estimateReady(draft);
   const ready = canAccept && name.trim().length > 1 && hasInk && agreed;
   const unit = (l: DocLine) => (l.unit ? tc(`estimate.units.${l.unit}`) : '');
 

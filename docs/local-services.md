@@ -33,6 +33,8 @@ One-time Tailscale setup: install it (`winget install Tailscale.Tailscale`), ope
 
 ## Hosted server (Supabase's cloud)
 
+Hosted builds receive shared changes through private Realtime connections: receipts, job assignments and other saved work update on other signed-in devices automatically. Laptop-server builds also refresh automatically, using recovery polling (up to about 30 seconds), because the local gate keeps WebSocket upgrades closed.
+
 To have the app use a hosted Supabase project instead, put its address and publishable key in `mobile/.env.hosted.local` (git-ignored):
 
 ```

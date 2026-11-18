@@ -10,7 +10,7 @@ import { useLang } from '@/i18n';
 import { userError } from '@/lib/user-errors';
 
 export default function PaymentSettings() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { state, actions } = useStore();
   const s = state.settings;
   const connected = state.mode === 'connected';
@@ -53,7 +53,8 @@ export default function PaymentSettings() {
   };
 
   const ready = [online.walletReady ? t('online.wallet') : null, online.bankReady ? t('online.bank') : null].filter((x): x is string => !!x);
-  const status = !online.connected ? t('online.notSetUp')
+  const status = online.configured === false ? (lang === 'es' ? 'Los pagos en línea no están habilitados en el servidor.' : 'Online payments are unavailable on this server.')
+    : !online.connected ? t('online.notSetUp')
     : ready.length === 2 ? t('online.ready', { what: t('online.and', { a: ready[0], b: ready[1] }) })
       : ready.length === 1 ? t('online.ready', { what: ready[0] }) : t('online.waiting');
 
@@ -65,10 +66,10 @@ export default function PaymentSettings() {
         {connected ? (
           <>
             <T v="label">{status}</T>
-            {ready.length < 2 ? (
+            {online.configured !== false && ready.length < 2 ? (
               <Button label={online.connected ? t('online.finish') : t('online.setUp')} icon="external-link" disabled={busy} onPress={setUp} />
             ) : null}
-            {online.connected ? <Button label={t('online.check')} icon="refresh-cw" variant="outline" disabled={busy} onPress={check} /> : null}
+            {online.connected || online.configured === false ? <Button label={t('online.check')} icon="refresh-cw" variant="outline" disabled={busy} onPress={check} /> : null}
             {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
           </>
         ) : (

@@ -7,6 +7,7 @@ import { useAuth, type ResetProblem } from '@/data/auth';
 import { cleanCode } from '@/data/team-access';
 import { teamText } from '@/features/team/text';
 import { useLang } from '@/i18n';
+import { passwordResetUrl } from '@/lib/supabase';
 import { userError } from '@/lib/user-errors';
 import { font } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -33,6 +34,7 @@ export default function SignIn() {
   const [error, setError] = useState<string | null>(null);
   // password reset: code sent, the code typed, and whether it already worked (it can only be used once)
   const [codeSent, setCodeSent] = useState(false);
+  const [showCode, setShowCode] = useState(!passwordResetUrl);
   const [code, setCode] = useState('');
   const [verified, setVerified] = useState(false);
   const [resendAt, setResendAt] = useState(0);
@@ -88,6 +90,7 @@ export default function SignIn() {
     setMode(next);
     setError(null);
     setCodeSent(false);
+    setShowCode(!passwordResetUrl);
     setCode('');
     setVerified(false);
   };
@@ -111,7 +114,7 @@ export default function SignIn() {
     setBusy(true);
     setError(null);
     try {
-      const problem = await auth.sendResetCode(email);
+      const problem = await auth.sendPasswordReset(email);
       if (problem) {
         setError(resetMessage(problem));
         return;
@@ -157,16 +160,16 @@ export default function SignIn() {
       <Screen
         footer={
           <>
-            <Button
-              label={busy ? t('auth.working') : codeSent ? t('auth.savePassword') : t('auth.sendCode')}
+            {!codeSent || showCode ? <Button
+              label={busy ? t('auth.working') : codeSent ? t('auth.savePassword') : passwordResetUrl ? t('auth.sendResetEmail') : t('auth.sendCode')}
               icon={codeSent ? 'lock' : 'mail'}
               big
               disabled={!ready || busy}
               onPress={codeSent ? saveNewPassword : sendCode}
-            />
+            /> : null}
             {codeSent && !verified ? (
               <Button
-                label={waitLeft > 0 ? t('auth.resendWait', { seconds: waitLeft }) : t('auth.resend')}
+                label={waitLeft > 0 ? t('auth.resendWait', { seconds: waitLeft }) : passwordResetUrl ? t('auth.resendResetEmail') : t('auth.resend')}
                 icon="refresh-cw"
                 variant="outline"
                 disabled={waitLeft > 0 || busy || !emailOk}
@@ -181,12 +184,12 @@ export default function SignIn() {
           <T style={{ fontFamily: font.black, fontSize: 26, letterSpacing: 4 }}>KILN</T>
         </Row>
         <T v="title" accessibilityRole="header">{t('auth.resetTitle')}</T>
-        <T v="body" muted>{t('auth.resetBody')}</T>
+        <T v="body" muted>{t(passwordResetUrl ? 'auth.resetLinkBody' : 'auth.resetBody')}</T>
         <Field
           label={t('auth.email')}
           value={email}
           onChangeText={setEmail}
-          editable={!verified}
+          editable={!codeSent}
           keyboardType="email-address"
           autoCapitalize="none"
           autoComplete="email"
@@ -194,8 +197,9 @@ export default function SignIn() {
         />
         {codeSent ? (
           <>
-            <Notice text={t('auth.codeSent')} tone="plain" icon="mail" />
-            {!verified ? (
+            <Notice text={t(passwordResetUrl ? 'auth.resetEmailSent' : 'auth.codeSent')} tone="plain" icon="mail" />
+            {!showCode ? <Button label={t('auth.useResetCode')} variant="outline" onPress={() => setShowCode(true)} /> : null}
+            {showCode && !verified ? (
               <Field
                 label={t('auth.code')}
                 value={code}
@@ -206,7 +210,7 @@ export default function SignIn() {
                 textContentType="oneTimeCode"
               />
             ) : null}
-            {newPassword(t('auth.newPassword'))}
+            {showCode ? newPassword(t('auth.newPassword')) : null}
           </>
         ) : null}
         {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}

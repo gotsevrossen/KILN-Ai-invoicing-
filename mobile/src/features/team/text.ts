@@ -33,14 +33,15 @@ const en = {
   badName: 'Type their name.',
 
   // person page
-  assigned: 'Assigned jobs', assign: 'Assign jobs', notAssigned: 'Not on any jobs yet.', managerSeesAll: 'Managers see every job.',
+  assigned: 'Assigned jobs', assign: 'Assign jobs', notAssigned: 'Not on any jobs yet.', managerSeesAll: 'Managers see every job. Assigned jobs are the ones they look after.',
   activity: 'What they added', nothingYet: 'Nothing added yet.', makeManager: 'Make manager', makeCrew: 'Make crew member',
   removePerson: 'Remove from team', removeConfirm: 'Yes, remove', removeHelp: 'They lose access right away. What they added stays on the jobs.',
   notOnTeam: 'This person is no longer on the team.',
   photo: 'Photo', note: 'Note', hours: '%{hours} h', work: 'Work done', onJob: 'on %{job}',
 
   // job page
-  assignedTo: 'Assigned to', nobody: 'Nobody assigned', whoWorks: 'Who works on this job?', noCrew: 'Invite crew members on the Team tab first.',
+  assignedTo: 'Assigned to', nobody: 'Nobody assigned', whoWorks: 'Who works on this job?', noCrew: 'Invite managers or crew members on the Team tab first.',
+  unassigned: 'Unassigned jobs', unassignedSub: 'Open jobs nobody is on yet', allAssigned: 'Every open job has someone on it.',
 
   // settings
   teamSection: 'Team', hasTeam: 'I have a team', hasTeamHelp: 'Shows the Team tab, where you invite your crew and see what they add.',
@@ -101,13 +102,14 @@ const es: Record<keyof typeof en, string> = {
   send: 'Enviar código', shareMessage: 'Únete a %{business} en KILN. Instala KILN, toca "Me invitaron a un equipo" y escribe este código: %{code}',
   badName: 'Escribe su nombre.',
 
-  assigned: 'Trabajos asignados', assign: 'Asignar trabajos', notAssigned: 'Todavía no está en ningún trabajo.', managerSeesAll: 'Los encargados ven todos los trabajos.',
+  assigned: 'Trabajos asignados', assign: 'Asignar trabajos', notAssigned: 'Todavía no está en ningún trabajo.', managerSeesAll: 'Los encargados ven todos los trabajos. Los asignados son los que ellos atienden.',
   activity: 'Lo que agregó', nothingYet: 'Todavía no ha agregado nada.', makeManager: 'Hacer encargado', makeCrew: 'Hacer miembro del equipo',
   removePerson: 'Quitar del equipo', removeConfirm: 'Sí, quitar', removeHelp: 'Pierde el acceso de inmediato. Lo que agregó se queda en los trabajos.',
   notOnTeam: 'Esta persona ya no está en el equipo.',
   photo: 'Foto', note: 'Nota', hours: '%{hours} h', work: 'Trabajo hecho', onJob: 'en %{job}',
 
-  assignedTo: 'Asignado a', nobody: 'Nadie asignado', whoWorks: '¿Quién trabaja en este trabajo?', noCrew: 'Primero invita a tu equipo en la pestaña Equipo.',
+  assignedTo: 'Asignado a', nobody: 'Nadie asignado', whoWorks: '¿Quién trabaja en este trabajo?', noCrew: 'Primero invita a encargados o miembros del equipo en la pestaña Equipo.',
+  unassigned: 'Trabajos sin asignar', unassignedSub: 'Trabajos abiertos sin nadie asignado', allAssigned: 'Todos los trabajos abiertos tienen a alguien.',
 
   teamSection: 'Equipo', hasTeam: 'Tengo un equipo', hasTeamHelp: 'Muestra la pestaña Equipo, donde invitas a tu equipo y ves lo que agregan.',
   crewPrices: 'El equipo ve precios', crewPricesHelp: 'El equipo ve precios en presupuestos, facturas y la lista de precios.',

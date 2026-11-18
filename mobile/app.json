@@ -59,7 +59,8 @@
           "microphonePermission": "KILN listens while you record a voice note, to turn it into text.",
           "speechRecognitionPermission": "KILN turns your voice notes into text with your phone's speech recognition."
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

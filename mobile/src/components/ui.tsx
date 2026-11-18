@@ -1,6 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import type { ComponentProps, ReactNode } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +14,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useLang } from '@/i18n';
@@ -20,6 +22,7 @@ import { font, radius, space, tap, type Palette } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
 import { useSheetOpen } from './sheet-state';
+import { swipeTab } from './tab-swipe';
 
 export type IconName = ComponentProps<typeof Feather>['name'];
 
@@ -97,7 +100,23 @@ export function Screen({
   const content = { padding: space.lg, gap: 14, paddingBottom: tabs ? 64 + Math.max(insets.bottom, 12) + 40 + space.lg : space.xxl };
   const sheetOpen = useSheetOpen();
   const top: ('top' | 'bottom')[] = noTopInset ? [] : ['top'];
+  // Tab pages: a clear sideways swipe moves to the next page (left) or the previous one (right).
+  // It starts only after 25 points sideways and gives way to vertical scrolling, so scrolling and
+  // taps work as before. Off on the web, where a mouse drag selects text.
+  const swipe = usePanGesture({
+    runOnJS: true,
+    enabled: !!tabs && !sheetOpen && Platform.OS !== 'web',
+    activeOffsetX: [-25, 25],
+    failOffsetY: [-15, 15],
+    onDeactivate: (e) => {
+      if (e.canceled) return;
+      const far = Math.abs(e.translationX) > 80;
+      const quick = Math.abs(e.translationX) > 40 && Math.abs(e.velocityX) > 500;
+      if (far || quick) swipeTab(e.translationX < 0 ? 1 : -1);
+    },
+  });
   return (
+    <GestureDetector gesture={swipe}>
     <SafeAreaView edges={footer || tabs ? top : [...top, 'bottom']} style={{ flex: 1, backgroundColor: p.ground }}>
       {header ? <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: 4, gap: 12, backgroundColor: p.ground }}>{header}</View> : null}
       {scroll ? (
@@ -123,6 +142,7 @@ export function Screen({
         </SafeAreaView>
       ) : null}
     </SafeAreaView>
+    </GestureDetector>
   );
 }
 

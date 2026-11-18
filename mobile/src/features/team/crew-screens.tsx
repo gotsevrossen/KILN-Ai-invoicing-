@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { Button, Card, Hair, IconButton, ListRow, Notice, PageHeader, Screen, Segmented, T } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import * as api from '@/data/team-access';
+import { onLiveRefresh } from '@/data/live-events';
 import { useLang } from '@/i18n';
 import { userError } from '@/lib/user-errors';
 import { useThemeMode } from '@/theme/theme-mode';
@@ -18,13 +19,17 @@ function useCrewJobs() {
   const [jobs, setJobs] = useState<api.CrewJob[] | null>(null);
   const [error, setError] = useState('');
   const live = useRef(true);
+  const request = useRef(0);
   const load = useCallback(() => {
-    api.loadCrewJobs().then((j) => { if (live.current) { setJobs(j); setError(''); } }, (e: unknown) => { if (live.current) setError(userError(t, e)); });
+    const token = ++request.current;
+    api.loadCrewJobs().then((j) => { if (live.current && token === request.current) { setJobs(j); setError(''); } },
+      (e: unknown) => { if (live.current && token === request.current) { setJobs(null); setError(userError(t, e)); } });
   }, [t]);
   useFocusEffect(useCallback(() => {
     live.current = true;
     load();
-    return () => { live.current = false; };
+    const unsubscribe = onLiveRefresh(load);
+    return () => { live.current = false; request.current++; unsubscribe(); };
   }, [load]));
   return { jobs, error, retry: load };
 }

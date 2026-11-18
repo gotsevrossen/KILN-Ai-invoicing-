@@ -8,6 +8,16 @@ import { AppState } from 'react-native';
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
+export const passwordResetUrl = process.env.EXPO_PUBLIC_PASSWORD_RESET_URL ||
+  (url === 'https://ssjshfjkkgcqjvvsjsnk.supabase.co' ? 'https://kiln.expo.app/reset-password' : undefined);
+
+/** Recovery must not replace the user's ordinary app session or persist recovery tokens. */
+export function recoveryClient(): SupabaseClient | null {
+  return url && key ? createClient(url, key, {
+    auth: { storageKey: 'kiln-password-recovery', persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  }) : null;
+}
+
 /**
  * The Supabase client, or null when no server is set up. With no server the app
  * runs in example mode (example data in memory), like before.

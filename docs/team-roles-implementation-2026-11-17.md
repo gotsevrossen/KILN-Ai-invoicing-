@@ -5,7 +5,7 @@ Built from `docs/team-roles-plan-2026-11-17.md`. Deployed to the hosted server (
 ## Roles
 
 - **Owner:** everything. Only the owner changes business settings (name, trades, pricing, payments, AI switch), roles, managers, pay rates and Stripe.
-- **Manager:** runs jobs, customers, estimates, change orders, invoices, payments, the price list and packages. Invites, approves and removes crew. Sees pay rates and profit only when the owner turns on "Managers see pay and profit".
+- **Manager:** runs jobs, customers, estimates, change orders, invoices, payments, the price list and packages. Invites, approves and removes crew. Can be assigned jobs by the owner, another manager or themselves; the assignment only marks the jobs they look after, since managers already see and edit every job. Sees pay rates and profit only when the owner turns on "Managers see pay and profit".
 - **Crew member:** sees only jobs assigned to them. Adds work done (from the price list, with the list's price), hours, photos, notes and scope-change suggestions. Can remove their own entries until the invoice is sent. Adds new price list items (marked for review), never changes existing ones. Sees the estimate and invoice read-only; prices only when the owner turns on "Crew see prices".
 
 The rules live in `lib/permissions.ts` (app, with tests) and `supabase/migrations/20261117120000_team_roles.sql` (server). The server is the boundary.
@@ -49,3 +49,14 @@ Validation: 308 database assertions in an isolated local test database (includin
 ## To check on a real phone
 
 Sign up a second account, join with a code, approve it, assign a job, add work, hours, photos and a note as crew, then check the Team tab person page as the owner. Also check the tab bar on iPhone and Android, in light and dark mode.
+
+## Manager assignments (Nov 17, later)
+
+`20261117150000_manager_assignments.sql` lets `assign_team_job` put an active manager on a job, not only crew. The owner or any active manager can do it, including assigning themselves. The owner and pending people can't be assigned. A manager's assignment gives no crew access (`team_can_work()` still requires the crew role). The job page's "Who works on this job?" sheet lists managers first, then crew, with "(You)" on the signed-in person; a manager's person page shows their assigned jobs and the Assign button. Tests: `supabase/tests/database/job_assignments.test.sql`. Deployed to the hosted server the same day; backups taken first: `builds/backups/hosted-schema-before-manager-assign-2026-11-17.sql` and `hosted-data-before-manager-assign-2026-11-17.sql`.
+
+## Owner assignments, Unassigned page, swipe between tabs (Nov 17, later)
+
+- `20261117160000_owner_assignments.sql`: the owner can be assigned too (by themselves or a manager). Same rule as managers: it only marks who looks after the job; `team_can_work()` still requires the crew role. `job_assignments.test.sql` now has 14 checks. Deployed to the hosted server the same day (backups `hosted-schema-before-owner-assign-2026-11-17.sql`, `hosted-data-before-owner-assign-2026-11-17.sql`).
+- One shared "Who works on this job?" sheet (`AssignSheet` in `features/team/job-team.tsx`): owner, then managers, then crew, with "(You)" and role labels.
+- **Unassigned jobs** page (`app/team/unassigned.tsx`, `features/team/unassigned-screen.tsx`): active jobs nobody is on, for owners and managers, opened from the top of the Team tab (shows the count). Tapping a job opens the assign sheet with an "Open job" button. Every person's page now shows their assigned jobs; the Team list shows open-job counts for anyone who has some.
+- Swipe between tabs: a clear sideways swipe on a tab page moves to the next page (left) or the previous one (right), in the bar's order, ending with Capture. The tab bar registers the order (`components/tab-swipe.ts`); `Screen` with `tabs` holds the gesture (25-point start, gives way to vertical scrolling, off while a sheet is open and on the web).

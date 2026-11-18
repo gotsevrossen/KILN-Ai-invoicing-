@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { hashToken, Refused, setting, tokenShape } from './invoice.ts';
-import { stripe } from './stripe.ts';
+import { stripe, stripeConfigured } from './stripe.ts';
 import { validPaymentProof } from './payment-proof.ts';
 
 interface RequestRow { id:string; business_id:string; job_id:string; kind:string; label:string; amount_cents:number; expires_at:string; intent_id:string|null; intent_method:'wallet'|'bank'|null; reserved_at:string|null }
@@ -26,10 +26,11 @@ async function context(db:SupabaseClient,r:RequestRow) {
 export async function jobRequestAction(db:SupabaseClient,r:RequestRow,body:{action?:unknown;method?:unknown;intent?:unknown}) {
  const c=await context(db,r);
  if(body.action==='view') return {business:c.business,customer:c.customer,request:{label:r.label,kind:r.kind,amountCents:r.amount_cents,job:c.job.title,address:c.job.address},paid:c.payment?.status==='succeeded',pending:c.payment?.status==='processing',expiresAt:r.expires_at,
- pay:c.account&&setting('STRIPE_PUBLISHABLE_KEY')&&c.payment?.status!=='succeeded'&&c.payment?.status!=='processing'?{wallet:c.account.wallet_ready,bank:c.account.bank_ready,account:c.account.account_id,publishableKey:setting('STRIPE_PUBLISHABLE_KEY')}:null};
+ pay:c.account&&(c.account.wallet_ready||c.account.bank_ready)&&stripeConfigured()&&c.payment?.status!=='succeeded'&&c.payment?.status!=='processing'?{wallet:c.account.wallet_ready,bank:c.account.bank_ready,account:c.account.account_id,publishableKey:setting('STRIPE_PUBLISHABLE_KEY')}:null};
  const key=setting('STRIPE_SECRET_KEY'); if(!key) throw new Refused(503,'not_set_up');
  if(!c.account) throw new Refused(409,'not_ready');
  if(body.action==='start') {
+ if(!stripeConfigured()) throw new Refused(503,'not_set_up');
  const method=body.method;
  if(method!=='wallet'&&method!=='bank') throw new Refused(400,'bad_request');
  if(!(method==='wallet'?c.account.wallet_ready:c.account.bank_ready)) throw new Refused(409,'not_ready');

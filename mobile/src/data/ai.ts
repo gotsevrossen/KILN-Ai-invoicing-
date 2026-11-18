@@ -30,7 +30,7 @@ export function aiReady(mode: 'example' | 'connected'): boolean {
   return mode === 'connected' && supabase !== null;
 }
 
-async function call(task: 'guess' | 'missed' | 'scope' | 'prices' | 'receipt' | 'receiptReview' | 'change' | 'command' | 'tags', input: unknown): Promise<unknown> {
+async function call(task: 'guess' | 'missed' | 'scope' | 'prices' | 'receipt' | 'receiptReview' | 'change' | 'command' | 'tags' | 'findJobs', input: unknown): Promise<unknown> {
   if (!supabase) throw new AiFailed('not_set_up');
   const { data, error } = await supabase.functions.invoke('ai', { body: { task, input } });
   if (!error) return data;
@@ -150,3 +150,16 @@ export async function guessTags(title: string, images: AiImage[]): Promise<(Phot
 }
 
 export type { ChangeDraft, Command, Guess, ImportedPrice, MissedItem, ScannedReceipt };
+
+export interface FindJobsInput {
+  query: string;
+  /** No customer names, prices or private notes: only what describes the work. */
+  jobs: { id: string; title: string; jobType: string; trade: string; scope: string }[];
+}
+
+/** Jobs that are the same kind of work as the owner's search. Only ids the app sent come back. */
+export async function findJobs(input: FindJobsInput): Promise<string[]> {
+  const out = await call('findJobs', input) as { ids?: unknown } | null;
+  const sent = new Set(input.jobs.map((j) => j.id));
+  return Array.isArray(out?.ids) ? [...new Set(out.ids.filter((x): x is string => typeof x === 'string' && sent.has(x)))] : [];
+}

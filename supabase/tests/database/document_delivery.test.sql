@@ -71,5 +71,27 @@ reset role;
 update public.estimate_access_links set expires_at=now()+interval '1 day',revoked_at=now();
 select throws_ok($$select public.view_estimate_access(repeat('a',64))$$,'P0001','not found','revoked links cannot view quote');
 select throws_ok($$select public.accept_estimate_access(repeat('a',64),(select snapshot_hash from public.estimate_access_links limit 1),'Home Owner','test device','127.0.0.1','I accept this exact estimate and use my typed name as my electronic signature.')$$,'P0001','not allowed','revoked links cannot approve quote');
+
+insert into public.jobs(id,business_id,customer_id,title) values
+ ('40000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','Third room');
+insert into public.estimates(id,business_id,job_id,number) values
+ ('50000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000003','E-Q3');
+insert into public.estimate_lines(business_id,estimate_id,description,unit,qty_hundredths,unit_cents) values
+ ('20000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000003','Paint trim','flat',100,25000);
+select pg_temp.quote_owner('10000000-0000-0000-0000-000000000001');
+update public.estimates set sent_at=now(),tax_rate_bps=0,tax_labor=false,tax_materials=false where number='E-Q3';
+select public.prepare_estimate_access('40000000-0000-0000-0000-000000000003',repeat('c',64));
+select throws_ok($$update public.estimates set declined_at=now() where number='E-Q3'$$,'P0001','estimate decline requires a valid customer link','owner cannot create a customer decline');
+reset role;
+select ok(not has_function_privilege('authenticated','public.decline_estimate_access(text,text)','execute'),'decline RPC is server-only');
+select throws_ok($$select public.decline_estimate_access(repeat('c',64),repeat('0',64))$$,'P0001','not allowed','decline must match the viewed estimate');
+select lives_ok($$select public.decline_estimate_access(repeat('c',64),(select snapshot_hash from public.estimate_access_links where token_hash=repeat('c',64)))$$,'customer can decline an open estimate');
+select lives_ok($$select public.decline_estimate_access(repeat('c',64),(select snapshot_hash from public.estimate_access_links where token_hash=repeat('c',64)))$$,'decline retry succeeds');
+select is((select count(*)::int from public.audit_log where action='estimate.declined_by_link'),1,'decline retry does not duplicate the audit record');
+select ok((public.view_estimate_access(repeat('c',64))->>'declinedAt') is not null,'the customer link reports the saved decline');
+select throws_ok($$select public.accept_estimate_access(repeat('c',64),(select snapshot_hash from public.estimate_access_links where token_hash=repeat('c',64)),'Home Owner','test','127.0.0.1','I accept this exact estimate and use my typed name as my electronic signature.')$$,'P0001','a declined estimate cannot be signed','declined estimate cannot later be accepted');
+select pg_temp.quote_owner('10000000-0000-0000-0000-000000000001');
+select throws_ok($$select public.sign_estimate('40000000-0000-0000-0000-000000000003','Home Owner','test','[[[0.1,0.2],[0.3,0.4]]]'::jsonb)$$,'P0001','a declined estimate cannot be signed','declined estimate cannot be signed in person');
+reset role;
 select finish();
 rollback;

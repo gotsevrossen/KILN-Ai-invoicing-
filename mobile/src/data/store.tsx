@@ -85,7 +85,7 @@ export interface NewJobInput {
   workOrder?: string;
   privateNote?: string;
   /** An existing customer, or the details for a new one. */
-  customer: { id: string } | { name: string; phone: string; lang: Customer['lang'] };
+  customer: { id: string } | { name: string; phone: string; email?: string; lang: Customer['lang'] };
 }
 
 /** A receipt typed in by hand. Each item is its price before tax. */
@@ -349,15 +349,17 @@ async function retryOffline(): Promise<void> {
   }
 }
 /** Refresh only an idle, unchanged view; never overwrite an edit made while the request ran. */
-async function refreshDocuments(): Promise<void> {
-  if (get().mode !== 'connected' || !get().businessId) return;
+async function refreshDocuments(): Promise<boolean> {
+  if (get().mode !== 'connected' || !get().businessId) return true;
   const active = saveQueue.scope();
   await retryOffline();
   const before = get();
   const loaded = await dbApi.loadAll();
-  if (!active() || get() !== before || journal.pending || volatileCommands.length || !loaded) return;
+  if (!active()) return true;
+  if (get() !== before || journal.pending || volatileCommands.length || !loaded || loaded.businessId !== before.businessId) return false;
   applyLoaded(loaded);
   cacheCurrent();
+  return true;
 }
 const flushSoon = (_key: string) => {};
 const saveEstimateSoon = (jobId: string) => {
@@ -973,6 +975,14 @@ function makeActions() {
       set((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
       persist(command('saveSettings', get().businessId!, get().settings, get().cardFee, get().aiScope));
     },
+    setCustomerEmail(id: string, email: string) {
+      const index = customers.findIndex((customer) => customer.id === id);
+      if (index === -1) return;
+      const value = email.trim() || undefined;
+      customers[index] = { ...customers[index], email: value };
+      set((s) => ({ ...s, version: s.version + 1 }));
+      persist(command('updateCustomerEmail', get().businessId!, id, value ?? ''));
+    },
     /**
      * Adds a job (and a new customer if needed) and returns the job id.
      * Example build only: new jobs go into the in-memory example lists, so every
@@ -986,7 +996,7 @@ function makeActions() {
       } else {
         const name = input.customer.name.trim();
         customerId = get().mode === 'connected' ? dbApi.newUuid() : newId();
-        newCustomer = { id: customerId, name, firstName: name.split(' ')[0], phone: input.customer.phone.trim(), lang: input.customer.lang };
+        newCustomer = { id: customerId, name, firstName: name.split(' ')[0], phone: input.customer.phone.trim(), email: input.customer.email?.trim() || undefined, lang: input.customer.lang };
         customers.push(newCustomer);
       }
       const job: Job = {

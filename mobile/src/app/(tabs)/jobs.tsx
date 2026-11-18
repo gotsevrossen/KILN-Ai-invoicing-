@@ -8,6 +8,8 @@ import * as sample from '@/data/sample';
 import { customerOf, hoursFor, jobAmount, jobGroup, jobOverdueDays, jobStatus, type JobStatus } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import type { Job, JobGroup } from '@/data/types';
+import { filtersOn, JobsMenu, NO_FILTERS, useJobFilter, type JobFilters } from '@/features/cleanup/jobs-menu';
+import { cleanupText } from '@/features/cleanup/text';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 import { font } from '@/theme/tokens';
@@ -26,18 +28,21 @@ const statusTone: Record<JobStatus, Tone | 'outline'> = {
 };
 
 export default function Jobs() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const f = useFormat();
   const { state } = useStore();
   const [group, setGroup] = useState<JobGroup>('active');
   const [query, setQuery] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [filters, setFilters] = useState<JobFilters>(NO_FILTERS);
+  const passes = useJobFilter(filters);
 
   // Group once per data change; search reuses prices/status for only the selected tab.
   const grouped = useMemo(() => {
     const groups: Record<JobGroup, Job[]> = { active: [], done: [], paid: [] };
-    for (const job of sample.jobs) groups[jobGroup(state, job)].push(job);
+    for (const job of sample.jobs) if (passes(job)) groups[jobGroup(state, job)].push(job);
     return groups;
-  }, [state]);
+  }, [state, passes]);
   const rows = useMemo(() => grouped[group].map((job) => {
     const customer = customerOf(job);
     const status = jobStatus(state, job);
@@ -61,9 +66,14 @@ export default function Jobs() {
   return (
     <Screen
       header={
-        <PageHeader title={t('jobs.title')} right={<IconButton icon="plus" label={t('common.newJob')} tone="accent" onPress={() => router.push('/new-job')} />} />
+        <PageHeader title={t('jobs.title')} right={<Row gap={8}>
+          <IconButton icon={menuOpen ? 'x' : 'sliders'} label={cleanupText(lang).menu} tone={filtersOn(filters) ? 'dark' : 'plain'} onPress={() => setMenuOpen((o) => !o)} />
+          <IconButton icon="plus" label={t('common.newJob')} tone="accent" onPress={() => router.push('/new-job')} />
+        </Row>} />
       } tabs>
       <OfflineStatus />
+      {menuOpen ? <JobsMenu filters={filters} onChange={setFilters}
+        shown={grouped.active.length + grouped.done.length + grouped.paid.length} total={sample.jobs.length} /> : null}
       <Field value={query} onChangeText={setQuery} placeholder={t('jobs.search')} accessibilityLabel={t('jobs.search')} returnKeyType="search" />
       <Segmented
         label={t('jobs.title')}

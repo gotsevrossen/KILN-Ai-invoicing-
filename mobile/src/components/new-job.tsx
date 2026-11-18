@@ -4,6 +4,7 @@ import { Pressable, View } from 'react-native';
 import * as sample from '@/data/sample';
 import { useStore } from '@/data/store';
 import { useLang, type Lang } from '@/i18n';
+import { validEmailAddress } from '@/lib/email-address';
 import { radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
@@ -18,7 +19,7 @@ function parseDollars(text: string): number | null {
 /** New job: customer and address, what the job is, how you charge. Optional extras stay folded away. */
 export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }) {
   const p = usePalette();
-  const { t } = useLang();
+  const { t, lang: appLang } = useLang();
   const { state, actions } = useStore();
   const DEFAULT_RATE = state.profile.rateCents;
 
@@ -26,6 +27,7 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [lang, setLang] = useState<Lang>('en');
   const [title, setTitle] = useState('');
   const [address, setAddress] = useState('');
@@ -50,7 +52,8 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
   const clearProperty = () => { setAddress(''); setWorkOrder(''); setNote(''); };
 
   const rateCents = parseDollars(rateText);
-  const hasCustomer = mode === 'existing' ? customerId !== null : name.trim().length > 1;
+  const emailValid = !email.trim() || validEmailAddress(email.trim());
+  const hasCustomer = mode === 'existing' ? customerId !== null : name.trim().length > 1 && emailValid;
   const ready = title.trim().length > 1 && address.trim().length > 2 && hasCustomer && (pricing === 'flat' || rateCents !== null);
 
   const pickCustomer = (id: string) => {
@@ -67,7 +70,7 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
       rateCents: pricing === 'hourly' ? (rateCents ?? DEFAULT_RATE) : undefined,
       workOrder,
       privateNote: note,
-      customer: mode === 'existing' && customerId ? { id: customerId } : { name, phone, lang },
+      customer: mode === 'existing' && customerId ? { id: customerId } : { name, phone, email, lang },
     });
     onCreated(id);
   };
@@ -138,6 +141,9 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
           />
           {addressField}
           <Field label={t('newJob.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
+          <Field label={appLang === 'es' ? 'Correo electrónico del cliente' : 'Customer email'} value={email} onChangeText={setEmail}
+            autoCapitalize="none" autoComplete="email" keyboardType="email-address" maxLength={254} />
+          {!emailValid ? <T v="small" color={p.danger}>{appLang === 'es' ? 'Introduce un correo válido.' : 'Enter a valid email address.'}</T> : null}
         </>
       )}
       {mode === 'existing' && picked && properties.length ? <View style={{ gap: 10 }}>

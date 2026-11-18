@@ -1,9 +1,17 @@
+import { setting } from './invoice.ts';
+
 // Talks to Stripe directly over its web API (no Stripe library): a handful of requests, and the
 // check that a payment notice (webhook) really came from Stripe. The secret key lives only in the
 // server's settings (supabase/.env locally, project secrets when hosted), never in the app.
 
 export const STRIPE_VERSION = '2026-09-30.endive';
 const API = 'https://api.stripe.com';
+
+export function stripeConfigured(): boolean {
+  const secret = /^sk_(test|live)_/.exec(setting('STRIPE_SECRET_KEY'));
+  const publishable = /^pk_(test|live)_/.exec(setting('STRIPE_PUBLISHABLE_KEY'));
+  return !!secret && secret[1] === publishable?.[1] && !!setting('STRIPE_WEBHOOK_SECRET') && /^https:\/\/[^/\s]+$/.test(setting('KILN_PAY_URL'));
+}
 
 export class StripeError extends Error {
   constructor(readonly status: number, readonly code: string) {

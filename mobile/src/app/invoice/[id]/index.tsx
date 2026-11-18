@@ -106,7 +106,7 @@ function InvoiceDraft() {
         )
       }>
       <OfflineStatus />
-      {sent ? <DeliveryStatus invoiceId={invoice.id} /> : null}
+      {sent ? <DeliveryStatus invoiceId={invoice.id} refresh={sendOpen} /> : null}
       <T v="small" muted>
         {t('invoice.builtFrom', { photos: sources.photos, voice: sources.voice, receipts: sources.receipts, hours: f.qty(hoursFor(state, job.id)) })}
       </T>
@@ -181,7 +181,7 @@ function InvoiceDraft() {
         }} />
         <Button label={t('common.cancel')} variant="outline" disabled={cashBusy} onPress={() => setCashOpen(false)} />
       </Sheet>
-      <SendInvoiceSheet open={sendOpen} onClose={() => setSendOpen(false)} invoiceId={invoice.id} number={invoice.number}
+      <SendInvoiceSheet open={sendOpen} onClose={() => setSendOpen(false)} invoiceId={invoice.id} jobId={job.id} number={invoice.number}
         customer={customer} totalCents={totals.total} />
     </Screen>
   );

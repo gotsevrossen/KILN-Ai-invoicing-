@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Linking, View } from 'react-native';
 
 import { Button, Card, Checkbox, Field, LineRow, Notice, Screen, T } from '@/components/ui';
-import { acceptEstimateAccess, prepareQuoteDeposit, viewEstimateAccess, type QuoteAccess } from '@/data/document-delivery';
+import { acceptEstimateAccess, declineEstimateAccess, prepareQuoteDeposit, viewEstimateAccess, type QuoteAccess } from '@/data/document-delivery';
 import { useLang } from '@/i18n';
 import { formatters } from '@/lib/format';
 import { documentTotals, lineTotal, percentOf } from '@/lib/money';
@@ -21,8 +21,9 @@ function CustomerQuote() {
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');
   const [agreed, setAgreed] = useState(false);
+  const [confirmDecline, setConfirmDecline] = useState(false);
   const load = useCallback(async () => {
-    setFailed(false); setPage(null); setName(''); setAgreed(false);
+    setFailed(false); setPage(null); setName(''); setAgreed(false); setConfirmDecline(false);
     try { setPage(await viewEstimateAccess(String(token))); } catch { setFailed(true); }
   }, [token]);
   useEffect(() => {
@@ -54,15 +55,28 @@ function CustomerQuote() {
       {q.deposit_on ? <LineRow label={es ? 'Depósito solicitado (no pagado)' : 'Requested deposit (not paid)'} value={f.money(percentOf(totals.total, q.deposit_bps))} /> : null}
     </Card>
     <T v="small" muted>{es ? 'El enlace caduca: ' : 'Link expires: '}{f.date(page.expiresAt.slice(0, 10))}</T>
-    {page.acceptedAt ? <Notice text={es ? `Presupuesto aceptado el ${f.date(page.acceptedAt.slice(0, 10))}. La firma no registra ningún pago.` : `Estimate accepted on ${f.date(page.acceptedAt.slice(0, 10))}. Signing does not record a payment.`} /> : <>
+    {page.acceptedAt ? <Notice text={es ? `Presupuesto aceptado el ${f.date(page.acceptedAt.slice(0, 10))}. La firma no registra ningún pago.` : `Estimate accepted on ${f.date(page.acceptedAt.slice(0, 10))}. Signing does not record a payment.`} /> : page.declinedAt ?
+      <Notice text={es ? `Presupuesto rechazado el ${f.date(page.declinedAt.slice(0, 10))}.` : `Estimate declined on ${f.date(page.declinedAt.slice(0, 10))}.`} /> : <>
       <T>{es ? 'No se guarda una firma dibujada. Tu nombre escrito, consentimiento, copia exacta y fecha se guardan como evidencia de aceptación.' : 'No drawn signature is collected. Your typed name, consent, exact copy and time are saved as evidence of acceptance.'}</T>
       <Field label={es ? 'Tu nombre completo' : 'Your full name'} value={name} maxLength={120} onChangeText={setName} />
       <Checkbox label={consent} value={agreed} onChange={setAgreed} />
-      <Button label={busy ? es ? 'Guardando…' : 'Saving…' : es ? 'Aceptar presupuesto' : 'Accept estimate'} disabled={busy || !agreed || name.trim().length < 2} onPress={async () => {
+      <Button label={busy ? es ? 'Guardando…' : 'Saving…' : es ? 'Aceptar presupuesto' : 'Accept estimate'} disabled={busy || confirmDecline || !agreed || name.trim().length < 2} onPress={async () => {
         setBusy(true); setFailed(false);
         try { const acceptedAt = await acceptEstimateAccess(String(token), page.hash, name.trim(), consent); setPage({ ...page, acceptedAt }); }
         catch { setFailed(true); } finally { setBusy(false); }
       }} />
+      {confirmDecline ? <Card style={{ gap: 8 }}>
+        <T>{es ? 'Si rechazas este presupuesto, ya no podrás aceptarlo desde el enlace.' : 'Declining closes this estimate to acceptance.'}</T>
+        <Button label={es ? 'Confirmar rechazo' : 'Confirm decline'} disabled={busy} onPress={async () => {
+          setBusy(true); setFailed(false);
+          try {
+            const declinedAt = await declineEstimateAccess(String(token), page.hash);
+            setPage({ ...page, declinedAt });
+            setConfirmDecline(false);
+          } catch { setFailed(true); } finally { setBusy(false); }
+        }} />
+        <Button label={es ? 'Cancelar' : 'Cancel'} variant="outline" disabled={busy} onPress={() => setConfirmDecline(false)} />
+      </Card> : <Button label={es ? 'Rechazar presupuesto' : 'Decline estimate'} variant="outline" disabled={busy} onPress={() => setConfirmDecline(true)} />}
     </>}
     {page.acceptedAt && q.deposit_on && percentOf(totals.total, q.deposit_bps) > 0 ? <>
       <Button label={es ? 'Abrir pago del depósito' : 'Open deposit payment'} disabled={busy} onPress={async () => {
@@ -72,6 +86,9 @@ function CustomerQuote() {
       }} />
       <T v="small" muted>{es ? 'Si ya pagaste o el pago está en proceso, no pagues de nuevo. Consulta a la empresa.' : 'If already paid or processing, do not pay again. Check with the business.'}</T>
     </> : null}
-    {failed ? <Notice text={es ? 'No pudimos confirmar la aceptación. Comprueba tu conexión y vuelve a intentarlo. Si el enlace caducó, pide uno nuevo.' : 'We could not confirm acceptance. Check your connection and try again. If the link expired, ask for a new one.'} tone="danger" /> : null}
+    {failed ? <>
+      <Notice text={es ? 'No pudimos completar la acción. Actualiza el estado para continuar.' : 'We could not complete that action. Refresh the estimate to continue.'} tone="danger" />
+      <Button label={es ? 'Actualizar estado' : 'Refresh estimate'} variant="outline" onPress={load} />
+    </> : null}
   </View></Screen>;
 }

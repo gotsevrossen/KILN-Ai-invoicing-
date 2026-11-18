@@ -21,7 +21,8 @@ export function textMessage(phone: string, body: string): Promise<void> {
   return Linking.openURL(`sms:${dialable(phone)}${join}body=${encodeURIComponent(body)}`);
 }
 
-/** The email app with the subject and message typed in; the owner adds the address and taps send. */
-export function emailMessage(subject: string, body: string): Promise<void> {
-  return Linking.openURL(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+/** Open the email app with the subject, message and any saved address. */
+export function emailMessage(subject: string, body: string, recipient = ''): Promise<void> {
+  const address = recipient.split('@').map(encodeURIComponent).join('@');
+  return Linking.openURL(`mailto:${address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
 }

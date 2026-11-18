@@ -19,6 +19,7 @@ export interface Customer {
   name: string;
   firstName: string;
   phone: string;
+  email?: string;
   lang: Lang;
 }
 
@@ -169,6 +170,7 @@ export interface EstimateDraft {
   sent: boolean;
   /** The customer signed it (by link or on the owner's phone). */
   signed: boolean;
+  declinedAt?: string;
   scope?: JobScope;
   /** Tax rules frozen when this estimate is issued. */
   tax?: TaxRule;

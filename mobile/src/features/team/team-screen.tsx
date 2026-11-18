@@ -14,6 +14,7 @@ import { userError } from '@/lib/user-errors';
 import { usePalette } from '@/theme/use-palette';
 
 import { fill, teamText } from './text';
+import { useUnassignedJobs } from './unassigned-jobs';
 import { refreshTeam, useTeam } from './use-team';
 
 /** Runs one team action at a time and keeps its error for the screen. */
@@ -83,6 +84,7 @@ export function TeamScreen() {
   const team = useTeam();
   const action = useTeamAction();
   const [inviteOpen, setInviteOpen] = useState(false);
+  const unassigned = useUnassignedJobs();
   const data = team.data;
   const pending = data?.members.filter((m) => m.status === 'pending') ?? [];
   const active = data?.members.filter((m) => m.status === 'active') ?? [];
@@ -130,6 +132,13 @@ export function TeamScreen() {
         </Card>)}
       </> : null}
 
+      {data && can(auth.role, 'assignJobs') ? (
+        <Card style={{ paddingVertical: 6 }}>
+          <ListRow icon="briefcase" iconTone={unassigned.length ? 'accent' : 'soft'} title={c.unassigned}
+            sub={unassigned.length ? `${unassigned.length} · ${c.unassignedSub}` : c.allAssigned} onPress={() => router.push('/team/unassigned')} />
+        </Card>
+      ) : null}
+
       {data ? <>
         <T v="eyebrow">{c.people}</T>
         <Card style={{ paddingVertical: 4 }}>
@@ -162,7 +171,7 @@ function PersonRow({ member, me, first }: { member: api.TeamMember; me: boolean;
   const f = useFormat();
   const role = member.role === 'owner' ? c.owner : member.role === 'manager' ? c.manager : c.crew;
   const last = member.last_active ? fill(c.lastActive, { when: f.date(member.last_active.slice(0, 10)) }) : c.noActivity;
-  const jobs = member.role === 'crew' ? ` · ${fill(c.openJobs, { count: member.open_jobs })}` : '';
+  const jobs = member.open_jobs ? ` · ${fill(c.openJobs, { count: member.open_jobs })}` : '';
   return <>
     {first ? null : <Hair />}
     <ListRow icon={member.role === 'crew' ? 'user' : 'shield'} iconTone={member.role === 'owner' ? 'accent' : 'soft'}

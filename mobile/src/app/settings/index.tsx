@@ -1,11 +1,13 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button, Card, Hair, ListRow, Notice, PageHeader, Screen, Segmented, SwitchRow, T } from '@/components/ui';
 import { aiReady } from '@/data/ai';
 import { useAuth } from '@/data/auth';
+import { loadAutoSave, saveAutoSave } from '@/data/job-cleanup';
 import { useStore } from '@/data/store';
 import { saveTeamSettings, type TeamSettings } from '@/data/team-access';
+import { cleanupText } from '@/features/cleanup/text';
 import { teamText } from '@/features/team/text';
 import { refreshTeam, useTeam } from '@/features/team/use-team';
 import { can } from '@/lib/permissions';
@@ -28,6 +30,23 @@ export default function Settings() {
   const c = teamText(lang);
   const owner = can(auth.role, 'businessSettings');
   const [teamError, setTeamError] = useState<string | null>(null);
+  const k = cleanupText(lang);
+  const connected = state.mode === 'connected' && !!auth.businessId;
+  const [autoSave, setAutoSave] = useState<boolean | null>(null);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!connected || !owner || !auth.businessId) return;
+    let live = true;
+    loadAutoSave(auth.businessId).then((on) => { if (live) setAutoSave(on); }, (e: unknown) => { if (live) setDocsError(userError(t, e)); });
+    return () => { live = false; };
+  }, [connected, owner, auth.businessId, t]);
+  const changeAutoSave = (on: boolean) => {
+    if (!auth.businessId) return;
+    const before = autoSave;
+    setAutoSave(on);
+    setDocsError(null);
+    saveAutoSave(auth.businessId, on).catch((e: unknown) => { setAutoSave(before); setDocsError(userError(t, e)); });
+  };
   const setTeam = (patch: Partial<TeamSettings>) => {
     if (!team.businessId) return;
     setTeamError(null);
@@ -82,6 +101,15 @@ export default function Settings() {
           ]}
         />
       </Card>
+
+      {connected && (auth.role === 'owner' || auth.role === 'manager') ? (
+        <Card style={{ gap: 12 }}>
+          <T v="eyebrow">{k.docsSection}</T>
+          {owner && autoSave !== null ? <SwitchRow label={k.autoSave} help={k.autoSaveHelp} value={autoSave} onChange={changeAutoSave} /> : null}
+          {docsError ? <Notice text={docsError} tone="danger" icon="alert-circle" /> : null}
+          <ListRow icon="archive" title={k.savedDocs} sub={k.savedDocsHelp} onPress={() => router.push('/saved-documents')} />
+        </Card>
+      ) : null}
 
       {team.businessId && owner && team.data ? (
         <Card style={{ gap: 12 }}>

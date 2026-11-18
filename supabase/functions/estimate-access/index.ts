@@ -52,6 +52,11 @@ Deno.serve(async (req: Request) => {
         p_ip: (req.headers.get('cf-connecting-ip') ?? req.headers.get('x-forwarded-for')?.split(',')[0] ?? '').slice(0, 64) });
       return result.error ? reply(409, { error: 'not_ready' }) : reply(200, { acceptedAt: result.data });
     }
+    if (body.action === 'decline') {
+      if (typeof body.hash !== 'string' || !/^[0-9a-f]{64}$/.test(body.hash)) return reply(400, { error: 'not_ready' });
+      const result = await db.rpc('decline_estimate_access', { p_hash: hash, p_snapshot_hash: body.hash });
+      return result.error ? reply(409, { error: 'not_ready' }) : reply(200, { declinedAt: result.data });
+    }
     return reply(400, { error: 'failed' });
   } catch {
     return reply(400, { error: 'failed' });

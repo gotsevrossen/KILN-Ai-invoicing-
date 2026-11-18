@@ -28,13 +28,18 @@ export interface QuoteSnapshot {
   tax: { rate_bps: number; labor: boolean; materials: boolean };
   lines: { description: string; unit: string; qty_hundredths: number; unit_cents: number; kind: 'labor' | 'material' | 'fee'; excluded: boolean }[];
 }
-export interface QuoteAccess { snapshot: QuoteSnapshot; hash: string; expiresAt: string; acceptedAt: string | null }
+export interface QuoteAccess { snapshot: QuoteSnapshot; hash: string; expiresAt: string; acceptedAt: string | null; declinedAt?: string | null }
 export function viewEstimateAccess(token: string): Promise<QuoteAccess> {
   return access({ action: 'view', token }) as Promise<QuoteAccess>;
 }
 export async function acceptEstimateAccess(token: string, hash: string, name: string, consent: string): Promise<string> {
   const result = await access({ action: 'accept', token, hash, name, consent, agreed: true }) as { acceptedAt: string };
   return result.acceptedAt;
+}
+
+export async function declineEstimateAccess(token: string, hash: string): Promise<string> {
+  const result = await access({ action: 'decline', token, hash }) as { declinedAt: string };
+  return result.declinedAt;
 }
 
 export function prepareQuoteDeposit(token: string): Promise<{ url: string }> { return access({ action: 'deposit', token }) as Promise<{ url: string }>; }

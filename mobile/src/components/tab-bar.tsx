@@ -1,4 +1,5 @@
 import Feather from '@expo/vector-icons/Feather';
+import * as Haptics from 'expo-haptics';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -9,6 +10,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { font, radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
+import { setTabSwipe } from './tab-swipe';
 import type { IconName } from './ui';
 
 /** Height of the floating bar; screens with tabs leave this much room at the bottom. */
@@ -61,7 +63,10 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
 
   const press = (key: string, focused: boolean) => {
     const event = emitter.emit({ type: 'tabPress', target: key, canPreventDefault: true });
-    if (!focused && !event.defaultPrevented) navigateToTab(key);
+    if (!focused && !event.defaultPrevented) {
+      void Haptics.selectionAsync().catch(() => {});
+      navigateToTab(key);
+    }
   };
 
   // A sideways drag that starts on the orange slider moves it between pages. Taps still go to
@@ -97,6 +102,14 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
 
   const captureRoute = state.routes.find((r) => r.name === capture.route);
   const captureOn = focusedName === capture.route;
+
+  // Swiping a page sideways moves along the same order as the bar: its pages left to right, then
+  // Capture (the button on the right). Re-registered each render so it always sees the current page.
+  useEffect(() => setTabSwipe((step) => {
+    const order = captureRoute ? [...pages, captureRoute] : pages;
+    const next = order[order.findIndex((r) => r.name === focusedName) + step];
+    if (next) press(next.key, false);
+  }));
   const bottom = Math.max(insets.bottom, 12);
   const fadeHeight = FADE + TAB_BAR_HEIGHT + bottom;
 

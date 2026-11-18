@@ -38,8 +38,12 @@ insert into public.invoices(id,business_id,job_id,number) select '30000000-0000-
 insert into public.invoice_lines(business_id,invoice_id,description,kind,qty_hundredths,unit_cents) select bid,'30000000-0000-0000-0000-000000000009','Agreed work','labor',100,100000 from payment_fixture;
 insert into public.invoice_lines(business_id,invoice_id,description,kind,qty_hundredths,unit_cents) select bid,'30000000-0000-0000-0000-000000000009','Approved credit','fee',100,-10000 from payment_fixture;
 update public.invoices set sent_at=now(),tax_rate_bps=0,tax_labor=false,tax_materials=false,issued_on=current_date,due_days=0 where id='30000000-0000-0000-0000-000000000009';
+select ok(not has_function_privilege('authenticated','public.reserve_invoice_email(uuid,uuid)','execute'),'business clients cannot manufacture email attempts');
 select throws_ok($$select public.mark_invoice_paid('30000000-0000-0000-0000-000000000009',100000)$$,'P0001','Wait for the online payment','failed retryable advance still blocks cash final');
 reset role;
+select is(public.reserve_invoice_email('30000000-0000-0000-0000-000000000009','30000000-0000-0000-0000-000000000011'),true,'first explicit email reserves one attempt');
+select is(public.reserve_invoice_email('30000000-0000-0000-0000-000000000009','30000000-0000-0000-0000-000000000011'),false,'retry does not reserve a second email');
+select throws_ok($$select public.reserve_invoice_email('30000000-0000-0000-0000-000000000009','30000000-0000-0000-0000-000000000012')$$,'PT429','wait before resending','another immediate send is throttled');
 select throws_ok($$select public.reserve_invoice_payment('30000000-0000-0000-0000-000000000009','wallet')$$,'P0001','Wait for the online payment','failed retryable advance still blocks online final');
 select lives_ok($$select public.record_job_payment('30000000-0000-0000-0000-000000000006','pi_test123456',20000,'wallet','succeeded')$$,'retry of same advance may succeed');
 select is(public.reserve_invoice_payment('30000000-0000-0000-0000-000000000009','wallet'),70000,'final reservation deducts confirmed advance');

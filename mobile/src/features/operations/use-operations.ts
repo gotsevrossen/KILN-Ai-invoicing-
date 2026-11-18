@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/data/auth';
+import { onLiveRefresh } from '@/data/live-events';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { userError } from '@/lib/user-errors';
@@ -23,6 +24,9 @@ export function useOperations() {
   const [busy, setBusy] = useState(false);
   const writeInFlight = useRef(false);
   const [attempt, setAttempt] = useState(0);
+  useEffect(() => onLiveRefresh(() => {
+    if (connected && !writeInFlight.current) setAttempt((value) => value + 1);
+  }), [connected]);
   useEffect(() => {
     let cancelled = false;
     writeInFlight.current = false;

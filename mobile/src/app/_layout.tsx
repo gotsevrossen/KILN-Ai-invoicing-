@@ -12,6 +12,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorScreen } from '@/components/error-screen';
 import { AuthProvider, useAuth } from '@/data/auth';
+import { LiveUpdates } from '@/data/live-updates';
 import { StoreProvider } from '@/data/store';
 import { LanguageProvider } from '@/i18n';
 import { ThemeModeProvider, useScheme } from '@/theme/theme-mode';
@@ -44,6 +45,7 @@ export default function RootLayout() {
         <LanguageProvider>
           <StoreProvider>
             <AuthProvider>
+              <LiveUpdates />
               <Screens />
             </AuthProvider>
           </StoreProvider>
@@ -64,11 +66,12 @@ function Screens(): ReactNode {
   const theme = { ...base, colors: { ...base.colors, background: p.ground, card: p.card, text: p.ink, border: p.line, primary: p.accent } };
 
   // pages anyone may open: signing in, joining a team, and the customer pages
-  const open = ['/sign-in', '/join', '/waiting'].includes(pathname) || ['/pay/', '/quote/', '/collect/', '/join/'].some((prefix) => pathname.startsWith(prefix));
+  const open = ['/sign-in', '/reset-password', '/join', '/waiting'].includes(pathname) || ['/pay/', '/quote/', '/collect/', '/join/'].some((prefix) => pathname.startsWith(prefix));
   // waiting for approval: nothing else until an owner or manager approves
   if (auth.ready && auth.pending && !open) return <Redirect href="/waiting" />;
   // crew members only ever see their own screens
   if (auth.ready && auth.role === 'crew' && !open && !pathname.startsWith('/crew')) return <Redirect href="/crew" />;
+  if (auth.ready && auth.role !== 'crew' && pathname.startsWith('/crew')) return <Redirect href="/" />;
   return (
     <ThemeProvider value={theme}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />

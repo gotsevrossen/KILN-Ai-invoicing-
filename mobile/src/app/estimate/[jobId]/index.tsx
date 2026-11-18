@@ -33,7 +33,7 @@ function clip(text: string, max = 60): string {
  */
 function EstimateBuilder() {
   const p = usePalette();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const f = useFormat();
   const { state, actions } = useStore();
   const { job, customer, draft, totals, issuedInvoice, locked } = useEstimate();
@@ -61,13 +61,14 @@ function EstimateBuilder() {
   const header = <PageHeader title={t('estimate.title')} sub={`${job.title} · ${customer.name}`} back={() => router.back()} />;
 
   if (locked) return <Screen header={header}>
-    <DeliveryStatus jobId={job.id} />
+    <DeliveryStatus jobId={job.id} refresh={sendOpen} />
+    {draft.declinedAt ? <Notice text={lang === 'es' ? 'El cliente rechazó el presupuesto.' : 'The customer declined this estimate.'} tone="flag" /> : null}
     <Notice text={t('review.frozen')} tone="soft" />
     <T v="money">{f.money(totals.total)}</T>
     <Button label={issuedInvoice ? t('flow.viewInvoice') : t('estimate.preview')}
       onPress={() => router.push(issuedInvoice ? `/customer/invoice/${issuedInvoice.id}` : `/customer/estimate/${job.id}`)} />
     <SendEstimateSheet open={sendOpen} onClose={() => setSendOpen(false)} jobId={job.id} customer={customer} />
-    <Button label={t('estimate.send')} icon="send" onPress={() => setSendOpen(true)} />
+    {!draft.declinedAt ? <Button label={t('estimate.send')} icon="send" onPress={() => setSendOpen(true)} /> : null}
   </Screen>;
 
   const openDetails = () => router.push(`/estimate/${job.id}/details`);

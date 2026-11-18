@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import * as api from './db-packages';
+import { onLiveRefresh } from './live-events';
 import { currentState, useStore } from './store';
 import type { ServicePackage } from './service-packages';
 
@@ -15,12 +16,14 @@ export function usePackages() {
   const [error, setError] = useState(false);
   const request = useRef(0);
   const mounted = useRef(true);
+  const writing = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const active = useCallback(() => {
     const now = currentState();
     return mounted.current && (now.mode === 'connected' ? now.businessId : 'example') === account;
   }, [account]);
   const reload = useCallback(async () => {
+    if (writing.current) return;
     const token = ++request.current;
     setBusy(true); setError(false);
     try {
@@ -29,6 +32,7 @@ export function usePackages() {
     } catch { if (active() && token === request.current) setError(true); }
     finally { if (active() && token === request.current) setBusy(false); }
   }, [account, active]);
+  useEffect(() => onLiveRefresh(() => { if (account && account !== 'example') void reload(); }), [account, reload]);
   useEffect(() => {
     let live = true;
     const token = ++request.current;
@@ -37,7 +41,9 @@ export function usePackages() {
     return () => { live = false; };
   }, [account, active]);
   const mutate = async (preset: ServicePackage, remove: boolean): Promise<boolean> => {
-    if (busy || !account || !active()) return false;
+    if (busy || writing.current || !account || !active()) return false;
+    writing.current = true;
+    request.current++;
     setBusy(true); setError(false);
     try {
       if (account === 'example') {
@@ -51,7 +57,7 @@ export function usePackages() {
       setLoaded({ account, items });
       return true;
     } catch { if (active()) setError(true); return false; }
-    finally { if (active()) setBusy(false); }
+    finally { writing.current = false; if (active()) setBusy(false); }
   };
   return { items: loaded.account === account ? loaded.items : [], busy, error, reload,
     save: (preset: ServicePackage) => mutate(preset, false), remove: (preset: ServicePackage) => mutate(preset, true) };

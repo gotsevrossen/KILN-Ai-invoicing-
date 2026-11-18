@@ -7,6 +7,7 @@ import { Button, Card, Chip, Field, Hair, IconButton, ListRow, Notice, PageHeade
 import { useAuth } from '@/data/auth';
 import { newUuid } from '@/data/db';
 import * as api from '@/data/team-access';
+import { onLiveRefresh } from '@/data/live-events';
 import { priceOnly } from '@/data/trades';
 import type { Unit } from '@/data/types';
 import { useLang } from '@/i18n';
@@ -50,11 +51,12 @@ export function CrewJobScreen() {
   const reload = useCallback(() => {
     const request = ++loadRequest.current;
     api.loadCrewJob(id).then((d) => { if (request === loadRequest.current) { setData(d); setLoadError(''); } },
-      (e: unknown) => { if (request === loadRequest.current) setLoadError(userError(t, e)); });
+      (e: unknown) => { if (request === loadRequest.current) { setData(null); setLoadError(userError(t, e)); } });
   }, [id, t]);
   useFocusEffect(useCallback(() => {
     reload();
-    return () => { loadRequest.current++; };
+    const unsubscribe = onLiveRefresh(reload);
+    return () => { loadRequest.current++; unsubscribe(); };
   }, [reload]));
 
   /** Saves one thing; closes the sheet and reloads the job when it worked. */

@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { balance, cors, hashToken, type LineRow, Refused, reply, serviceClient, setting, tokenShape, totalsOf } from '../_shared/invoice.ts';
 import { jobRequestAction, requestByToken } from '../_shared/job-payments.ts';
 import { validPaymentProof } from '../_shared/payment-proof.ts';
-import { stripe, StripeError } from '../_shared/stripe.ts';
+import { stripe, stripeConfigured, StripeError } from '../_shared/stripe.ts';
 
 // POST /functions/v1/pay  — the customer's invoice page. No sign-in: the link's code is the key,
 // and it opens only that one invoice, until it expires. Actions:
@@ -86,7 +86,7 @@ async function view(db: SupabaseClient, link: Link) {
   }
 
   const publishableKey = setting('STRIPE_PUBLISHABLE_KEY');
-  const payable = !!account && (account.wallet_ready || account.bank_ready) && !!publishableKey && money.due > 0 && money.pending === 0;
+  const payable = !!account && (account.wallet_ready || account.bank_ready) && stripeConfigured() && money.due > 0 && money.pending === 0;
   return {
     business: { name: business.data.name, phone: business.data.phone },
     customer: { name: customer.data.name, lang: customer.data.lang },
@@ -111,7 +111,7 @@ async function view(db: SupabaseClient, link: Link) {
 async function start(db: SupabaseClient, link: Link, method: unknown) {
   if (method !== 'wallet' && method !== 'bank') throw new Refused(400, 'bad_request');
   const key = setting('STRIPE_SECRET_KEY');
-  if (!key) throw new Refused(503, 'not_set_up');
+  if (!stripeConfigured()) throw new Refused(503, 'not_set_up');
   const { invoice, money, account } = await loadInvoice(db, link);
   if (!account || !(method === 'wallet' ? account.wallet_ready : account.bank_ready)) throw new Refused(409, 'not_ready');
   // one payment at a time: a bank payment on its way blocks a second one
