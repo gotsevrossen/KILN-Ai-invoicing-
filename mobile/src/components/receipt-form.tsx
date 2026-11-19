@@ -1,11 +1,14 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { getDocumentAsync } from 'expo-document-picker';
+import { File } from 'expo-file-system';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { aiErrorText } from '@/components/ai-parts';
 import { parseDollars } from '@/components/estimate-parts';
 import { Button, ButtonRow, Card, Chip, Field, Hair, IconButton, ListRow, Notice, PageHeader, Pill, Row, Screen, T } from '@/components/ui';
-import { aiReady, reviewReceipt, scanReceipt, type ScannedReceipt } from '@/data/ai';
+import { aiReady, reviewReceipt, scanReceipt, type ReceiptScan, type ScannedReceipt } from '@/data/ai';
+import { useAuth } from '@/data/auth';
 import { newUuid } from '@/data/db';
 import { crewAddReceipt } from '@/data/team-access';
 import * as sample from '@/data/sample';
@@ -36,36 +39,60 @@ function typedDay(iso: string, lang: Lang): string {
 type Day = 'today' | 'yesterday' | 'other';
 /** `unclear`: KILN couldn't read this line well from the photo. Cleared once the owner edits it. */
 interface Line { key: number; name: string; price: string; unclear?: boolean; eligibility?: ReceiptEligibility }
+interface Draft {
+  store: string; number: string; day: Day; dayText: string; date: string | null; lines: Line[]; tax: string;
+  taxNeedsReview: boolean; itemsRemoved: boolean; receiptId: string; crewItems: { id: string; name: string; costCents: number }[] | null;
+  scannedTotal?: number | null;
+}
+
+function readLocal<T>(key: string): T | null {
+  try { return JSON.parse(localStorage.getItem(key) ?? 'null') as T | null; }
+  catch { return null; }
+}
+
+type ReceiptFormProps = { crew?: { jobId: string; jobTitle: string } };
+
+export function NewReceipt(props: ReceiptFormProps = {}) {
+  const { session } = useAuth();
+  const { state } = useStore();
+  const { job } = useLocalSearchParams<{ job?: string }>();
+  const draftKey = state.mode === 'connected' && session && state.businessId
+    ? `kiln.receipt-draft:${session.user.id}:${state.businessId}:${props.crew?.jobId ?? job ?? 'inbox'}` : null;
+  return <ReceiptForm key={draftKey ?? 'example'} {...props} draftKey={draftKey} />;
+}
 
 /**
  * A receipt, scanned from a photo (KILN fills in the form; the owner checks it) or typed in by hand.
  * From a job, every item goes to that job; from Capture, the items go to the Inbox and the
  * sorting page opens next. KILN never guesses which job an item is for.
  */
-export function NewReceipt({ crew }: {
-  /** A crew member's receipt: every item goes to this assigned job, saved through the crew server function. */
-  crew?: { jobId: string; jobTitle: string };
-} = {}) {
+function ReceiptForm({ crew, draftKey }: ReceiptFormProps & { draftKey: string | null }) {
   const p = usePalette();
   const { t, lang } = useLang();
   const f = useFormat();
   const { state, actions } = useStore();
   const { job: jobId } = useLocalSearchParams<{ job?: string }>();
   const job = crew ? { id: crew.jobId, title: crew.jobTitle } : jobId ? jobById(jobId) : null;
-  // one id per receipt, so retrying after a dropped connection never saves it twice
-  const crewReceiptId = useRef(newUuid());
-
-  const [store, setStore] = useState('');
-  const [number, setNumber] = useState('');
-  const [day, setDay] = useState<Day>('today');
-  const [dayText, setDayText] = useState('');
-  const [lines, setLines] = useState<Line[]>([{ key: 1, name: '', price: '' }]);
-  const [tax, setTax] = useState('');
-  const [taxNeedsReview, setTaxNeedsReview] = useState(false);
-  const [itemsRemoved, setItemsRemoved] = useState(false);
+  const [draft] = useState(() => draftKey ? readLocal<Draft>(draftKey) : null);
+  const [receiptId] = useState(() => draft?.receiptId ?? newUuid());
+  const crewItems = useRef<Draft['crewItems']>(draft?.crewItems ?? null);
+  const oldDay = draft?.date && draft.day !== 'other' &&
+    draft.date !== (draft.day === 'today' ? sample.TODAY : addDays(sample.TODAY, -1));
+  const [store, setStore] = useState(draft?.store ?? '');
+  const [number, setNumber] = useState(draft?.number ?? '');
+  const [day, setDay] = useState<Day>(oldDay ? 'other' : draft?.day ?? 'today');
+  const [dayText, setDayText] = useState((oldDay || draft?.day === 'other') && draft?.date ? typedDay(draft.date, lang) : draft?.dayText ?? '');
+  const [lines, setLines] = useState<Line[]>(Array.isArray(draft?.lines) && draft.lines.length ? draft.lines : [{ key: 1, name: '', price: '' }]);
+  const [tax, setTax] = useState(draft?.tax ?? '');
+  const [taxNeedsReview, setTaxNeedsReview] = useState(draft?.taxNeedsReview ?? false);
+  const [itemsRemoved, setItemsRemoved] = useState(draft?.itemsRemoved ?? false);
+  const [storageProblem, setStorageProblem] = useState(false);
+  const clearAfterSave = useRef(false);
+  const [source, setSource] = useState<ReceiptScan | null>(() => draftKey ? readLocal<ReceiptScan>(`${draftKey}:source`) : null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const hasDraft = !!(store || number || tax || dayText || lines.some((line) => line.name || line.price));
 
   const date = day === 'today' ? sample.TODAY : day === 'yesterday' ? addDays(sample.TODAY, -1) : parseDay(dayText, lang);
   const dateBad = day === 'other' && dayText.trim().length > 0 && (date === null || date > sample.TODAY);
@@ -103,7 +130,21 @@ export function NewReceipt({ crew }: {
   const canScan = crew ? true : aiReady(state.mode);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
-  const [scannedTotal, setScannedTotal] = useState<number | null | undefined>(undefined);
+  const [scannedTotal, setScannedTotal] = useState<number | null | undefined>(draft?.scannedTotal);
+  const es = lang === 'es';
+  const removeDraft = () => {
+    clearAfterSave.current = true;
+    if (draftKey) try { localStorage.removeItem(draftKey); localStorage.removeItem(`${draftKey}:source`); } catch { /* Receipt is already saved. */ }
+  };
+  useEffect(() => {
+    if (!draftKey || clearAfterSave.current) return;
+    try {
+      if (hasDraft) localStorage.setItem(draftKey, JSON.stringify({ store, number, day, dayText, date, lines, tax, taxNeedsReview,
+        itemsRemoved, scannedTotal, receiptId, crewItems: crewItems.current } satisfies Draft));
+      else localStorage.removeItem(draftKey);
+    }
+    catch { setStorageProblem(true); }
+  }, [draftKey, hasDraft, store, number, day, dayText, date, lines, tax, taxNeedsReview, itemsRemoved, scannedTotal, receiptId]);
   const fill = (r: ScannedReceipt) => {
     if (r.store) setStore(r.store);
     if (r.number) setNumber(r.number);
@@ -123,15 +164,41 @@ export function NewReceipt({ crew }: {
     setItemsRemoved(false);
     setSaveError(null);
   };
-  const scan = async (camera: boolean) => {
+  const scan = async (type: 'camera' | 'photo' | 'pdf' | 'retry') => {
     if (savingRef.current || scanning) return;
     setScanning(true);
     setScanError(null);
     try {
-      // a long receipt can take two photos from the library
-      const picked = await pickPhotos(camera, camera ? 1 : 2);
-      if (picked.problem) setScanError(t(picked.problem === 'denied' ? 'ai.cameraDenied' : 'ai.photoTooBig'));
-      if (picked.photos.length) fill(await scanReceipt(picked.photos.map(({ mediaType, data }) => ({ mediaType, data }))));
+      let input = source;
+      if (type === 'pdf') {
+        const result = await getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true, base64: false });
+        if (result.canceled) return;
+        const asset = result.assets[0];
+        const file = asset.file ?? new File(asset.uri);
+        if (file.size > 3_000_000) { setScanError(es ? 'El PDF debe pesar menos de 3 MB.' : 'Choose a PDF smaller than 3 MB.'); return; }
+        let pdf: string;
+        if (asset.file) {
+          const bytes = new Uint8Array(await asset.file.arrayBuffer());
+          let binary = '';
+          for (let start = 0; start < bytes.length; start += 8192) binary += String.fromCharCode(...bytes.subarray(start, start + 8192));
+          pdf = btoa(binary);
+        } else pdf = await new File(asset.uri).base64();
+        if (!pdf.startsWith('JVBERi0')) { setScanError(es ? 'El archivo no es un PDF válido.' : 'Choose a valid PDF.'); return; }
+        input = { pdf };
+      } else if (type !== 'retry') {
+        const camera = type === 'camera';
+        const picked = await pickPhotos(camera, camera ? 1 : 2);
+        if (picked.problem) setScanError(t(picked.problem === 'denied' ? 'ai.cameraDenied' : 'ai.photoTooBig'));
+        if (!picked.photos.length) return;
+        input = { images: picked.photos.map(({ mediaType, data }) => ({ mediaType, data })) };
+      }
+      if (!input) return;
+      setSource(input);
+      if (draftKey) try { localStorage.setItem(`${draftKey}:source`, JSON.stringify(input)); } catch { setStorageProblem(true); }
+      fill(await scanReceipt(input));
+      // The scanned form is now the draft. The source bytes are only kept for a failed scan to retry.
+      setSource(null);
+      if (draftKey) try { localStorage.removeItem(`${draftKey}:source`); } catch { /* Form contents still save. */ }
     } catch (e: unknown) {
       setScanError(aiErrorText(t, e));
     } finally {
@@ -148,10 +215,17 @@ export function NewReceipt({ crew }: {
     const reviewedLines = lines.filter((line) => line.name.trim() || line.price.trim());
     try {
       if (crew) {
-        const items = filled.map((l) => ({ id: newUuid(), name: l.name, costCents: l.cents ?? 0 }));
+        const previous = crewItems.current;
+        const items = filled.map((l, i) => ({ id: previous?.[i]?.name === l.name && previous[i].costCents === l.cents ? previous[i].id : newUuid(), name: l.name, costCents: l.cents ?? 0 }));
+        crewItems.current = items;
+        if (draftKey) try {
+          const cached = readLocal<Draft>(draftKey);
+          if (cached) localStorage.setItem(draftKey, JSON.stringify({ ...cached, crewItems: items }));
+        } catch { setStorageProblem(true); }
         // the same check as the owner's receipts: every item must be for work
         await withReceiptReview(() => reviewReceipt({ store, items: items.map(({ name, costCents }) => ({ name, costCents })) }), items.length,
-          () => crewAddReceipt(crewReceiptId.current, crew.jobId, { store: store.trim(), number: number.trim(), date, taxCents, items }));
+          () => crewAddReceipt(receiptId, crew.jobId, { store: store.trim(), number: number.trim(), date, taxCents, items }));
+        removeDraft();
         router.back();
         return;
       }
@@ -160,6 +234,7 @@ export function NewReceipt({ crew }: {
         items: filled.map((l) => ({ name: l.name, costCents: l.cents ?? 0 })),
       }, job?.id ?? null);
       if (!id) { setSaveError(t('newReceipt.saveFailed')); return; }
+      removeDraft();
       if (job) router.back();
       else router.replace(`/receipt/${id}`);
     } catch (e: unknown) {
@@ -181,6 +256,8 @@ export function NewReceipt({ crew }: {
       {!canScan ? <Notice text={t('newReceipt.reviewSignIn')} icon="info" tone="flag" /> : null}
       {blocked ? <Notice text={t('newReceipt.blocked')} icon="alert-triangle" tone="flag" /> : null}
       {saveError ? <Notice text={`${t('newReceipt.nothingAdded')} ${saveError}`} icon="alert-triangle" tone="flag" /> : null}
+      {storageProblem ? <Notice text={es ? 'El dispositivo no pudo guardar parte del borrador.' : 'This device could not store part of the draft.'} tone="flag" /> : null}
+      {draftKey && (hasDraft || source) && !storageProblem ? <T v="small" muted>{es ? 'Borrador guardado en este dispositivo. Conéctate para revisar y añadir el recibo.' : 'Draft saved on this device. Connect to review and add the receipt.'}</T> : null}
       {!crew && !job && firstWaiting ? (
         <Card style={{ paddingVertical: 6 }}>
           <ListRow icon="inbox" iconTone="flag" title={t('newReceipt.waiting', { count: waiting })} onPress={() => router.push(`/receipt/${firstWaiting.id}`)} />
@@ -190,9 +267,11 @@ export function NewReceipt({ crew }: {
         <Card style={{ gap: 12 }}>
           <T v="eyebrow">{t('ai.scanTitle')}</T>
           <ButtonRow gap={10}>
-            <Button label={t('ai.takePhoto')} icon="camera" variant="dark" flex disabled={scanning || saving} onPress={() => scan(true)} />
-            <Button label={t('ai.choosePhoto')} icon="image" variant="outline" flex disabled={scanning || saving} onPress={() => scan(false)} />
+            <Button label={t('ai.takePhoto')} icon="camera" variant="dark" flex disabled={scanning || saving} onPress={() => scan('camera')} />
+            <Button label={t('ai.choosePhoto')} icon="image" variant="outline" flex disabled={scanning || saving} onPress={() => scan('photo')} />
           </ButtonRow>
+          <Button label={es ? 'Elegir PDF' : 'Choose PDF'} icon="file-text" variant="outline" disabled={scanning || saving} onPress={() => scan('pdf')} />
+          {source && !scanning ? <Button label={es ? 'Reintentar lectura' : 'Retry receipt scan'} variant="outline" disabled={saving} onPress={() => scan('retry')} /> : null}
           <T v="small" muted>{scanning ? t('ai.scanning') : t('ai.scanHelp')}</T>
           {scanError ? <T v="small" color={p.danger}>{scanError}</T> : null}
         </Card>

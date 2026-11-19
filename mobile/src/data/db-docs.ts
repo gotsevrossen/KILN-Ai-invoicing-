@@ -38,7 +38,7 @@ function scopeFrom(value: unknown): JobScope | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const v = value as Record<string, unknown>;
   const scope: JobScope = {};
-  for (const key of ['notes', 'location', 'details', 'exclusions', 'tradeId', 'jobTypeId'] as const) {
+  for (const key of ['notes', 'location', 'details', 'exclusions', 'tradeId', 'jobTypeId', 'terms', 'warranty'] as const) {
     if (typeof v[key] === 'string') (scope as Record<string, string>)[key] = v[key] as string;
   }
   return Object.keys(scope).length ? scope : undefined;
@@ -76,6 +76,8 @@ interface ChangeRow {
 }
 interface SignatureRow { document_type: 'estimate' | 'change_order'; document_id: string; signer_name: string; signed_at: string }
 interface InvoiceRow {
+  proof_photo_ids: string[] | null;
+  issued_alternative_methods: InvoiceSnapshot['alternativeMethods'] | null;
   id: string; job_id: string; number: string; summary: string; materials_mode: 'items' | 'total'; show_location: boolean;
   sent_at: string | null; paid_at: string | null; labor_description: string;
   labor_basis: 'actual' | 'estimate' | null; materials_basis: 'included' | 'additional' | null; billing_reviewed: boolean | null;
@@ -105,6 +107,8 @@ export interface LoadedDocs {
   sentInvoices: string[];
   paidInvoices: string[];
   issuedInvoices: Record<string, InvoiceSnapshot>;
+  invoiceDueDays: Record<string, number>;
+  invoiceProofPhotos: Record<string, string[]>;
   invoiceBilling: Record<string, InvoiceBilling>;
   materialsMode: Record<string, 'items' | 'total'>;
   showLocation: Record<string, boolean>;
@@ -124,7 +128,7 @@ export async function loadDocs(): Promise<LoadedDocs> {
     db().from('estimate_lines').select('id, estimate_id, price_item_ref, description, unit, qty_hundredths, unit_cents, from_voice, kind, excluded').order('position').returns<EstimateLineRow[]>(),
     db().from('change_orders').select('id, job_id, number, description, amount_cents, base_cents, signed_at, declined_at').order('number').returns<ChangeRow[]>(),
     db().from('signatures').select('document_type, document_id, signer_name, signed_at').returns<SignatureRow[]>(),
-    db().from('invoices').select('id, job_id, number, summary, materials_mode, show_location, sent_at, paid_at, labor_description, labor_basis, materials_basis, billing_reviewed, tax_rate_bps, tax_labor, tax_materials, issued_scope, excluded_scope, due_days, issued_on, issued_address, issued_work_order').order('created_at').returns<InvoiceRow[]>(),
+    db().from('invoices').select('id, job_id, number, summary, materials_mode, show_location, sent_at, paid_at, labor_description, labor_basis, materials_basis, billing_reviewed, tax_rate_bps, tax_labor, tax_materials, issued_scope, excluded_scope, due_days, issued_on, issued_address, issued_work_order, issued_alternative_methods, proof_photo_ids').order('created_at').returns<InvoiceRow[]>(),
     db().from('invoice_lines').select('id, invoice_id, kind, description, qty_hundredths, unit_cents, unit').order('position').returns<InvoiceLineRow[]>(),
     db().from('receipts').select('id, store, receipt_number, purchased_on, tax_cents, created_at').order('created_at', { ascending: false }).returns<ReceiptRow[]>(),
     db().from('receipt_items').select('id, receipt_id, line, name, qty_label, cost_cents, flagged, assignment, markup_off, fixed_name').order('line').returns<ReceiptItemRow[]>(),
@@ -148,6 +152,8 @@ export async function loadDocs(): Promise<LoadedDocs> {
     sentInvoices: [],
     paidInvoices: [],
     issuedInvoices: {},
+    invoiceDueDays: {},
+    invoiceProofPhotos: {},
     invoiceBilling: {},
     materialsMode: {},
     showLocation: {},
@@ -202,12 +208,16 @@ export async function loadDocs(): Promise<LoadedDocs> {
     docs.invoices.push({ id: i.id, number: i.number, jobId: i.job_id, laborDescription: i.labor_description, fees: [], summary: i.summary });
     docs.materialsMode[i.id] = i.materials_mode;
     if (i.show_location) docs.showLocation[i.id] = true;
+    if (!i.sent_at && i.due_days !== null) docs.invoiceDueDays[i.id] = i.due_days;
+    if (i.proof_photo_ids) docs.invoiceProofPhotos[i.id] = i.proof_photo_ids;
     if (i.labor_basis && i.materials_basis && i.billing_reviewed !== null) {
       docs.invoiceBilling[i.id] = { labor: i.labor_basis, materials: i.materials_basis, reviewed: i.billing_reviewed };
     }
     if (i.sent_at) {
       docs.sentInvoices.push(i.id);
       docs.issuedInvoices[i.id] = {
+        proofPhotoIds: i.proof_photo_ids ?? undefined,
+        alternativeMethods: i.issued_alternative_methods ?? undefined,
         lines: invLinesOf.get(i.id) ?? [],
         tax: taxFrom(i) ?? { rateBps: 0, labor: false, materials: false },
         summary: i.summary,
@@ -253,7 +263,9 @@ export async function loadDocs(): Promise<LoadedDocs> {
 
 // ---------------------------------------------------------------- jobs
 
-export async function setJobFlags(jobId: string, flags: { estimate_skipped?: boolean; reopened?: boolean }): Promise<void> {
+export async function setJobFlags(jobId: string, flags: {
+  estimate_skipped?: boolean; reopened?: boolean; document_terms?: string | null; document_warranty?: string | null;
+}): Promise<void> {
   ok(await db().from('jobs').update(flags).eq('id', jobId));
 }
 
@@ -323,11 +335,12 @@ export async function saveEstimate(businessId: string, jobId: string, draft: Est
 }
 
 /** Sends it: the server checks every included line is priced and freezes it from here on. */
-export async function sendEstimate(businessId: string, jobId: string, tax: TaxRule): Promise<void> {
+export async function sendEstimate(businessId: string, jobId: string, tax: TaxRule, scope?: JobScope): Promise<void> {
   const existing = one(await db().from('estimates').select('id,sent_at').eq('job_id', jobId).single<{ id: string; sent_at: string | null }>());
   if (existing.sent_at) return;
   const est = one(await db().from('estimates')
-    .update({ sent_at: new Date().toISOString(), tax_rate_bps: tax.rateBps, tax_labor: tax.labor, tax_materials: tax.materials })
+    .update({ sent_at: new Date().toISOString(), tax_rate_bps: tax.rateBps, tax_labor: tax.labor, tax_materials: tax.materials,
+      ...(scope ? { scope } : {}) })
     .eq('job_id', jobId).select('id').single<{ id: string }>());
   await audit(businessId, 'estimate.sent', 'estimate', est.id);
 }
@@ -374,7 +387,7 @@ export async function insertInvoice(businessId: string, invoice: Invoice): Promi
 
 /** Draft changes: billing check, materials display, location, summary. */
 export async function updateInvoice(invoiceId: string, patch: {
-  billing?: InvoiceBilling; materialsMode?: 'items' | 'total'; showLocation?: boolean; summary?: string;
+  billing?: InvoiceBilling; materialsMode?: 'items' | 'total'; showLocation?: boolean; summary?: string; dueDays?: number | null; proofPhotoIds?: string[];
 }): Promise<void> {
   const row: Record<string, unknown> = {};
   if (patch.billing) {
@@ -382,6 +395,8 @@ export async function updateInvoice(invoiceId: string, patch: {
     row.materials_basis = patch.billing.materials;
     row.billing_reviewed = patch.billing.reviewed;
   }
+  if (patch.dueDays !== undefined) row.due_days = patch.dueDays;
+  if (patch.proofPhotoIds !== undefined) row.proof_photo_ids = patch.proofPhotoIds;
   if (patch.materialsMode) row.materials_mode = patch.materialsMode;
   if (patch.showLocation !== undefined) row.show_location = patch.showLocation;
   if (patch.summary !== undefined) row.summary = patch.summary.slice(0, 4000);
@@ -413,8 +428,12 @@ export async function sendInvoice(invoiceId: string, s: InvoiceSnapshot, showLoc
 }
 
 /** Paid in cash, marked by the owner, with its payment. Apple Pay, Google Pay, and bank payments are saved by the server. */
-export async function markInvoicePaid(invoiceId: string, amountCents: number): Promise<void> {
-  ok(await db().rpc('mark_invoice_paid', { p_invoice_id: invoiceId, p_amount_cents: amountCents }));
+export async function markInvoicePaid(invoiceId: string, amountCents: number, method: import('@/lib/invoice-payment').AlternativeMethod): Promise<void> {
+  ok(await db().rpc('mark_invoice_alternative_paid', { p_invoice: invoiceId, p_amount_cents: amountCents, p_method: method }));
+}
+
+export async function recordAlternativePayment(invoiceId: string, amountCents: number, method: import('@/lib/invoice-payment').AlternativeMethod, paymentId: string): Promise<void> {
+  ok(await db().rpc('record_invoice_alternative_payment', { p_invoice: invoiceId, p_amount_cents: amountCents, p_method: method, p_payment_id: paymentId }));
 }
 
 // ---------------------------------------------------------------- receipts

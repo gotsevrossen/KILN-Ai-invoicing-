@@ -126,7 +126,6 @@ export function MissedItems({ jobId, leaveOut, onAdd }: { jobId: string; leaveOu
           </Row>
         );
       })}
-      <T v="small" muted>{t('ai.missedHelp')}</T>
     </Card>
   );
 }

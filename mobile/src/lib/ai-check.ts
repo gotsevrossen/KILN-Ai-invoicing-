@@ -84,6 +84,12 @@ export function checkScope(raw: unknown): string | null {
   return s && s.length <= 1500 ? s : null;
 }
 
+export function checkInvoiceReview(raw: unknown) {
+  const r = record(raw);
+  const questions = list(r?.questions).map((question) => str(question, 240)).filter((value) => value !== null);
+  return { summary: checkScope(r), questions: [...new Set(questions)].slice(0, 3) };
+}
+
 /** Prices in whole cents, for a known unit, matched to at most one price per existing item. */
 export function checkPrices(raw: unknown, itemIds: string[]): ImportedPrice[] {
   const matched = new Set<string>();

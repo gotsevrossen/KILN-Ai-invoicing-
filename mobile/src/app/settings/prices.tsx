@@ -11,10 +11,10 @@ export default function PriceSettings() {
   const { state, actions } = useStore();
 
   return (
-    <Screen header={<PageHeader title={t('settings.priceList')} sub={t('settings.priceListHelp')} back={() => router.back()} />}>
+    <Screen header={<PageHeader title={t('settings.priceList')} back={() => router.back()} />}>
       {aiReady(state.mode) ? (
         <Card style={{ paddingVertical: 6 }}>
-          <ListRow icon="camera" iconTone="accent" title={t('ai.importButton')} sub={t('ai.importSub')} onPress={() => router.push('/settings/import-prices')} />
+          <ListRow icon="camera" iconTone="accent" title={t('ai.importButton')} onPress={() => router.push('/settings/import-prices')} />
         </Card>
       ) : null}
       <Card style={{ gap: 12 }}>

@@ -3,11 +3,8 @@ import { emptyOperations, type Budget, type LaborCost, type Operations, type Vis
 
 /** Check access before rendering any internal costs. RLS also enforces every query. */
 export async function loadOperations(businessId: string): Promise<Operations> {
-  const result = await db().auth.getUser();
-  if (result.error || !result.data.user) throw new Error('signed out');
-  const user = result.data.user;
-  const membership = ok(await db().from('business_members').select('role').eq('business_id', businessId).eq('user_id', user.id).maybeSingle());
-  if (membership?.role !== 'owner') throw Object.assign(new Error('owner only'), { code: 'owner_only' });
+  const allowed = ok(await db().rpc('can_see_costs', { bid: businessId }));
+  if (!allowed) throw Object.assign(new Error('cost access required'), { code: 'owner_only' });
   const [workers, visits, labor, budgets] = await Promise.all([
     db().from('operations_workers').select('*').eq('business_id', businessId).order('name'),
     db().from('operations_visits').select('*').eq('business_id', businessId).order('starts_at'),

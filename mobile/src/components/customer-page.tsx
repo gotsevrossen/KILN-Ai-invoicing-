@@ -51,7 +51,8 @@ export function CustomerPage({
           </View>
           <View style={{ flex: 1 }}>
             <T v="h3">{state.profile.businessName}</T>
-            <T v="small" muted>{state.profile.phone}</T>
+            <T v="small" muted>{[state.profile.phone, state.profile.email].filter(Boolean).join(' · ')}</T>
+            {state.profile.address ? <T v="small" muted>{state.profile.address}</T> : null}
           </View>
         </Card>
         {children}

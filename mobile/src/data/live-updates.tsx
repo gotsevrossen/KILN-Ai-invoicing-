@@ -6,7 +6,7 @@ import { LiveRefresh } from '@/lib/live-refresh';
 import { supabase } from '@/lib/supabase';
 
 import { useAuth } from './auth';
-import { notifyLiveRefresh } from './live-events';
+import { notifyLiveRefresh, setPullRefresh } from './live-events';
 import { storeActions } from './store';
 
 /** One connection per account, shared by the office and the isolated crew screens. */
@@ -55,12 +55,14 @@ export function LiveUpdates() {
       if (subscribed.size < channels.length || Date.now() - lastRefresh > 120_000) scope.request();
     }, 30_000);
     const foreground = AppState.addEventListener('change', (state) => { if (state === 'active') scope.request(); });
+    const unpull = setPullRefresh(() => scope.now());
     scope.request();
     return () => {
       active = false;
       scope.stop();
       clearInterval(fallback);
       foreground.remove();
+      unpull();
       for (const channel of channels) void client.removeChannel(channel);
     };
   }, [ready, userId, businessId, pending]);

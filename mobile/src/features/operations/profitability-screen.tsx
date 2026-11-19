@@ -90,11 +90,11 @@ function Profitability() {
           <T v="label">{f.date(entry.date)} · {f.qty(entry.hundredths)} h</T>
           {entry.note ? <T>{entry.note}</T> : null}
           <T v="small" muted>{cost ? `${worker?.name ?? c.worker} · ${f.money(cost.loaded_rate_cents)}/h` : c.notAssigned}</T>
-          <Chip label={entryId === entry.id ? c.selected : c.attribute} selected={entryId === entry.id} onPress={() => { if (!op.busy) setEntryId(entry.id); }} />
-          {cost ? <Button label={c.unassign} variant="outline" disabled={op.busy} onPress={() => void op.run((bid) => api.removeLabor(entry.id, bid), (d) => ({ ...d, labor: d.labor.filter((l) => l.time_entry_id !== entry.id) }))} /> : null}
+          {op.canEditCosts ? <Chip label={entryId === entry.id ? c.selected : c.attribute} selected={entryId === entry.id} onPress={() => { if (!op.busy) setEntryId(entry.id); }} /> : null}
+          {op.canEditCosts && cost ? <Button label={c.unassign} variant="outline" disabled={op.busy} onPress={() => void op.run((bid) => api.removeLabor(entry.id, bid), (d) => ({ ...d, labor: d.labor.filter((l) => l.time_entry_id !== entry.id) }))} /> : null}
         </Card>;
       })}
-      {entryId ? <Card>
+      {op.canEditCosts && entryId ? <Card>
         <T v="label">{c.chooseWorker}</T>
         <Row style={{ flexWrap: 'wrap' }}>{op.data.workers.filter((w) => !w.archived).map((worker) => <Chip key={worker.id} label={worker.name} selected={workerId === worker.id} onPress={() => { if (!op.busy) setWorkerId(worker.id); }} />)}</Row>
         {!op.data.workers.some((w) => !w.archived) ? <Button label={c.addWorker} variant="outline" onPress={() => router.push('/operations')} /> : null}
@@ -103,11 +103,17 @@ function Profitability() {
       <Hair />
       <T v="h2">{c.budget}</T>
       <Card>
-        <Field label={c.budgetLabor} value={labor} onChangeText={setLabor} keyboardType="decimal-pad" editable={!op.busy} />
-        <Field label={c.budgetMaterials} value={material} onChangeText={setMaterial} keyboardType="decimal-pad" editable={!op.busy} />
-        <Field label={c.budgetOther} value={other} onChangeText={setOther} keyboardType="decimal-pad" editable={!op.busy} />
-        <Field label={c.otherActual} value={actualOther} onChangeText={setActualOther} keyboardType="decimal-pad" editable={!op.busy} />
-        <Button label={op.busy ? c.saving : c.save} disabled={op.busy} onPress={() => void saveBudget()} />
+        {op.canEditCosts ? <>
+          <Field label={c.budgetLabor} value={labor} onChangeText={setLabor} keyboardType="decimal-pad" editable={!op.busy} />
+          <Field label={c.budgetMaterials} value={material} onChangeText={setMaterial} keyboardType="decimal-pad" editable={!op.busy} />
+          <Field label={c.budgetOther} value={other} onChangeText={setOther} keyboardType="decimal-pad" editable={!op.busy} />
+          <Field label={c.otherActual} value={actualOther} onChangeText={setActualOther} keyboardType="decimal-pad" editable={!op.busy} />
+          <Button label={op.busy ? c.saving : c.save} disabled={op.busy} onPress={() => void saveBudget()} />
+        </> : budget ? <>
+          <LineRow label={c.budgetLabor} value={f.money(budget.labor_cents)} />
+          <LineRow label={c.budgetMaterials} value={f.money(budget.material_cents)} />
+          <LineRow label={c.budgetOther} value={f.money(budget.other_cents)} />
+        </> : null}
         {budget ? <>
           <LineRow label={c.budgetTotal} value={f.money(budget.labor_cents + budget.material_cents + budget.other_cents)} />
           <LineRow label={c.variance} value={f.money(budget.labor_cents + budget.material_cents + budget.other_cents - result.totalCents)} />

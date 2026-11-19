@@ -13,6 +13,7 @@ insert into auth.users(id,email) values
 insert into public.businesses(id,name) values
  ('c2222222-2222-2222-2222-22222222222a','Cleanup A'),
  ('c2222222-2222-2222-2222-22222222222b','Other B');
+update public.businesses set alternative_methods='{"cash":""}' where id='c2222222-2222-2222-2222-22222222222a';
 insert into public.business_members(business_id,user_id,role,status) values
  ('c2222222-2222-2222-2222-22222222222a','c1111111-1111-1111-1111-11111111111a','owner','active'),
  ('c2222222-2222-2222-2222-22222222222a','c1111111-1111-1111-1111-11111111111b','manager','active'),

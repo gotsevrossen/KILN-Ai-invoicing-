@@ -3,7 +3,7 @@
 import { assert, assertEquals } from 'jsr:@std/assert@1.0.13';
 
 import { balance, hashToken, newToken, tokenShape, totalsOf } from './invoice.ts';
-import { formBody, verifyWebhook } from './stripe.ts';
+import { formBody, merchantWalletDomain, verifyWebhook } from './stripe.ts';
 
 async function sign(secret: string, time: number, payload: string): Promise<string> {
   const enc = new TextEncoder();
@@ -65,7 +65,49 @@ Deno.test("what's left to pay counts paid and on-the-way payments, never failed 
 
 Deno.test("Stripe's form style for nested fields and lists", () => {
   assertEquals(
-    decodeURIComponent(formBody({ amount: 500, payment_method_types: ['card'], metadata: { invoice_id: 'x' }, skip: undefined })),
-    'amount=500&payment_method_types[0]=card&metadata[invoice_id]=x',
+    decodeURIComponent(formBody({ amount: 500, allowed_payment_method_types: ['card'], metadata: { invoice_id: 'x' }, skip: undefined })),
+    'amount=500&allowed_payment_method_types[0]=card&metadata[invoice_id]=x',
   );
+});
+
+Deno.test('wallet readiness comes from the connected merchant, domain, and environment', async () => {
+  const original = globalThis.fetch;
+  const host = 'checkout.example.test';
+  const domain = { id: 'pmd_example', domain_name: host, livemode: false, enabled: true,
+    apple_pay: { status: 'inactive' }, google_pay: { status: 'active' } };
+  const calls: string[] = [];
+  globalThis.fetch = (_input, init) => {
+    const url = new URL(String(_input));
+    assertEquals(new Headers(init?.headers).get('Stripe-Account'), 'acct_merchant');
+    calls.push(`${init?.method} ${url.pathname}`);
+    if (init?.method === 'GET') {
+      assertEquals(url.searchParams.get('domain_name'), host);
+      return Promise.resolve(Response.json({ data: [{ ...domain, livemode: true }, domain] }));
+    }
+    return Promise.resolve(Response.json({ ...domain, apple_pay: { status: 'active' } }));
+  };
+  try {
+    assertEquals(await merchantWalletDomain('sk_test_example', 'acct_merchant', host, 'inspect'),
+      { registered: true, enabled: true, applePay: false, googlePay: true });
+    assertEquals(await merchantWalletDomain('sk_test_example', 'acct_merchant', host, 'recheck'),
+      { registered: true, enabled: true, applePay: true, googlePay: true });
+    assertEquals(calls, ['GET /v1/payment_method_domains', 'GET /v1/payment_method_domains', 'POST /v1/payment_method_domains/pmd_example/validate']);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test('a disabled wallet domain stays off during an owner recheck', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (_input, init) => {
+    assertEquals(init?.method, 'GET');
+    return Promise.resolve(Response.json({ data: [{ id: 'pmd_example', domain_name: 'checkout.example.test', livemode: true,
+      enabled: false, apple_pay: { status: 'active' }, google_pay: { status: 'active' } }] }));
+  };
+  try {
+    assertEquals(await merchantWalletDomain('sk_live_example', 'acct_merchant', 'checkout.example.test', 'recheck'),
+      { registered: true, enabled: false, applePay: false, googlePay: false });
+  } finally {
+    globalThis.fetch = original;
+  }
 });

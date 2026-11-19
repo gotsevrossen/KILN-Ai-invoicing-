@@ -65,3 +65,25 @@ it('stopping an account cancels queued work and prevents an in-flight read retry
   queued.request(); queued.stop(); t.mock.timers.tick(1000);
   assert.equal(calls, 1);
 });
+
+it('pull to refresh reloads at once and resolves when that reload is done', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let resolve!: (value: boolean) => void;
+  let calls = 0;
+  const live = new LiveRefresh(() => { calls++; return new Promise<boolean>((done) => { resolve = done; }); });
+  let finished = false;
+  const pull = live.now().then(() => { finished = true; });
+  assert.equal(calls, 1);
+  await settle();
+  assert.equal(finished, false);
+  resolve(true);
+  await pull;
+  assert.equal(finished, true);
+  live.stop();
+});
+
+it('a pull after stopping resolves right away', async () => {
+  const live = new LiveRefresh(async () => true);
+  live.stop();
+  await live.now();
+});

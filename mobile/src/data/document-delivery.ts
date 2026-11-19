@@ -1,4 +1,27 @@
 import { db, ok } from './db-client';
+import { callFunction, PayFailed } from './db-pay';
+import type { JobScope } from './types';
+
+export interface ChangeOrderAccess {
+  snapshot: { number: number; description: string; amount_cents: number; base_cents: number; business_name: string;
+    business_phone: string; customer_name: string; lang: 'en' | 'es'; job_title: string; address: string; work_order: string | null; issued_at: string };
+  hash: string; signedAt: string | null; declinedAt: string | null;
+  signature: { name: string; method: string | null; ink?: unknown } | null;
+}
+
+export async function shareChangeOrder(id: string): Promise<string> {
+  const result = await callFunction('payments', { action: 'changeOrderLink', requestId: id }) as { url?: string };
+  if (!result?.url?.startsWith('https://')) throw new PayFailed('not_ready');
+  return result.url;
+}
+
+export function viewChangeOrder(token: string): Promise<ChangeOrderAccess> {
+  return access({ action: 'changeView', token }) as Promise<ChangeOrderAccess>;
+}
+
+export function answerChangeOrder(token: string, hash: string, accept: boolean, name: string): Promise<ChangeOrderAccess> {
+  return access({ action: 'changeAnswer', token, hash, accept, name, agreed: accept }) as Promise<ChangeOrderAccess>;
+}
 
 export type DeliveryStage = 'link_prepared' | 'share_opened' | 'owner_confirmed_shared' | 'customer_viewed';
 export type ShareChannel = 'text' | 'email' | 'share';
@@ -24,11 +47,12 @@ export interface QuoteSnapshot {
   id: string; number: string; title: string; address: string; lang: 'en' | 'es';
   business_name: string; business_phone: string; customer_name: string; issued_at: string;
   deposit_on: boolean; deposit_bps: number;
-  scope?: { notes?: string; details?: string; location?: string; exclusions?: string };
+  scope?: JobScope;
   tax: { rate_bps: number; labor: boolean; materials: boolean };
   lines: { description: string; unit: string; qty_hundredths: number; unit_cents: number; kind: 'labor' | 'material' | 'fee'; excluded: boolean }[];
 }
-export interface QuoteAccess { snapshot: QuoteSnapshot; hash: string; expiresAt: string; acceptedAt: string | null; declinedAt?: string | null }
+export interface QuoteAccess { snapshot: QuoteSnapshot; hash: string; expiresAt: string; acceptedAt: string | null; declinedAt?: string | null;
+  signature?: { name: string; ink?: unknown; method: string | null } | null }
 export function viewEstimateAccess(token: string): Promise<QuoteAccess> {
   return access({ action: 'view', token }) as Promise<QuoteAccess>;
 }

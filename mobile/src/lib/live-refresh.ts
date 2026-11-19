@@ -4,6 +4,8 @@ export class LiveRefresh {
   private running = false;
   private dirty = false;
   private stopped = false;
+  // pull-to-refresh: resolved when the next reload finishes
+  private waiters: (() => void)[] = [];
 
   private refresh: () => Promise<boolean>;
   private delay: number;
@@ -16,6 +18,15 @@ export class LiveRefresh {
     this.timer = setTimeout(() => { this.timer = null; void this.run(); }, this.delay);
   };
 
+  /** Reload right away (skipping the short wait) and resolve once that reload has finished. */
+  now = () => new Promise<void>((resolve) => {
+    if (this.stopped) return resolve();
+    this.waiters.push(resolve);
+    this.dirty = true;
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    if (!this.running) void this.run();
+  });
+
   private async run() {
     if (this.stopped || this.running) return;
     this.dirty = false;
@@ -26,6 +37,8 @@ export class LiveRefresh {
       // A reconnect or the periodic safety refresh retries network failures.
     } finally {
       this.running = false;
+      // the pull spinner stops after one reload; a follow-up (if one is due) runs on its own
+      this.waiters.splice(0).forEach((done) => done());
       if (!this.stopped && this.dirty) this.request();
     }
   }
@@ -33,6 +46,7 @@ export class LiveRefresh {
   stop() {
     this.stopped = true;
     this.dirty = false;
+    this.waiters.splice(0).forEach((done) => done());
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
   }

@@ -16,7 +16,8 @@ export function useOperations() {
   const copy = operationsText(lang);
   const businessId = state.businessId;
   const connected = state.mode === 'connected';
-  const scope = connected ? `${businessId ?? ''}:${auth.session?.user.id ?? ''}` : 'example';
+  const canEditCosts = !connected || auth.role === 'owner';
+  const scope = connected ? `${businessId ?? ''}:${auth.session?.user.id ?? ''}:${auth.role ?? ''}` : 'example';
   const currentScope = useRef(scope);
   useEffect(() => { currentScope.current = scope; }, [scope]);
   const [loaded, setLoaded] = useState<{ scope: string; data: Operations } | null>(null);
@@ -35,7 +36,7 @@ export function useOperations() {
     load.then((data) => {
       if (!cancelled) { setLoaded({ scope, data }); setProblem(null); setBusy(false); }
     }, (error: unknown) => {
-      if (!cancelled) setProblem({ scope, text: userError(t, error) });
+      if (!cancelled) { setLoaded(null); setProblem({ scope, text: userError(t, error) }); }
     });
     return () => { cancelled = true; };
   }, [scope, connected, businessId, auth.session, attempt, t]);
@@ -66,5 +67,5 @@ export function useOperations() {
       if (currentScope.current === scope) { writeInFlight.current = false; setBusy(false); }
     }
   }, [data, busy, connected, businessId, scope, copy.overlap, t]);
-  return { data: data ?? emptyOperations(), ready: !!data, error: problem?.scope === scope ? problem.text : null, busy, run, retry: () => setAttempt((a) => a + 1), connected, businessId: businessId ?? 'example', copy };
+  return { data: data ?? emptyOperations(), ready: !!data, error: problem?.scope === scope ? problem.text : null, busy, run, retry: () => setAttempt((a) => a + 1), connected, canEditCosts, businessId: businessId ?? 'example', copy };
 }

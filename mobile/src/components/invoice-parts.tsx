@@ -26,7 +26,7 @@ export function useInvoice() {
   const missingHours = needsActualHours(job, state.estimates[job.id], billing, hoursFor(state, job.id));
   const pendingChange = changeOrdersForJob(job.id).find((change) => !state.signed[change.id] && !state.declinedChanges.includes(change.id));
   const lines = invoiceLines(state, invoice);
-  const dueDays = issued?.dueDays ?? state.settings.dueDays;
+  const dueDays = issued?.dueDays ?? state.invoiceDueDays?.[invoice.id] ?? state.settings.dueDays;
 
   // the same checks the store makes before it sends
   const fixes: Fix[] = sent ? [] : [

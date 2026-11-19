@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { Button, ButtonRow, Card, Hair, Notice, T } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import * as api from '@/data/job-cleanup';
+import { onLiveRefresh } from '@/data/live-events';
 import { storeActions, useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
@@ -60,7 +61,8 @@ export function LeavingJobs() {
   useFocusEffect(useCallback(() => {
     live.current = true;
     void load();
-    return () => { live.current = false; };
+    const unsubscribe = onLiveRefresh(() => void load());
+    return () => { live.current = false; unsubscribe(); };
   }, [load]));
 
   const choose = async (ids: string[], choice: 'save' | 'discard') => {

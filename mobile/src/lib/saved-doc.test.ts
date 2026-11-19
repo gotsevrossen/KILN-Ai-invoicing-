@@ -65,4 +65,27 @@ describe('saved document page', () => {
     assert.ok(html.includes('Not included'));
     assert.ok(html.includes('$190.70'));
   });
+  it('keeps lump-sum materials private and shows signature ink in a signed copy', () => {
+    const html = savedDocHtml(base({ document: { ...base().document, materials_mode: 'total' },
+      signatures: [{ name: 'Lee', signedAt: '2026-10-03T14:00:00Z', method: 'finger', hash: '', ink: [[[0, 0], [1, 1]]] }] }),
+    { ...labels, materials: 'Materials' }, 'en');
+    assert.ok(!html.includes('P-trap'));
+    assert.ok(html.includes('Materials'));
+    assert.ok(html.includes('<svg'));
+  });
+  it('receipts show money received and omit failed payment attempts', () => {
+    const html = savedDocHtml(base({ payments: [
+      { amountCents: 5000, method: 'cash', paidAt: null, status: 'succeeded' },
+      { amountCents: 10000, method: 'bank', paidAt: null, status: 'failed' },
+    ] }), labels, 'en', true);
+    assert.ok(html.includes('$50.00'));
+    assert.ok(!html.includes('$100.00'));
+    assert.ok(!html.includes('P-trap'));
+  });
+  it('shows the saved terms and warranty on a customer copy', () => {
+    const html = savedDocHtml(base({ document: { ...base().document,
+      scope: { terms: 'Due on receipt', warranty: 'Covered <parts>' } } }), labels, 'en');
+    assert.ok(html.includes('<h3>Terms</h3><p>Due on receipt</p>'));
+    assert.ok(html.includes('<h3>Warranty</h3><p>Covered &lt;parts&gt;</p>'));
+  });
 });

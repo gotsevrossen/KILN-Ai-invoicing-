@@ -7,6 +7,7 @@ import { useAuth } from '@/data/auth';
 import { loadAutoSave, saveAutoSave } from '@/data/job-cleanup';
 import { useStore } from '@/data/store';
 import { saveTeamSettings, type TeamSettings } from '@/data/team-access';
+import { accountText } from '@/features/account/text';
 import { cleanupText } from '@/features/cleanup/text';
 import { teamText } from '@/features/team/text';
 import { refreshTeam, useTeam } from '@/features/team/use-team';
@@ -31,6 +32,7 @@ export default function Settings() {
   const owner = can(auth.role, 'businessSettings');
   const [teamError, setTeamError] = useState<string | null>(null);
   const k = cleanupText(lang);
+  const a = accountText(lang);
   const connected = state.mode === 'connected' && !!auth.businessId;
   const [autoSave, setAutoSave] = useState<boolean | null>(null);
   const [docsError, setDocsError] = useState<string | null>(null);
@@ -59,57 +61,46 @@ export default function Settings() {
         <PageHeader title={t('settings.title')} back={() => router.back()} />
       }>
 
-      <Card style={{ gap: 12 }}>
-        <T v="eyebrow">{t('settings.language')}</T>
-        <Segmented
-          label={t('settings.language')}
-          value={lang}
-          onChange={setLang}
-          options={[
-            { key: 'en', label: 'English' },
-            { key: 'es', label: 'Español' },
-          ]}
-        />
-        <T v="small" muted>{t('settings.languageHelp')}</T>
-        <T v="label" style={{ marginTop: 4 }}>{t('voice.langSetting')}</T>
-        <Segmented
-          label={t('voice.langSetting')}
-          value={voiceLang}
-          onChange={(v) => {
-            setVoiceLang(v);
-            saveVoiceLang(v);
-          }}
-          options={[
-            { key: 'app', label: t('voice.sameAsApp') },
-            { key: 'en', label: 'English' },
-            { key: 'es', label: 'Español' },
-          ]}
-        />
-        <T v="small" muted>{t('voice.langHelp')}</T>
+      <Card style={{ gap: 8 }}>
+        <T v="h3">{state.profile.businessName}</T>
+        {state.profile.phone || state.profile.email ? <T v="small" muted>{[state.profile.phone, state.profile.email].filter(Boolean).join(' · ')}</T> : null}
+        {owner ? <ListRow icon="briefcase" title={a.editBusiness} chevron onPress={() => router.push('/settings/business')} /> : null}
+        {auth.configured && auth.session ? <ListRow icon="user" title={a.accountTitle} sub={auth.session.user.email} chevron onPress={() => router.push('/settings/account')} /> : null}
       </Card>
 
-      <Card style={{ gap: 12 }}>
-        <T v="eyebrow">{t('settings.theme')}</T>
-        <Segmented
-          label={t('settings.theme')}
-          value={theme.mode}
-          onChange={theme.setMode}
-          options={[
-            { key: 'light', label: t('settings.themeLight') },
-            { key: 'dark', label: t('settings.themeDark') },
-            { key: 'system', label: t('settings.themeSystem') },
-          ]}
+      <Card style={{ gap: 4 }}>
+        {owner ? <>
+          <ListRow icon="tool" title={t('settings.trades')} sub={state.profile.trades.map((id) => t(`trades.${id}`)).join(', ')} onPress={() => router.push('/settings/trades')} />
+          <Hair />
+        </> : null}
+        <ListRow
+          icon="tag"
+          iconTone={unpriced > 0 ? 'flag' : 'soft'}
+          title={t('settings.priceList')}
+          sub={unpriced > 0 ? t('settings.needPrices', { count: unpriced }) : t('settings.itemCount', { count: state.priceList.length })}
+          onPress={() => router.push('/settings/prices')}
         />
-      </Card>
-
-      {connected && (auth.role === 'owner' || auth.role === 'manager') ? (
-        <Card style={{ gap: 12 }}>
-          <T v="eyebrow">{k.docsSection}</T>
-          {owner && autoSave !== null ? <SwitchRow label={k.autoSave} help={k.autoSaveHelp} value={autoSave} onChange={changeAutoSave} /> : null}
-          {docsError ? <Notice text={docsError} tone="danger" icon="alert-circle" /> : null}
+        <Hair />
+        <ListRow icon="layers" title={t('improvements.packages')} sub={t('improvements.packagesHelp')} onPress={() => router.push('/settings/packages')} />
+        {owner ? <>
+          <Hair />
+          <ListRow icon="percent" title={t('settings.pricing')} sub={t('settings.pricingSub', { markup: s.markupBps / 100, tax: s.tax.rateBps / 100 })} onPress={() => router.push('/settings/pricing')} />
+          <Hair />
+          <ListRow icon="credit-card" title={t('settings.payments')}
+            sub={`${t('settings.due')}: ${s.dueDays === 0 ? t('settings.dueOnReceipt') : t('settings.dueDays', { days: s.dueDays })}`}
+            onPress={() => router.push('/settings/payments')} />
+        </> : null}
+        {can(auth.role, 'seeCosts', { managersSeeCosts: team.data?.settings.managersSeeCosts }) ? <>
+          <Hair />
+          <ListRow icon="users" title={t('improvements.operations')} sub={t('improvements.operationsHelp')} onPress={() => router.push('/operations')} />
+        </> : null}
+        {connected && (auth.role === 'owner' || auth.role === 'manager') ? <>
+          <Hair />
+          <ListRow icon="file-text" title={lang === 'es' ? 'Historial de facturación' : 'Billing history'} onPress={() => router.push('/settings/billing-history')} />
+          <Hair />
           <ListRow icon="archive" title={k.savedDocs} sub={k.savedDocsHelp} onPress={() => router.push('/saved-documents')} />
-        </Card>
-      ) : null}
+        </> : null}
+      </Card>
 
       {team.businessId && owner && team.data ? (
         <Card style={{ gap: 12 }}>
@@ -123,61 +114,30 @@ export default function Settings() {
         </Card>
       ) : null}
 
-      <Card style={{ gap: 4 }}>
-        {can(auth.role, 'seeCosts', { managersSeeCosts: team.data?.settings.managersSeeCosts }) ? <>
-          <ListRow icon="users" title={t('improvements.operations')} sub={t('improvements.operationsHelp')} onPress={() => router.push('/operations')} />
-          <Hair />
-        </> : null}
-        <ListRow icon="layers" title={t('improvements.packages')} sub={t('improvements.packagesHelp')} onPress={() => router.push('/settings/packages')} />
-        <Hair />
-        {owner ? <>
-          <ListRow
-            icon="tool"
-            title={t('settings.trades')}
-            sub={state.profile.trades.map((id) => t(`trades.${id}`)).join(', ')}
-            onPress={() => router.push('/settings/trades')}
-          />
-          <Hair />
-        </> : null}
-        <ListRow
-          icon="tag"
-          iconTone={unpriced > 0 ? 'flag' : 'soft'}
-          title={t('settings.priceList')}
-          sub={unpriced > 0 ? t('settings.needPrices', { count: unpriced }) : t('settings.itemCount', { count: state.priceList.length })}
-          onPress={() => router.push('/settings/prices')}
-        />
-        {owner ? <>
-        <Hair />
-        <ListRow
-          icon="percent"
-          title={t('settings.pricing')}
-          sub={t('settings.pricingSub', { markup: s.markupBps / 100, tax: s.tax.rateBps / 100 })}
-          onPress={() => router.push('/settings/pricing')}
-        />
-        <Hair />
-        <ListRow
-          icon="credit-card"
-          title={t('settings.payments')}
-          sub={`${t('settings.due')}: ${s.dueDays === 0 ? t('settings.dueOnReceipt') : t('settings.dueDays', { days: s.dueDays })}`}
-          onPress={() => router.push('/settings/payments')}
-        />
-        </> : null}
-      </Card>
-
-      {!owner ? <Notice text={c.ownerOnly} tone="soft" icon="lock" /> : null}
-
-      {aiReady(state.mode) && owner ? (
+      {owner && ((connected && autoSave !== null) || aiReady(state.mode)) ? (
         <Card style={{ gap: 12 }}>
-          <T v="eyebrow">{t('ai.settingsTitle')}</T>
-          <SwitchRow label={t('ai.scopeSetting')} help={t('ai.scopeSettingHelp')} value={state.aiScope} onChange={actions.setAiScope} />
-          <T v="small" muted>{t('ai.settingsHelp')}</T>
+          {connected && autoSave !== null ? <SwitchRow label={k.autoSave} help={k.autoSaveHelp} value={autoSave} onChange={changeAutoSave} /> : null}
+          {docsError ? <Notice text={docsError} tone="danger" icon="alert-circle" /> : null}
+          {aiReady(state.mode) ? <SwitchRow label={t('ai.scopeSetting')} help={t('ai.scopeSettingHelp')} value={state.aiScope} onChange={actions.setAiScope} /> : null}
         </Card>
       ) : null}
 
+      <Card style={{ gap: 12 }}>
+        <T v="label">{t('settings.language')}</T>
+        <Segmented label={t('settings.language')} value={lang} onChange={setLang}
+          options={[{ key: 'en', label: 'English' }, { key: 'es', label: 'Español' }]} />
+        <T v="small" muted>{t('settings.languageHelp')}</T>
+        <T v="label">{t('voice.langSetting')}</T>
+        <Segmented label={t('voice.langSetting')} value={voiceLang}
+          onChange={(v) => { setVoiceLang(v); saveVoiceLang(v); }}
+          options={[{ key: 'app', label: t('voice.sameAsApp') }, { key: 'en', label: 'English' }, { key: 'es', label: 'Español' }]} />
+        <T v="small" muted>{t('voice.langHelp')}</T>
+        <T v="label">{t('settings.theme')}</T>
+        <Segmented label={t('settings.theme')} value={theme.mode} onChange={theme.setMode}
+          options={[{ key: 'light', label: t('settings.themeLight') }, { key: 'dark', label: t('settings.themeDark') }, { key: 'system', label: t('settings.themeSystem') }]} />
+      </Card>
+
       <Card style={{ gap: 8 }}>
-        <T v="eyebrow">{t('settings.business')}</T>
-        <T v="h3">{state.profile.businessName}</T>
-        {state.profile.phone ? <T v="small" muted>{state.profile.phone}</T> : null}
         {auth.configured ? (
           <>
             {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}

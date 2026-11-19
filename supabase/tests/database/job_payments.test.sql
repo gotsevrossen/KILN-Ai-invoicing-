@@ -9,6 +9,7 @@ select public.create_business('Payment test','','{plumbing}','flat',0);
 reset role;
 create temp table payment_fixture as select business_id as bid,'30000000-0000-0000-0000-000000000003'::uuid as job from public.business_members where user_id='30000000-0000-0000-0000-000000000001';
 grant select on payment_fixture to authenticated;
+update public.businesses set alternative_methods='{"cash":""}' where id=(select bid from payment_fixture);
 insert into public.customers(id,business_id,name) select '30000000-0000-0000-0000-000000000004',bid,'Customer' from payment_fixture;
 insert into public.jobs(id,business_id,customer_id,title) select job,bid,'30000000-0000-0000-0000-000000000004','Bathroom' from payment_fixture;
 insert into public.estimates(id,business_id,job_id,number,deposit_bps) select '30000000-0000-0000-0000-000000000005',bid,job,'E-TEST',3000 from payment_fixture;

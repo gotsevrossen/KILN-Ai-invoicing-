@@ -1,8 +1,10 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { View } from 'react-native';
 
 import { aiErrorText } from '@/components/ai-parts';
-import { Button, Card, Chip, Field, ListRow, Notice, Row, T } from '@/components/ui';
+
+import { Button, Chip, Field, ListRow, Notice, Row, T } from '@/components/ui';
 import { aiReady, findJobs } from '@/data/ai';
 import { useAuth } from '@/data/auth';
 import * as sample from '@/data/sample';
@@ -58,7 +60,11 @@ export function useJobFilter(filters: JobFilters) {
  * jobs by the kind of work ("sink repair" also finds drain cleaning and leak fixes), and open the
  * documents saved from removed jobs.
  */
-export function JobsMenu({ filters, onChange, shown, total }: { filters: JobFilters; onChange: (f: JobFilters) => void; shown: number; total: number }) {
+export function JobsMenu({ filters, onChange, shown, total, onLeave }: {
+  filters: JobFilters; onChange: (f: JobFilters) => void; shown: number; total: number;
+  /** Called before opening another page, so the menu closes first. */
+  onLeave: () => void;
+}) {
   const { lang, t } = useLang();
   const c = cleanupText(lang);
   const you = teamText(lang).you;
@@ -78,6 +84,8 @@ export function JobsMenu({ filters, onChange, shown, total }: { filters: JobFilt
     .map((j) => scopeOf(state, j)?.jobTypeId).filter((x): x is string => !!x))];
   const people = team.showTab && team.data ? team.data.members.filter((m) => m.status === 'active') : [];
   const canAi = aiReady(state.mode);
+  // a job type the owner made up has no catalog name
+  const typeName = (id: string) => (id === 'custom' ? t('estimate.customType') : t(`jobTypes.${id}` as 'jobTypes.leak'));
 
   const find = async () => {
     const q = query.trim();
@@ -95,7 +103,7 @@ export function JobsMenu({ filters, onChange, shown, total }: { filters: JobFilt
           return {
             id: j.id, title: j.title.slice(0, 200),
             trade: scope?.tradeId ? t(`trades.${scope.tradeId}`) : '',
-            jobType: scope?.jobTypeId ? t(`jobTypes.${scope.jobTypeId}` as 'jobTypes.leak').slice(0, 80) : '',
+            jobType: scope?.jobTypeId ? typeName(scope.jobTypeId).slice(0, 80) : '',
             scope: text.slice(0, 600),
           };
         }),
@@ -109,7 +117,7 @@ export function JobsMenu({ filters, onChange, shown, total }: { filters: JobFilt
   };
 
   return (
-    <Card style={{ gap: 12 }}>
+    <View style={{ gap: 12 }}>
       <T v="eyebrow">{c.aiSearch}</T>
       {canAi ? <>
         <Field value={query} onChangeText={setQuery} placeholder={c.aiSearchHint} accessibilityLabel={c.aiSearch} returnKeyType="search" onSubmitEditing={() => void find()} />
@@ -144,7 +152,7 @@ export function JobsMenu({ filters, onChange, shown, total }: { filters: JobFilt
         <T v="label">{c.jobType}</T>
         <Row style={{ flexWrap: 'wrap' }} gap={8}>
           <Chip label={c.any} selected={!filters.jobTypeId} onPress={() => set({ jobTypeId: null })} />
-          {types.map((id) => <Chip key={id} label={t(`jobTypes.${id}` as 'jobTypes.leak')} selected={filters.jobTypeId === id} onPress={() => set({ jobTypeId: id })} />)}
+          {types.map((id) => <Chip key={id} label={typeName(id)} selected={filters.jobTypeId === id} onPress={() => set({ jobTypeId: id })} />)}
         </Row>
       </> : null}
 
@@ -154,8 +162,8 @@ export function JobsMenu({ filters, onChange, shown, total }: { filters: JobFilt
       </> : null}
 
       {state.mode === 'connected' && (auth.role === 'owner' || auth.role === 'manager') ? (
-        <ListRow icon="archive" title={c.savedDocs} sub={c.savedDocsHelp} chevron onPress={() => router.push('/saved-documents')} />
+        <ListRow icon="archive" title={c.savedDocs} sub={c.savedDocsHelp} chevron onPress={() => { onLeave(); router.push('/saved-documents'); }} />
       ) : null}
-    </Card>
+    </View>
   );
 }

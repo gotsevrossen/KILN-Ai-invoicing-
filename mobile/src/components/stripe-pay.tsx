@@ -1,15 +1,17 @@
 import type { Lang, TFn } from '@/i18n';
+import type { OnlineCheckout } from '@/lib/invoice-payment';
 
 import { T } from './ui';
 
 export interface StripePayProps {
   token: string;
-  pay: { wallet: boolean; bank: boolean; account: string; publishableKey: string };
+  pay: OnlineCheckout;
   amountCents: number;
   amountText: string;
   lang: Lang;
   tc: TFn;
-  onDone: (status: 'succeeded' | 'processing') => void;
+  onAccent?: boolean;
+  onDone: (status: 'succeeded' | 'processing') => void | Promise<void>;
 }
 
 /** Customers pay on the web page (stripe-pay.web.tsx). Inside the app, the link just says so. */

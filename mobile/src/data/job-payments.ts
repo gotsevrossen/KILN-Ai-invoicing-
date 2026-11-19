@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import type { OnlineCheckout } from '@/lib/invoice-payment';
 import { callFunction, PayFailed } from './db-pay';
 import { db, ok } from './db-client';
 export interface JobPaymentRequest { id:string; job_id:string; kind:'deposit'|'milestone'; label:string; amount_cents:number; created_at:string; intent_method:'wallet'|'bank'|null }
@@ -27,6 +28,6 @@ export interface CollectionPage {
  business:{name:string;phone:string}; customer:{name:string;lang:'en'|'es'};
  request:{label:string;kind:'deposit'|'milestone';amountCents:number;job:string;address:string};
  paid:boolean;pending:boolean;expiresAt:string;
- pay:{wallet:boolean;bank:boolean;account:string;publishableKey:string}|null;
+ pay:OnlineCheckout|null;
 }
 export function loadCollectionPage(token:string) {return callFunction('pay',{action:'view',token}) as Promise<CollectionPage>;}

@@ -210,9 +210,8 @@ function JobDetail() {
         {job.privateNote ? (
           <Row gap={10} style={{ alignItems: 'flex-start', borderTopWidth: 1, borderTopColor: p.line, paddingVertical: 10 }}>
             <Icon name="lock" size={18} color={p.muted} />
-            <View style={{ flex: 1, gap: 2 }}>
+            <View style={{ flex: 1 }} accessibilityLabel={`${t('common.privateNote')}: ${job.privateNote}`}>
               <T v="label">{job.privateNote}</T>
-              <T v="small" muted>{t('common.privateNote')}</T>
             </View>
           </Row>
         ) : null}
@@ -225,46 +224,41 @@ function JobDetail() {
         {next.extra}
       </Card>
 
-      {canLogWork && !state.estimates[job.id]?.signed ? (
-        <Card style={{ paddingVertical: 6 }}>
-          <ListRow icon="package" iconTone="soft" title={t('packages.title')} sub={t('packages.row')} onPress={() => router.push(`/job/${job.id}/packages`)} />
-        </Card>
-      ) : null}
-      {canLogWork ? (
-        <Row gap={8}>
-          <Button label={t('flow.workDone')} icon="tool" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setWorkOpen(true)} />
-          <Button label={t('flow.receipt')} icon="file-text" variant="soft" stacked style={{ backgroundColor: p.card }}
-            onPress={() => router.push({ pathname: '/receipt/new', params: { job: job.id } })} />
-        </Row>
-      ) : null}
       {canCapture ? (
-        <Row gap={8}>
-          {/* every job: hourly jobs bill these; flat-price jobs keep them for the owner's records */}
-          {canLogWork ? <Button label={t('job.logHours')} icon="clock" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setHoursOpen(true)} /> : null}
-          <Button
-            label={t('flow.photo')}
-            icon="camera"
-            variant="soft"
-            stacked
-            style={{ backgroundColor: p.card }}
-            onPress={() => setPhotoOpen(true)}
-          />
-          <Button label={t('flow.note')} icon="edit-3" variant="soft" stacked style={{ backgroundColor: p.card }} onPress={() => setNoteOpen(true)} />
+        // what gets added on site, in one place: work and receipts only once work has started
+        <Row gap={8} style={{ flexWrap: 'wrap' }}>
+          {canLogWork ? <>
+            <Button label={t('flow.workDone')} icon="tool" variant="soft" stacked style={{ backgroundColor: p.card, flexBasis: '30%' }} onPress={() => setWorkOpen(true)} />
+            <Button label={t('flow.receipt')} icon="file-text" variant="soft" stacked style={{ backgroundColor: p.card, flexBasis: '30%' }}
+              onPress={() => router.push({ pathname: '/receipt/new', params: { job: job.id } })} />
+            {/* every job: hourly jobs bill these; flat-price jobs keep them for the owner's records */}
+            <Button label={t('job.logHours')} icon="clock" variant="soft" stacked style={{ backgroundColor: p.card, flexBasis: '30%' }} onPress={() => setHoursOpen(true)} />
+          </> : null}
+          <Button label={t('flow.photo')} icon="camera" variant="soft" stacked style={{ backgroundColor: p.card, flexBasis: '30%' }} onPress={() => setPhotoOpen(true)} />
+          <Button label={t('flow.note')} icon="edit-3" variant="soft" stacked style={{ backgroundColor: p.card, flexBasis: '30%' }} onPress={() => setNoteOpen(true)} />
+          {stage === 'work' || detail === 'invoiceDraft' ? (
+            <Button label={t('job.changeOrder')} icon="plus" variant="soft" stacked style={{ backgroundColor: p.card, flexBasis: '30%' }}
+              onPress={() => pendingChange ? router.push(`/change-order/${pendingChange.id}`) : setChangeOpen(true)} />
+          ) : null}
         </Row>
       ) : null}
       {photoAdded ? <Notice text={t('flow.photoAdded')} icon="camera" /> : null}
-      {(stage === 'work' || detail === 'invoiceDraft') ? <Button label={t('review.newChange')} variant="outline" icon="plus"
+      {!canCapture && detail === 'invoiceDraft' ? <Button label={t('review.newChange')} variant="outline" icon="plus"
         onPress={() => pendingChange ? router.push(`/change-order/${pendingChange.id}`) : setChangeOpen(true)} /> : null}
 
       <Card style={{ gap: 4 }}>
-        <ListRow icon="bar-chart-2" title={t('improvements.profitability')} sub={t('improvements.profitabilityHelp')} onPress={() => router.push(`/job/${job.id}/profitability`)} />
-        <Hair />
-        <ListRow icon="clipboard" title={t('improvements.tradeTools')} sub={t('improvements.tradeToolsHelp')} onPress={() => router.push(`/job/${job.id}/trade-tools`)} />
-        <Hair />
-        <ListRow icon="dollar-sign" title={t('job.costs')} sub={costSub} onPress={() => router.push(`/job/${job.id}/costs`)} />
-        <Hair />
         <ListRow icon="folder" iconTone={pendingChange ? 'flag' : 'soft'} title={t('job.documents')} sub={docsSub}
           onPress={() => router.push(`/job/${job.id}/documents`)} />
+        <Hair />
+        <ListRow icon="dollar-sign" title={t('job.costs')} sub={costSub} onPress={() => router.push(`/job/${job.id}/costs`)} />
+        {canLogWork && !state.estimates[job.id]?.signed ? <>
+          <Hair />
+          <ListRow icon="package" title={t('packages.title')} onPress={() => router.push(`/job/${job.id}/packages`)} />
+        </> : null}
+        <Hair />
+        <ListRow icon="clipboard" title={t('improvements.tradeTools')} onPress={() => router.push(`/job/${job.id}/trade-tools`)} />
+        <Hair />
+        <ListRow icon="bar-chart-2" title={t('improvements.profitability')} onPress={() => router.push(`/job/${job.id}/profitability`)} />
       </Card>
 
       {activity.length === 0 ? <T v="body" muted>{t('job.noTimeline')}</T> : <ActivityDays items={activity.slice(0, 3)} />}
@@ -292,7 +286,7 @@ function JobDetail() {
       <Sheet open={changeOpen} onClose={() => setChangeOpen(false)} title={t('review.newChange')}>
         <T muted>{aiReady(state.mode) ? t('ai.changeHelp') : t('review.changeHelp')}</T>
         <Field label={t('review.changeDescription')} value={changeDescription} onChangeText={setChangeDescription}
-          multiline maxLength={2000} style={{ minHeight: 100, paddingTop: 14, textAlignVertical: 'top' }} />
+          multiline maxLength={2000} style={{ minHeight: 100 }} />
         {aiReady(state.mode) ? (
           <Button label={changeDrafting ? t('ai.writing') : t('ai.draftChange')} icon="zap" variant="outline"
             disabled={changeDrafting || !changeDescription.trim()} onPress={draftWithKiln} />
@@ -352,7 +346,7 @@ function JobDetail() {
       </Sheet>
 
       <Sheet open={noteOpen} onClose={() => setNoteOpen(false)} title={t('flow.note')}>
-        <Field value={noteText} onChangeText={setNoteText} placeholder={t('capture.notePlaceholder')} multiline autoFocus style={{ minHeight: 120, paddingTop: 14, textAlignVertical: 'top' }} />
+        <Field value={noteText} onChangeText={setNoteText} placeholder={t('capture.notePlaceholder')} multiline autoFocus style={{ minHeight: 120 }} />
         <Button
           label={t('common.save')}
           disabled={!noteText.trim()}

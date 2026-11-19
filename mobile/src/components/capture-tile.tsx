@@ -26,7 +26,7 @@ export function Tile({ icon, label, onPress, accent }: { icon: IconName; label: 
         transform: [{ scale: pressed ? 0.98 : 1 }],
       })}>
       <Feather name={icon} size={38} color={fg} />
-      <Text style={{ fontFamily: font.black, fontSize: 24, letterSpacing: -0.5, textTransform: 'uppercase', color: fg }}>{label}</Text>
+      <Text style={{ includeFontPadding: false, fontFamily: font.black, fontSize: 24, letterSpacing: -0.5, textTransform: 'uppercase', color: fg }}>{label}</Text>
     </Pressable>
   );
 }

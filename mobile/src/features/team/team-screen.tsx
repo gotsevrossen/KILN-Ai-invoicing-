@@ -135,7 +135,7 @@ export function TeamScreen() {
       {data && can(auth.role, 'assignJobs') ? (
         <Card style={{ paddingVertical: 6 }}>
           <ListRow icon="briefcase" iconTone={unassigned.length ? 'accent' : 'soft'} title={c.unassigned}
-            sub={unassigned.length ? `${unassigned.length} · ${c.unassignedSub}` : c.allAssigned} onPress={() => router.push('/team/unassigned')} />
+            sub={unassigned.length ? String(unassigned.length) : c.allAssigned} onPress={() => router.push('/team/unassigned')} />
         </Card>
       ) : null}
 

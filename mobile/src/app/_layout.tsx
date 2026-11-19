@@ -66,7 +66,7 @@ function Screens(): ReactNode {
   const theme = { ...base, colors: { ...base.colors, background: p.ground, card: p.card, text: p.ink, border: p.line, primary: p.accent } };
 
   // pages anyone may open: signing in, joining a team, and the customer pages
-  const open = ['/sign-in', '/reset-password', '/join', '/waiting'].includes(pathname) || ['/pay/', '/quote/', '/collect/', '/join/'].some((prefix) => pathname.startsWith(prefix));
+  const open = ['/sign-in', '/reset-password', '/join', '/waiting'].includes(pathname) || ['/pay/', '/quote/', '/collect/', '/change/', '/join/'].some((prefix) => pathname.startsWith(prefix));
   // waiting for approval: nothing else until an owner or manager approves
   if (auth.ready && auth.pending && !open) return <Redirect href="/waiting" />;
   // crew members only ever see their own screens

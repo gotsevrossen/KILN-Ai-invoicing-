@@ -1,8 +1,9 @@
 import { OfflineStatus } from '@/components/offline-status';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { View, type HostInstance } from 'react-native';
 
+import { ButtonMenu } from '@/components/popover';
 import { Card, Field, Hair, IconButton, Notice, PageHeader, Pill, Row, Screen, Segmented, T, type Tone } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { customerOf, hoursFor, jobAmount, jobGroup, jobOverdueDays, jobStatus, type JobStatus } from '@/data/selectors';
@@ -34,6 +35,10 @@ export default function Jobs() {
   const [group, setGroup] = useState<JobGroup>('active');
   const [query, setQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  // the filter button slides over to the add-job button and grows into the menu from there
+  const filterButton = useRef<HostInstance>(null);
+  const addButton = useRef<HostInstance>(null);
+  const [menuShown, setMenuShown] = useState(false);
   const [filters, setFilters] = useState<JobFilters>(NO_FILTERS);
   const passes = useJobFilter(filters);
 
@@ -67,13 +72,21 @@ export default function Jobs() {
     <Screen
       header={
         <PageHeader title={t('jobs.title')} right={<Row gap={8}>
-          <IconButton icon={menuOpen ? 'x' : 'sliders'} label={cleanupText(lang).menu} tone={filtersOn(filters) ? 'dark' : 'plain'} onPress={() => setMenuOpen((o) => !o)} />
-          <IconButton icon="plus" label={t('common.newJob')} tone="accent" onPress={() => router.push('/new-job')} />
+          {/* hidden while the menu's stand-in for it is moving */}
+          <View ref={filterButton} collapsable={false} style={{ opacity: menuShown ? 0 : 1 }}>
+            <IconButton icon="sliders" label={cleanupText(lang).menu} tone={filtersOn(filters) ? 'dark' : 'plain'} onPress={() => setMenuOpen(true)} />
+          </View>
+          <View ref={addButton} collapsable={false}>
+            <IconButton icon="plus" label={t('common.newJob')} tone="accent" onPress={() => router.push('/new-job')} />
+          </View>
         </Row>} />
       } tabs>
       <OfflineStatus />
-      {menuOpen ? <JobsMenu filters={filters} onChange={setFilters}
-        shown={grouped.active.length + grouped.done.length + grouped.paid.length} total={sample.jobs.length} /> : null}
+      <ButtonMenu open={menuOpen} onClose={() => setMenuOpen(false)} from={filterButton} to={addButton} icon="sliders"
+        tone={filtersOn(filters) ? 'dark' : 'plain'} title={cleanupText(lang).menu} onVisible={setMenuShown}>
+        <JobsMenu filters={filters} onChange={setFilters} onLeave={() => setMenuOpen(false)}
+          shown={grouped.active.length + grouped.done.length + grouped.paid.length} total={sample.jobs.length} />
+      </ButtonMenu>
       <Field value={query} onChangeText={setQuery} placeholder={t('jobs.search')} accessibilityLabel={t('jobs.search')} returnKeyType="search" />
       <Segmented
         label={t('jobs.title')}

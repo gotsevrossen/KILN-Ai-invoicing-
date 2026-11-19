@@ -7,6 +7,7 @@ import { Platform, View } from 'react-native';
 import { Button, Card, Field, Hair, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import * as api from '@/data/job-cleanup';
+import { onLiveRefresh } from '@/data/live-events';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 import { savedDocHtml, savedTotals, type SavedDocLabels } from '@/lib/saved-doc';
@@ -33,7 +34,12 @@ export function SavedDocumentsScreen() {
     api.loadSavedDocuments(businessId).then((d) => { if (live) { setDocs(d); setError(''); } }, (e: unknown) => { if (live) setError(userError(t, e)); });
     return () => { live = false; };
   }, [businessId, t]);
-  useFocusEffect(load);
+  useFocusEffect(useCallback(() => {
+    let stop = load();
+    // pull down (or a change elsewhere) reloads the list
+    const unsubscribe = onLiveRefresh(() => { stop(); stop = load(); });
+    return () => { stop(); unsubscribe(); };
+  }, [load]));
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -4,7 +4,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 -- The hosted database doesn't search the extensions schema by default.
 set local search_path to "$user", public, extensions;
-select plan(109);
+select plan(111);
 
 -- two owners, each with their own business
 insert into auth.users (id, email) values
@@ -30,6 +30,7 @@ create temp table ids as
     (select business_id from public.business_members where user_id = '00000000-0000-0000-0000-00000000000a') as a,
     (select business_id from public.business_members where user_id = '00000000-0000-0000-0000-00000000000b') as b;
 grant select on ids to authenticated;
+update public.businesses set alternative_methods='{"cash":""}' where id in ((select a from ids),(select b from ids));
 
 -- B adds a customer
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
@@ -261,7 +262,13 @@ select throws_ok($$ insert into public.stripe_accounts (business_id, account_id)
 reset role;
 insert into public.stripe_accounts (business_id, account_id) select a, 'acct_test123456' from ids;
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
-select is((select account_id from public.stripe_accounts), 'acct_test123456', 'the owner sees their Stripe account');
+select is((select account_id from public.stripe_accounts), 'acct_test123456', 'the owner sees their existing Stripe account');
+reset role;
+update public.stripe_accounts set test_mode=true where account_id='acct_test123456';
+select lives_ok($$insert into public.stripe_accounts (business_id,account_id,test_mode) select a,'acct_live123456',false from ids$$,
+  'a live connection does not overwrite the sandbox');
+select throws_ok($$insert into public.stripe_accounts (business_id,account_id,test_mode) select a,'acct_live234567',false from ids$$,
+  '23505',null,'a business cannot have two live connections');
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
 select is((select count(*)::int from public.stripe_accounts), 0, 'B can''t see A''s Stripe account');
 reset role;

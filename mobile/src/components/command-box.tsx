@@ -99,7 +99,7 @@ export function CommandBox({ voiceOpen = false, onVoiceClose }: {
       <T v="eyebrow">{t('ai.cmdTitle')}</T>
       {rows === null ? <>
         <Field value={text} onChangeText={setText} placeholder={t('ai.cmdPlaceholder')} accessibilityLabel={t('ai.cmdTitle')}
-          multiline maxLength={1000} editable={!reading} style={{ minHeight: 84, paddingTop: 14, textAlignVertical: 'top' }} />
+          multiline maxLength={1000} editable={!reading} style={{ minHeight: 84 }} />
         <ButtonRow gap={10}>
           <Button label={t('voice.speak')} icon="mic" variant="outline" disabled={reading} onPress={() => setMicOpen(true)} />
           <Button label={reading ? t('ai.cmdReading') : t('ai.cmdRead')} icon="zap" variant="dark" flex disabled={reading || !text.trim()} onPress={() => read()} />

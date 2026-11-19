@@ -36,7 +36,7 @@ try {
   npx expo export --platform web --clear
   if ($LASTEXITCODE -ne 0) { throw 'The web build failed.' }
   $routes = Get-Content -LiteralPath 'dist/server/_expo/routes.json' -Raw | ConvertFrom-Json
-  foreach ($page in '/pay/[token]', '/quote/[token]', '/collect/[token]', '/reset-password', '/stripe-done') {
+  foreach ($page in '/pay/[token]', '/quote/[token]', '/collect/[token]', '/change/[token]', '/reset-password', '/stripe-done') {
     if ($page -notin $routes.htmlRoutes.page) { throw "Web export is missing $page." }
   }
   if ($ExportOnly) { Write-Host 'Exported and verified customer routes.'; return }

@@ -13,7 +13,7 @@ const en = {
   // settings
   docsSection: 'Old jobs',
   autoSave: 'Save documents automatically',
-  autoSaveHelp: "When a paid job is removed after 30 days, keep its estimate, invoice and change orders without asking.",
+  autoSaveHelp: 'Keep estimates, invoices and change orders when paid jobs are removed.',
   savedDocs: 'Saved documents', savedDocsHelp: 'Estimates, invoices and change orders from removed jobs',
 
   // saved documents
@@ -48,7 +48,7 @@ const es: Record<keyof typeof en, string> = {
 
   docsSection: 'Trabajos viejos',
   autoSave: 'Guardar documentos automáticamente',
-  autoSaveHelp: 'Cuando un trabajo pagado se elimina a los 30 días, conserva su presupuesto, factura y órdenes de cambio sin preguntar.',
+  autoSaveHelp: 'Conserva presupuestos, facturas y órdenes de cambio cuando se eliminan trabajos pagados.',
   savedDocs: 'Documentos guardados', savedDocsHelp: 'Presupuestos, facturas y órdenes de cambio de trabajos eliminados',
 
   savedTitle: 'Documentos guardados', savedEmpty: 'Todavía no hay documentos guardados. Los documentos de trabajos eliminados aparecen aquí cuando los guardas.',

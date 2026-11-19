@@ -9,7 +9,7 @@ import { RecordGate } from '@/components/record-gate';
 import { SignaturePad, type SignatureInk } from '@/components/signature-pad';
 import { Button, Card, Checkbox, Field, Hair, LineRow, Notice, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, estimateDocLines, estimateDraft, hasCustomerEstimate, jobById } from '@/data/selectors';
+import { customerOf, documentScope, estimateDocLines, estimateDraft, hasCustomerEstimate, jobById } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import type { DocLine } from '@/data/types';
 import { useTFor } from '@/i18n';
@@ -69,7 +69,8 @@ function CustomerEstimate() {
       {!saved && !draft?.sent ? <Notice text={tc('review.previewOnly')} tone="soft" /> : null}
       {draft?.signed ? <Notice text={tc('review.accepted')} /> : null}
       {draft && !estimateReady(draft) ? <Notice text={tc('review.unresolved')} tone="soft" /> : null}
-      <ScopeCard scope={draft?.scope} excluded={draft?.lines.filter((line) => line.excluded).map((line) => line.description)} t={tc} />
+      <ScopeCard scope={saved || draft?.sent ? draft?.scope : documentScope(state, job)}
+        excluded={draft?.lines.filter((line) => line.excluded).map((line) => line.description)} t={tc} />
       <Card style={{ gap: 6 }}>
         {lines.map((l) => (
           <LineRow

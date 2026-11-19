@@ -1,5 +1,6 @@
 import type { Lang } from '@/i18n';
 import type { Cents, LineKind, TaxRule } from '@/lib/money';
+import type { AlternativeMethods } from '@/lib/invoice-payment';
 
 // Shapes follow the data model in CLAUDE.md, trimmed to what the screens need.
 // Dates are ISO strings (YYYY-MM-DD). Money is integer cents.
@@ -25,6 +26,11 @@ export interface Customer {
 
 export type JobGroup = 'active' | 'done' | 'paid';
 
+export interface DocumentTerms {
+  terms?: string;
+  warranty?: string;
+}
+
 export interface Job {
   id: string;
   title: string;
@@ -40,6 +46,7 @@ export interface Job {
   overdueDays?: number;
   workOrder?: string;
   privateNote?: string;
+  documentTerms?: DocumentTerms;
   /** 0 = Sunday … 6 = Saturday */
   repeatWeekday?: number;
   paidNote?: string;
@@ -152,7 +159,7 @@ export interface EstimateLine {
   excluded?: boolean;
 }
 
-export interface JobScope {
+export interface JobScope extends DocumentTerms {
   tradeId?: import('./trades').TradeId;
   jobTypeId?: string;
   notes?: string;
@@ -183,6 +190,8 @@ export interface InvoiceBilling {
 }
 
 export interface InvoiceSnapshot {
+  proofPhotoIds?: string[];
+  alternativeMethods?: AlternativeMethods;
   lines: DocLine[];
   tax: TaxRule;
   summary: string;

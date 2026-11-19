@@ -77,7 +77,7 @@ export interface SavedSnapshot {
   };
   lines: SavedLine[];
   payments: { amountCents: number; method: string; paidAt: string | null; status: string | null }[];
-  signatures: { name: string; signedAt: string | null; method: string | null; hash: string; ip: string | null }[];
+  signatures: { name: string; signedAt: string | null; method: string | null; hash: string; ip?: string | null; ink?: unknown }[];
 }
 
 export interface SavedDocument {

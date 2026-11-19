@@ -95,6 +95,7 @@ export function paidOnline(state: State, invoiceId: string) {
     paid: paid.reduce((a, p) => a + p.amountCents, 0),
     pending: mine.filter((p) => p.status === 'processing').reduce((a, p) => a + p.amountCents, 0),
     method: paid.length ? paid[paid.length - 1].method : null,
+    alternativeMethod: paid.at(-1)?.alternativeMethod,
     failed: mine.some((p) => p.status === 'failed') && !paid.length,
   };
 }
@@ -180,6 +181,17 @@ export function invoiceBilling(state: State, invoice: Invoice) {
 
 export function invoiceSummary(state: State, invoice: Invoice): string {
   return state.issuedInvoices[invoice.id]?.summary ?? state.invoiceSummaries[invoice.id] ?? invoice.summary;
+}
+
+export function documentScope(state: State, job: Job) {
+  const estimate = state.estimates[job.id];
+  if (estimate?.sent && !estimate.declinedAt) return estimate.scope;
+  const defaults = state.profile.documentTerms;
+  return {
+    ...estimate?.scope,
+    terms: job.documentTerms?.terms?.trim() ?? defaults?.terms?.trim() ?? '',
+    warranty: job.documentTerms?.warranty?.trim() ?? defaults?.warranty?.trim() ?? '',
+  };
 }
 
 export function invoiceTax(state: State, invoice: Invoice) {

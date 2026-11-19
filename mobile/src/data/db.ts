@@ -1,4 +1,5 @@
 import * as Crypto from 'expo-crypto';
+import type { AlternativeMethods } from '@/lib/invoice-payment';
 
 import { db, ok, one } from './db-client';
 import { loadDocs, type LoadedDocs } from './db-docs';
@@ -16,9 +17,14 @@ export const newUuid = (): string => Crypto.randomUUID();
 
 
 interface BusinessRow {
+  alternative_methods?: AlternativeMethods;
   id: string;
   name: string;
   phone: string;
+  email: string | null;
+  address: string;
+  document_terms: string;
+  document_warranty: string;
   trades: string[];
   pricing: 'hourly' | 'flat';
   rate_cents: number;
@@ -59,6 +65,8 @@ interface JobRow {
   rate_cents: number | null;
   work_order: string | null;
   private_note: string | null;
+  document_terms: string | null;
+  document_warranty: string | null;
 }
 
 export interface Loaded {
@@ -91,6 +99,7 @@ const toJob = (r: JobRow): Job => ({
   baseStatus: 'live',
   workOrder: r.work_order ?? undefined,
   privateNote: r.private_note ?? undefined,
+  documentTerms: { terms: r.document_terms ?? undefined, warranty: r.document_warranty ?? undefined },
 });
 
 /** Everything the app needs at start, or null when this account has no business yet (setup next). */
@@ -100,7 +109,7 @@ export async function loadAll(): Promise<Loaded | null> {
   const [items, customers, jobs, photos, docs] = await Promise.all([
     db().from('price_list_items').select('id, catalog_id, name, unit, unit_cents').order('created_at').returns<PriceRow[]>(),
     db().from('customers').select('id, name, phone, email, lang').order('created_at').returns<CustomerRow[]>(),
-    db().from('jobs').select('id, customer_id, title, address, pricing, rate_cents, work_order, private_note, estimate_skipped, reopened').order('created_at', { ascending: false }).returns<JobRow[]>(),
+    db().from('jobs').select('id, customer_id, title, address, pricing, rate_cents, work_order, private_note, estimate_skipped, reopened, document_terms, document_warranty').order('created_at', { ascending: false }).returns<JobRow[]>(),
     loadPhotos(),
     loadDocs(),
   ]);
@@ -109,12 +118,16 @@ export async function loadAll(): Promise<Loaded | null> {
     profile: {
       businessName: b.name,
       phone: b.phone,
+      email: b.email ?? '',
+      address: b.address ?? '',
+      documentTerms: { terms: b.document_terms, warranty: b.document_warranty },
       trades: b.trades as TradeId[],
       pricing: b.pricing,
       rateCents: b.rate_cents,
       onboarded: true,
     },
     settings: {
+      alternativeMethods: b.alternative_methods ?? {},
       markupBps: b.markup_bps,
       tax: { rateBps: b.tax_rate_bps, labor: b.tax_labor, materials: b.tax_materials },
       depositBps: b.deposit_bps,
@@ -160,6 +173,16 @@ export async function createBusiness(input: SetupInput): Promise<void> {
         ),
     );
   }
+}
+
+/** Owner only: the business's name and contact details. The server refuses anyone else. */
+export async function saveBusinessDetails(businessId: string, d: { name: string; phone: string; email: string; address: string; terms?: string; warranty?: string }): Promise<void> {
+  const rows = ok(await db().from('businesses')
+    .update({ name: d.name.trim(), phone: d.phone.trim(), email: d.email.trim() || null, address: d.address.trim(),
+      ...(d.terms !== undefined ? { document_terms: d.terms.trim() } : {}),
+      ...(d.warranty !== undefined ? { document_warranty: d.warranty.trim() } : {}) })
+    .eq('id', businessId).select('id'));
+  if (!rows?.length) throw Object.assign(new Error('Owner only'), { code: 'owner_only' });
 }
 
 export async function saveSettings(businessId: string, s: PricingSettings, cardFee: boolean, aiScope: boolean): Promise<void> {
@@ -222,6 +245,10 @@ export async function insertCustomer(businessId: string, c: Customer): Promise<v
 
 export async function updateCustomerEmail(businessId: string, id: string, email: string): Promise<void> {
   one(await db().from('customers').update({ email }).eq('business_id', businessId).eq('id', id).select('id').single());
+}
+
+export async function saveAlternativeMethods(businessId: string, methods: AlternativeMethods): Promise<void> {
+  one(await db().from('businesses').update({ alternative_methods: methods }).eq('id', businessId).select('id').single());
 }
 
 export async function insertJob(businessId: string, j: Job): Promise<void> {

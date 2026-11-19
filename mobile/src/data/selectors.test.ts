@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import { businessDate, localDate } from '../lib/invoice-aging.ts';
 import * as sample from './sample.ts';
-import { homeSummary, invoiceById, invoiceTotals, jobById, jobGroup, jobOverdueDays, jobStatus } from './selectors.ts';
+import { documentScope, homeSummary, invoiceById, invoiceTotals, jobById, jobGroup, jobOverdueDays, jobStatus } from './selectors.ts';
 import type { State } from './store';
 
 /** A sent copy whose price/terms deliberately differ from live job/settings data. */
@@ -25,6 +25,16 @@ function stateForInvoice(): State {
     profile: { businessName: 'Test repair', phone: '', trades: ['handyman'], pricing: 'flat', rateCents: 8500, onboarded: true },
   };
 }
+
+it('applies job document terms to drafts and preserves the issued terms as defaults change', () => {
+  const state = stateForInvoice();
+  const job = { ...jobById('park'), documentTerms: { warranty: '' } };
+  state.profile.documentTerms = { terms: 'Current payment terms', warranty: 'Default warranty' };
+  assert.deepEqual(documentScope(state, job), { terms: 'Current payment terms', warranty: '' });
+  state.estimates[job.id] = { lines: [], depositOn: false, depositBps: 0, sent: true, signed: true,
+    scope: { terms: 'Original accepted terms', warranty: 'Original warranty' } };
+  assert.deepEqual(documentScope(state, job), { terms: 'Original accepted terms', warranty: 'Original warranty' });
+});
 
 describe('overdue jobs and Home totals', () => {
   const park = jobById('park');

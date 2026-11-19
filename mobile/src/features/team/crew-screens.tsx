@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { Button, Card, Hair, IconButton, ListRow, Notice, PageHeader, Screen, Segmented, T } from '@/components/ui';
+import { accountText } from '@/features/account/text';
 import { useAuth } from '@/data/auth';
 import * as api from '@/data/team-access';
 import { onLiveRefresh } from '@/data/live-events';
@@ -106,6 +107,7 @@ export function CrewSettings() {
       <Card style={{ gap: 10 }}>
         <T v="label">{auth.session?.user.email ?? ''}</T>
         <T v="small" muted>{c.crew}</T>
+        <ListRow icon="user" title={accountText(lang).accountTitle} sub={accountText(lang).accountHelp} chevron onPress={() => router.push('/crew/account')} />
         {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
         <Button label={c.signOut} icon="log-out" variant="outline" disabled={busy} onPress={() => void auth.signOut().then(() => router.replace('/sign-in'), (e: unknown) => setError(userError(t, e)))} />
         {confirm ? <>

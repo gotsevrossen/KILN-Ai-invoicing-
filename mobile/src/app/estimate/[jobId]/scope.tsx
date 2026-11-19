@@ -3,7 +3,7 @@ import { useState } from 'react';
 
 import { aiErrorText, kilnWroteScope, scopeInputFor } from '@/components/ai-parts';
 import { EstimatePage, pickJobType, useEstimate } from '@/components/estimate-parts';
-import { ScopeEditor } from '@/components/job-scope';
+import { DocumentTermsEditor, ScopeEditor } from '@/components/job-scope';
 import { RecordGate } from '@/components/record-gate';
 import { Button, Notice, T } from '@/components/ui';
 import { aiReady, writeScope } from '@/data/ai';
@@ -58,6 +58,8 @@ function EstimateScope() {
         }
         actions.updateEstimate(job.id, { scope: { ...draft.scope, ...patch, tradeId: trade.id, jobTypeId } });
       }} />
+      <DocumentTermsEditor values={job.documentTerms} defaults={state.profile.documentTerms ?? {}}
+        onChange={(key, value) => actions.setJobDocumentTerm(job.id, key, value)} />
       {['painting', 'flooring', 'drywall', 'carpentry', 'landscaping'].includes(trade.id) ? <T v="small" muted>{t('scope.measurement')}</T> : null}
     </EstimatePage>
   );

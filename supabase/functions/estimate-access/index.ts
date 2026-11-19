@@ -33,6 +33,19 @@ Deno.serve(async (req: Request) => {
     if (!tokenShape(body.token)) return reply(404, { error: 'not_found' });
     const db = serviceClient();
     const hash = await hashToken(body.token);
+    if (body.action === 'changeView') {
+      const result = await db.rpc('view_change_order_link', { p_hash: hash });
+      return result.error ? reply(404, { error: 'not_found' }) : reply(200, result.data);
+    }
+    if (body.action === 'changeAnswer') {
+      if (typeof body.hash !== 'string' || !/^[0-9a-f]{64}$/.test(body.hash) || typeof body.accept !== 'boolean' ||
+        (body.accept && (body.agreed !== true || typeof body.name !== 'string' || body.name.length > 120))) {
+        return reply(400, { error: 'not_ready' });
+      }
+      const result = await db.rpc('answer_change_order_link', { p_hash: hash, p_snapshot_hash: body.hash,
+        p_name: body.accept ? body.name : null, p_accept: body.accept });
+      return result.error ? reply(409, { error: 'not_ready' }) : reply(200, result.data);
+    }
     if (body.action === 'view') {
       const result = await db.rpc('view_estimate_access', { p_hash: hash });
       return result.error ? reply(404, { error: 'not_found' }) : reply(200, result.data);

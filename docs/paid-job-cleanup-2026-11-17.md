@@ -34,7 +34,7 @@ The rules that stop sent documents, their lines, sent-invoice work and photos, a
 
 ## Not done / limits
 
-- Not deployed. Deploying needs: the migration, the `job-cleanup` function, and the `ai` function (for `findJobs`).
+- Deployed to the hosted server on Nov 18: the migration, `job-cleanup` (new), `ai` (v8, `findJobs`) and the other functions; customer pages republished. Backups: `builds/backups/hosted-schema-before-cleanup-2026-11-18.sql`, `hosted-data-before-cleanup-2026-11-18.sql`.
 - Removal only runs when the owner opens KILN, so with automatic saving a due job can stay until the next time the owner opens the app. A daily scheduled run would need a scheduler (pg_cron or a scheduled function).
 - No push notification for the warning. It shows on Home only.
 - Trade and job type filters only know jobs that have estimate job details.

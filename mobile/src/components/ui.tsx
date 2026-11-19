@@ -1,8 +1,9 @@
 import Feather from '@expo/vector-icons/Feather';
-import type { ComponentProps, ReactNode } from 'react';
+import { useState, type ComponentProps, type ReactNode } from 'react';
 import {
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -17,6 +18,7 @@ import {
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { pullRefresh } from '@/data/live-events';
 import { useLang } from '@/i18n';
 import { font, radius, space, tap, type Palette } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -32,6 +34,10 @@ export function Icon({ name, size = 22, color }: { name: IconName; size?: number
 }
 
 // ---------- Text ----------
+
+// Android adds room above and below text for the font's tallest marks (Archivo has a lot), which
+// leaves words sitting off-center in buttons and rows. Off, the space around text is even.
+const noFontPadding: TextStyle = { includeFontPadding: false, textAlignVertical: 'center' };
 
 type Variant = 'title' | 'h2' | 'h3' | 'eyebrow' | 'body' | 'small' | 'money' | 'moneyBig' | 'label';
 
@@ -65,7 +71,7 @@ export function T({
 }) {
   const p = usePalette();
   return (
-    <Text style={[variants[v], { color: color ?? (muted ? p.muted : p.ink) }, style]} {...rest}>
+    <Text style={[noFontPadding, variants[v], { color: color ?? (muted ? p.muted : p.ink) }, style]} {...rest}>
       {children}
     </Text>
   );
@@ -100,6 +106,14 @@ export function Screen({
   const content = { padding: space.lg, gap: 14, paddingBottom: tabs ? 64 + Math.max(insets.bottom, 12) + 40 + space.lg : space.xxl };
   const sheetOpen = useSheetOpen();
   const top: ('top' | 'bottom')[] = noTopInset ? [] : ['top'];
+  const [pulling, setPulling] = useState(false);
+  const onPull = () => {
+    setPulling(true);
+    const started = Date.now();
+    void Promise.resolve().then(pullRefresh).catch(() => {}).finally(() => {
+      setTimeout(() => setPulling(false), Math.max(0, 450 - (Date.now() - started)));
+    });
+  };
   // Tab pages: a clear sideways swipe moves to the next page (left) or the previous one (right).
   // It starts only after 25 points sideways and gives way to vertical scrolling, so scrolling and
   // taps work as before. Off on the web, where a mouse drag selects text.
@@ -124,6 +138,8 @@ export function Screen({
           contentContainerStyle={content}
           keyboardShouldPersistTaps="handled"
           scrollEnabled={scrollEnabled}
+          refreshControl={<RefreshControl enabled={scrollEnabled} refreshing={pulling} onRefresh={scrollEnabled ? onPull : undefined}
+            tintColor={p.accent} colors={[p.accent]} progressBackgroundColor={p.card} />}
           // iOS: scrolls the focused text box above the keyboard. Not while a sheet is open: its
           // keyboard isn't this page's, and moving for it could leave the page scrolled past its end.
           automaticallyAdjustKeyboardInsets={!sheetOpen}
@@ -320,7 +336,7 @@ export function Button({
       {icon ? <Feather name={icon} size={big || stacked ? 22 : 19} color={c.fg} /> : null}
       {stacked ? (
         // whole words wrap to a second line; never a single letter
-        <Text numberOfLines={2} style={{ fontFamily: font.semi, fontSize: 14, lineHeight: 17, textAlign: 'center', color: c.fg }}>
+        <Text numberOfLines={2} style={[noFontPadding, { fontFamily: font.semi, fontSize: 14, lineHeight: 17, textAlign: 'center', color: c.fg }]}>
           {label}
         </Text>
       ) : (
@@ -328,7 +344,7 @@ export function Button({
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.85}
-          style={{ fontFamily: font.bold, fontSize: big ? 19 : 17, color: c.fg, flexShrink: 1 }}>
+          style={[noFontPadding, { fontFamily: font.bold, fontSize: big ? 19 : 17, lineHeight: big ? 24 : 22, color: c.fg, flexShrink: 1 }]}>
           {label}
         </Text>
       )}
@@ -422,7 +438,7 @@ export function Chip({
         },
         pressed && styles.pressed,
       ]}>
-      <Text style={{ fontFamily: font.semi, fontSize: 16, color: selected ? p.onInverse : p.ink }}>{label}</Text>
+      <Text style={[noFontPadding, { fontFamily: font.semi, fontSize: 16, color: selected ? p.onInverse : p.ink }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -462,7 +478,7 @@ export function ListRow({
       {chevron ? <Feather name="chevron-right" size={22} color={p.muted} /> : null}
     </>
   );
-  const style: ViewStyle = { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64 };
+  const style: ViewStyle = { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64, paddingVertical: 8 };
   if (!onPress) return <View style={style}>{body}</View>;
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={title} style={({ pressed }) => [style, pressed && styles.pressed]}>
@@ -524,7 +540,7 @@ export function Segmented<K extends string>({
               justifyContent: 'center',
               backgroundColor: on ? p.inverse : 'transparent',
             }}>
-            <Text style={{ fontFamily: font.semi, fontSize: 15, color: on ? p.onInverse : p.ink }}>{o.label}</Text>
+            <Text style={[noFontPadding, { fontFamily: font.semi, fontSize: 15, color: on ? p.onInverse : p.ink }]}>{o.label}</Text>
           </Pressable>
         );
       })}
@@ -575,6 +591,7 @@ export function Field({ label, style, ...props }: TextInputProps & { label?: str
             fontSize: 17,
             color: p.ink,
           },
+          props.multiline && { paddingVertical: 14, textAlignVertical: 'top' },
           style,
         ]}
         {...props}
@@ -591,7 +608,7 @@ export function Checkbox({ label, value, onChange }: { label: string; value: boo
       accessibilityRole="checkbox"
       accessibilityState={{ checked: value }}
       accessibilityLabel={label}
-      style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', minHeight: tap.min, paddingVertical: 4 }}>
+      style={{ flexDirection: 'row', gap: 12, alignItems: 'center', minHeight: tap.min, paddingVertical: 6 }}>
       <View
         style={{
           width: 28,

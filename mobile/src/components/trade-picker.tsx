@@ -38,7 +38,7 @@ export function TradePicker({ value, onToggle }: { value: TradeId[]; onToggle: (
               <Feather name={trade.icon} size={26} color={on ? p.accent : p.ink} />
               {on ? <Feather name="check-circle" size={22} color={p.accent} /> : null}
             </Row>
-            <Text style={{ fontFamily: font.bold, fontSize: 16, color: on ? p.onInverse : p.ink }}>{t(`trades.${trade.id}`)}</Text>
+            <Text style={{ includeFontPadding: false, fontFamily: font.bold, fontSize: 16, color: on ? p.onInverse : p.ink }}>{t(`trades.${trade.id}`)}</Text>
           </Pressable>
         );
       })}

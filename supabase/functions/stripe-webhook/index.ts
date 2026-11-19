@@ -1,6 +1,6 @@
 import { serviceClient, setting, totalsOf, type LineRow } from '../_shared/invoice.ts';
 import { validPaymentProof } from '../_shared/payment-proof.ts';
-import { verifyWebhook } from '../_shared/stripe.ts';
+import { stripeCheckoutEnabled, stripeTestMode, verifyWebhook } from '../_shared/stripe.ts';
 
 // POST /functions/v1/stripe-webhook — Stripe telling KILN a payment changed: on its way (bank
 // payments take a few business days), went through, or failed. Only notices signed with KILN's
@@ -31,12 +31,13 @@ Deno.serve(async (req) => {
     return new Response('bad signature', { status: 400 });
   }
 
-  let event: { type?: string; account?: string; data?: { object?: Intent } };
+  let event: { type?: string; account?: string; livemode?: boolean; data?: { object?: Intent } };
   try {
     event = JSON.parse(payload);
   } catch {
     return new Response('bad payload', { status: 400 });
   }
+  if (!stripeCheckoutEnabled() || event.livemode !== !stripeTestMode()) return new Response('ok');
   const status = STATUS[event.type ?? ''];
   const intent = event.data?.object;
   // anything else (or a payment KILN didn't start) is acknowledged and ignored
@@ -47,11 +48,14 @@ Deno.serve(async (req) => {
 
   const db = serviceClient();
   // the payment must have been made on that business's own Stripe account
-  const account = await db.from('stripe_accounts').select('account_id').eq('business_id', businessId).maybeSingle<{ account_id: string }>();
+  if (typeof event.account !== 'string') return new Response('ok');
+  const account = await db.from('stripe_accounts').select('account_id').eq('business_id', businessId)
+    .eq('test_mode', stripeTestMode()).eq('account_id', event.account).maybeSingle<{ account_id: string }>();
   if (account.error) return new Response('try again', { status: 500 });
   if (!account.data || account.data.account_id !== event.account) return new Response('ok');
 
   if (intent.metadata.request_id) {
+    if (method !== 'bank' && method !== 'wallet') return new Response('ok');
     if (!uuid.test(intent.metadata.request_id)) return new Response('ok');
     const r = await db.from('job_payment_requests').select('business_id,intent_id').eq('id',intent.metadata.request_id).maybeSingle();
     if (r.error) return new Response('try again',{status:500});
@@ -61,6 +65,7 @@ Deno.serve(async (req) => {
     const saved=await db.rpc('record_job_payment',{p_id:intent.metadata.request_id,p_intent:intent.id,p_amount:intent.amount,p_method:method,p_status:status});
     return new Response(saved.error?'try again':'ok',{status:saved.error?500:200});
   }
+  if (method !== 'bank' && method !== 'wallet' && method !== 'card') return new Response('ok');
   const [invoice, lines] = await Promise.all([
     db.from('invoices').select('tax_rate_bps, tax_labor, tax_materials').eq('id', invoiceId).eq('business_id', businessId)
       .maybeSingle<{ tax_rate_bps: number | null; tax_labor: boolean | null; tax_materials: boolean | null }>(),
@@ -72,7 +77,7 @@ Deno.serve(async (req) => {
 
   const saved = await db.rpc('record_stripe_payment', {
     p_business: businessId, p_invoice: invoiceId, p_intent: intent.id, p_amount_cents: intent.amount,
-    p_method: method === 'bank' ? 'bank' : 'wallet', p_status: status, p_invoice_total: totalsOf(lines.data, invoice.data).total,
+    p_method: method, p_status: status, p_invoice_total: totalsOf(lines.data, invoice.data).total,
   });
   // a failed save asks Stripe to send it again later
   if (saved.error) {

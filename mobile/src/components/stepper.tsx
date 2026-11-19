@@ -52,7 +52,7 @@ export function Stepper({ stage, onStep = {} }: { stage: Stage; onStep?: Partial
                 {done ? (
                   <Feather name="check" size={17} color={fg} />
                 ) : (
-                  <Text style={{ fontFamily: font.bold, fontSize: 14, color: fg }}>{i + 1}</Text>
+                  <Text style={{ includeFontPadding: false, fontFamily: font.bold, fontSize: 14, color: fg }}>{i + 1}</Text>
                 )}
               </View>
               <View style={{ flex: 1, height: 2, backgroundColor: i === STEPS.length - 1 ? 'transparent' : i < doneUpTo ? p.inverse : p.line }} />

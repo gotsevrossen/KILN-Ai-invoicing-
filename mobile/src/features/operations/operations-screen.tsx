@@ -57,7 +57,7 @@ export function OperationsScreen() {
     }
   };
   return <Screen header={<PageHeader title={c.title} back={() => router.back()} />}>
-    <Notice text={c.ownerHelp} icon="lock" tone="soft" />
+    {op.canEditCosts ? <Notice text={c.ownerHelp} icon="lock" tone="soft" /> : null}
     {op.connected && op.ready ? <Button label={teamText(lang).teamTitle} icon="users" variant="outline" onPress={() => router.push('/team')} /> : null}
     {!op.connected ? <Notice text={c.preview} tone="soft" /> : null}
     {op.error ? <><Notice text={op.error} tone="danger" /><Button label={c.retry} variant="outline" disabled={op.busy} onPress={op.retry} /></> : null}
@@ -68,21 +68,21 @@ export function OperationsScreen() {
       {op.data.workers.map((worker) => <Card key={worker.id}>
         <LineRow label={worker.name} value={f.money(worker.loaded_rate_cents)} />
         <T v="small" muted>{c.rate}</T>
-        <Row style={{ flexWrap: 'wrap' }}>
+        {op.canEditCosts ? <Row style={{ flexWrap: 'wrap' }}>
           <Button label={c.edit} variant="outline" disabled={op.busy} onPress={() => { setEditWorker(worker); setName(worker.name); setRate((worker.loaded_rate_cents / 100).toFixed(2)); setWorkerOpen(true); setInputError(''); }} />
           <Button label={worker.archived ? c.restore : c.archive} variant="outline" disabled={op.busy} onPress={() => {
             const next = { ...worker, archived: !worker.archived };
             void op.run(() => api.saveWorker(next), (d) => ({ ...d, workers: d.workers.map((w) => w.id === worker.id ? next : w) }));
           }} />
-        </Row>
+        </Row> : null}
       </Card>)}
-      {!workerOpen ? <Button label={c.addWorker} icon="plus" variant="outline" disabled={op.busy} onPress={() => { setEditWorker(null); setName(''); setRate(''); setInputError(''); setWorkerOpen(true); }} /> : <Card>
+      {op.canEditCosts ? !workerOpen ? <Button label={c.addWorker} icon="plus" variant="outline" disabled={op.busy} onPress={() => { setEditWorker(null); setName(''); setRate(''); setInputError(''); setWorkerOpen(true); }} /> : <Card>
         <Field label={c.name} value={name} onChangeText={setName} maxLength={120} editable={!op.busy} />
         <Field label={c.rate} value={rate} onChangeText={setRate} keyboardType="decimal-pad" editable={!op.busy} />
         <T v="small" muted>{c.rateHelp}</T>
         <Button label={op.busy ? c.saving : c.save} disabled={op.busy} onPress={() => void saveWorker()} />
         <Button label={c.cancel} variant="outline" disabled={op.busy} onPress={() => { setWorkerOpen(false); setInputError(''); }} />
-      </Card>}
+      </Card> : null}
       <Hair />
       <T v="h2">{c.visits}</T>
       <Field value={query} onChangeText={setQuery} placeholder={c.filter} accessibilityLabel={c.filter} />

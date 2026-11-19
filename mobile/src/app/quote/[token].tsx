@@ -3,8 +3,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Linking, View } from 'react-native';
 
 import { Button, Card, Checkbox, Field, LineRow, Notice, Screen, T } from '@/components/ui';
+import { CustomerDocumentExport } from '@/components/customer-document-export';
+import { DocumentTermsText } from '@/components/job-scope';
+import { onLiveRefresh } from '@/data/live-events';
 import { acceptEstimateAccess, declineEstimateAccess, prepareQuoteDeposit, viewEstimateAccess, type QuoteAccess } from '@/data/document-delivery';
-import { useLang } from '@/i18n';
+import { useLang, useTFor } from '@/i18n';
 import { formatters } from '@/lib/format';
 import { documentTotals, lineTotal, percentOf } from '@/lib/money';
 
@@ -17,6 +20,7 @@ function CustomerQuote() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const { lang } = useLang();
   const [page, setPage] = useState<QuoteAccess | null>(null);
+  const tc = useTFor(page?.snapshot.lang ?? lang);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');
@@ -31,6 +35,8 @@ function CustomerQuote() {
     viewEstimateAccess(String(token)).then((result) => { if (live) setPage(result); }, () => { if (live) setFailed(true); });
     return () => { live = false; };
   }, [token]);
+  // pull down: re-read the estimate without clearing what the customer typed
+  useEffect(() => onLiveRefresh(() => { viewEstimateAccess(String(token)).then(setPage, () => {}); }), [token]);
   const es = (page?.snapshot.lang ?? lang) === 'es';
   if (!page) return <Screen><T>{failed ? es ? 'No pudimos abrir este presupuesto. Puede haber caducado. Comprueba tu conexión o pide otro enlace.' : 'We could not open this estimate. It may have expired. Check your connection or ask for a new link.' : es ? 'Abriendo presupuesto…' : 'Opening estimate…'}</T>
     {failed ? <Button label={es ? 'Reintentar' : 'Try again'} onPress={load} /> : null}</Screen>;
@@ -47,6 +53,7 @@ function CustomerQuote() {
     <Card><T>{q.scope?.location}</T><T>{q.scope?.notes}</T><T>{q.scope?.details}</T>
       {q.scope?.exclusions ? <T>{es ? 'No incluido: ' : 'Excluded: '}{q.scope.exclusions}</T> : null}
       {q.lines.filter((l) => l.excluded).map((l, i) => <T key={i}>{es ? 'No incluido: ' : 'Excluded: '}{l.description}</T>)}
+      <DocumentTermsText values={q.scope} t={tc} />
     </Card>
     <Card>{included.map((l, i) => <LineRow key={i} label={l.description} sub={`${f.qty(l.qty_hundredths)} × ${f.money(l.unit_cents)}`} value={f.money(lineTotal(l.qty_hundredths, l.unit_cents))} />)}
       <LineRow label={es ? 'Subtotal' : 'Subtotal'} value={f.money(totals.subtotal)} />
@@ -62,7 +69,9 @@ function CustomerQuote() {
       <Checkbox label={consent} value={agreed} onChange={setAgreed} />
       <Button label={busy ? es ? 'Guardando…' : 'Saving…' : es ? 'Aceptar presupuesto' : 'Accept estimate'} disabled={busy || confirmDecline || !agreed || name.trim().length < 2} onPress={async () => {
         setBusy(true); setFailed(false);
-        try { const acceptedAt = await acceptEstimateAccess(String(token), page.hash, name.trim(), consent); setPage({ ...page, acceptedAt }); }
+        try { const acceptedAt = await acceptEstimateAccess(String(token), page.hash, name.trim(), consent);
+          setPage({ ...page, acceptedAt });
+          await viewEstimateAccess(String(token)).then(setPage, () => {}); }
         catch { setFailed(true); } finally { setBusy(false); }
       }} />
       {confirmDecline ? <Card style={{ gap: 8 }}>
@@ -86,6 +95,14 @@ function CustomerQuote() {
       }} />
       <T v="small" muted>{es ? 'Si ya pagaste o el pago está en proceso, no pagues de nuevo. Consulta a la empresa.' : 'If already paid or processing, do not pay again. Check with the business.'}</T>
     </> : null}
+    <CustomerDocumentExport lang={q.lang} snapshot={{
+      type: 'estimate', business: { name: q.business_name, phone: q.business_phone },
+      customer: { name: q.customer_name, lang: q.lang, phone: null, email: null }, job: { title: q.title, address: q.address, workOrder: null },
+      document: { number: q.number, sent_at: q.issued_at, signed_at: page.acceptedAt, declined_at: page.declinedAt,
+        tax_rate_bps: q.tax.rate_bps, tax_labor: q.tax.labor, tax_materials: q.tax.materials,
+        scope: q.scope, summary: [q.scope?.location, q.scope?.notes, q.scope?.details, q.scope?.exclusions].filter(Boolean).join('\n') },
+      lines: q.lines, payments: [], signatures: page.signature ? [{ ...page.signature, signedAt: page.acceptedAt, hash: page.hash }] : [],
+    }} />
     {failed ? <>
       <Notice text={es ? 'No pudimos completar la acción. Actualiza el estado para continuar.' : 'We could not complete that action. Refresh the estimate to continue.'} tone="danger" />
       <Button label={es ? 'Actualizar estado' : 'Refresh estimate'} variant="outline" onPress={load} />

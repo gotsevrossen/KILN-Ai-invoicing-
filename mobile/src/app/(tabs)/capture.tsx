@@ -142,7 +142,7 @@ export default function Capture() {
       />
 
       <Sheet open={noteOpen} onClose={() => setNoteOpen(false)} title={t('capture.note')}>
-        <Field value={note} onChangeText={setNote} placeholder={t('capture.notePlaceholder')} multiline autoFocus style={{ minHeight: 120, paddingTop: 14, textAlignVertical: 'top' }} />
+        <Field value={note} onChangeText={setNote} placeholder={t('capture.notePlaceholder')} multiline autoFocus style={{ minHeight: 120 }} />
         <Button
           label={t('common.save')}
           disabled={note.trim().length === 0}

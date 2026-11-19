@@ -18,13 +18,13 @@ export function deliveryStatus(event: unknown): Status | undefined {
 }
 
 export async function invoiceEmail(
-  db: SupabaseClient, businessId: string, invoiceId: unknown, send: { attemptId: unknown; recipient: unknown } | null,
+  db: SupabaseClient, businessId: string, invoiceId: unknown, send: { attemptId: unknown; recipient: unknown; reminder?: boolean } | null,
   makeLink: (invoiceId: string) => Promise<string>,
 ) {
   if (typeof invoiceId !== 'string' || !uuid.test(invoiceId)) throw new Refused(400, 'bad_request');
-  const invoice = await db.from('invoices').select('number,sent_at,jobs(customers(email,lang)),businesses(name)')
+  const invoice = await db.from('invoices').select('number,sent_at,paid_at,job_id,jobs(customers(email,lang)),businesses(name)')
     .eq('id', invoiceId).eq('business_id', businessId).maybeSingle<{
-      number: string; sent_at: string | null; jobs: { customers: { email: string | null; lang: string } | null } | null;
+      number: string; sent_at: string | null; paid_at: string | null; job_id: string; jobs: { customers: { email: string | null; lang: string } | null } | null;
       businesses: { name: string } | null;
     }>();
   if (invoice.error) throw new Error('invoice lookup failed');
@@ -65,6 +65,15 @@ export async function invoiceEmail(
   if (!customer?.email || customer.email !== send.recipient || customer.email.length > 254 || !/^[^\s,;<>@]+@[^\s,;<>@]+\.[^\s,;<>@]+$/.test(customer.email)) {
     throw new Refused(409, 'email_changed');
   }
+  if (send.reminder) {
+    const [total, payments] = await Promise.all([
+      db.rpc('invoice_total_cents', { p_invoice: invoiceId }),
+      db.from('payments').select('amount_cents,status').eq('job_id', invoice.data.job_id).in('status', ['succeeded', 'processing']),
+    ]);
+    if (total.error || payments.error) throw new Error('invoice balance lookup failed');
+    if (invoice.data.paid_at || payments.data.some((payment) => payment.status === 'processing') ||
+      Number(total.data) <= payments.data.reduce((sum, payment) => sum + Number(payment.amount_cents), 0)) throw new Refused(409, 'nothing_due');
+  }
   const reservation = await db.rpc('reserve_invoice_email', { p_invoice: invoiceId, p_attempt: attemptId });
   if (reservation.error?.code === 'PT429') throw new Refused(429, 'email_wait');
   if (reservation.error) throw new Error('email reservation failed');
@@ -77,8 +86,10 @@ export async function invoiceEmail(
     const es = customer.lang === 'es';
     const business = (invoice.data.businesses?.name || 'KILN').replace(/[\r\n]/g, ' ');
     const number = String(invoice.data.number).replace(/[\r\n]/g, ' ');
-    const subject = es ? `Factura ${number} de ${business}` : `Invoice ${number} from ${business}`;
-    const text = es ? `Consulta tu factura de ${business}:\n\n${url}` : `View your invoice from ${business}:\n\n${url}`;
+    const subject = send.reminder ? (es ? `Recordatorio de pago de ${business} · ${number}` : `Payment reminder from ${business} · ${number}`)
+      : es ? `Factura ${number} de ${business}` : `Invoice ${number} from ${business}`;
+    const text = send.reminder ? (es ? `Consulta el saldo de tu factura de ${business}:\n\n${url}` : `Review your invoice balance from ${business}:\n\n${url}`)
+      : es ? `Consulta tu factura de ${business}:\n\n${url}` : `View your invoice from ${business}:\n\n${url}`;
     status = 'unknown';
     const response = await fetch(resend, {
       method: 'POST',

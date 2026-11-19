@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, Share, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RecordGate } from '@/components/record-gate';
@@ -8,6 +8,7 @@ import { SignaturePad, type SignatureInk } from '@/components/signature-pad';
 import { Button, Card, Checkbox, Field, Hair, Icon, LineRow, Notice, PhotoTile, Row, Screen, T } from '@/components/ui';
 import { changeOrderById, changeOrderTotal, customerOf, hasChangeOrder, jobById } from '@/data/selectors';
 import { useStore } from '@/data/store';
+import { shareChangeOrder } from '@/data/document-delivery';
 import { useLang, useTFor } from '@/i18n';
 import { formatters } from '@/lib/format';
 import { font, radius, tap } from '@/theme/tokens';
@@ -16,7 +17,7 @@ import { usePalette } from '@/theme/use-palette';
 /** Hand-the-phone signing. Everything below the black strip is in the customer's language. */
 function ChangeOrderSign() {
   const p = usePalette();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { state, actions } = useStore();
   const { id } = useLocalSearchParams<{ id: string }>();
   const co = changeOrderById(id)!;
@@ -34,9 +35,25 @@ function ChangeOrderSign() {
   const [drawing, setDrawing] = useState(false);
   const [padKey, setPadKey] = useState(0);
   const [agreed, setAgreed] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareFailed, setShareFailed] = useState(false);
   const signed = state.signed[co.id];
   const ready = name.trim().length > 1 && hasInk && agreed;
   const newTotal = fc.money(changeOrderTotal(co));
+  const share = state.mode === 'connected' ? <>
+    <Button label={lang === 'es' ? 'Compartir enlace con el cliente' : 'Share customer link'} variant="outline" disabled={busy} onPress={async () => {
+      setBusy(true); setShareFailed(false);
+      try {
+        await actions.retryOffline();
+        const url = await shareChangeOrder(co.id);
+        setShareUrl(url);
+        await Share.share({ message: `${tc('changeOrder.title', { n: co.number })}\n${url}` }).catch(() => {});
+      } catch { setShareFailed(true); }
+      finally { setBusy(false); }
+    }} />
+    {shareUrl ? <Text selectable style={{ color: p.ink }}>{shareUrl}</Text> : null}
+    {shareFailed ? <Notice tone="danger" text={lang === 'es' ? 'No se pudo crear el enlace.' : 'Could not create the customer link.'} /> : null}
+  </> : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: p.ground }}>
@@ -68,6 +85,7 @@ function ChangeOrderSign() {
               <T v="small" muted>{new Date(signed.at).toLocaleString(customer.lang === 'es' ? 'es-US' : 'en-US')}</T>
               <T v="small" muted>{tc('changeOrder.addedTo', { job: job.title })}</T>
             </Card>
+            {share}
             <Button label={tc('changeOrder.giveBack')} variant="dark" big onPress={() => router.back()} />
           </View>
         </Screen>
@@ -96,6 +114,7 @@ function ChangeOrderSign() {
           </Card>
 
           {saveError ? <Notice text={tc('improvements.approvalFailed')} tone="danger" /> : null}
+          {share}
           <Field label={tc('changeOrder.fullName')} value={name} onChangeText={setName} autoComplete="name" />
 
           <View style={{ gap: 6 }}>

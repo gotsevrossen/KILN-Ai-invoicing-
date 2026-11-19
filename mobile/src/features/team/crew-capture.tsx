@@ -121,7 +121,7 @@ export function CrewCaptureScreen({ jobs, error, retry }: {
     }} />
     <Sheet open={noteOpen} onClose={() => setNoteOpen(false)} title={t('capture.note')}>
       <Field value={note} onChangeText={setNote} placeholder={t('capture.notePlaceholder')} multiline maxLength={2000}
-        autoFocus style={{ minHeight: 120, paddingTop: 14, textAlignVertical: 'top' }} />
+        autoFocus style={{ minHeight: 120 }} />
       <Button label={t('common.save')} disabled={!note.trim()} onPress={() => {
         setNoteOpen(false); noteId.current = ''; setSaveError(''); pickJobAfterSheet('note');
       }} />

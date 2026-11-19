@@ -139,7 +139,7 @@ export default function ImportPrices() {
         </> : null}
       </Card>
       <Field label={t('ai.pasteLabel')} value={text} onChangeText={setText} placeholder={t('ai.pastePlaceholder')}
-        multiline maxLength={20000} editable={!reading} style={{ minHeight: 120, paddingTop: 14, textAlignVertical: 'top' }} />
+        multiline maxLength={20000} editable={!reading} style={{ minHeight: 120 }} />
       {error ? <T v="small" color={p.danger}>{error}</T> : null}
     </Screen>
   );

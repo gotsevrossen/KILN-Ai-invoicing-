@@ -1,16 +1,20 @@
-import { useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { View } from 'react-native';
 
 import { CustomerPage } from '@/components/customer-page';
+import { InvoicePaymentChoices } from '@/components/invoice-payment-choices';
 import { ProofPhotos } from '@/components/job-photos';
 import { ScopeCard } from '@/components/job-scope';
 import { RecordGate } from '@/components/record-gate';
-import { Button, Card, Hair, LineRow, Notice, Row, T } from '@/components/ui';
+import { Card, Hair, LineRow, Row, T } from '@/components/ui';
 import * as sample from '@/data/sample';
-import { customerOf, hasInvoice, invoiceById, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, jobById, taxScope } from '@/data/selectors';
+import { customerOf, documentScope, hasInvoice, invoiceById, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, jobById, paidOnline, taxScope } from '@/data/selectors';
+import { loadInvoiceOptions } from '@/data/pay-page';
+import { onLiveRefresh } from '@/data/live-events';
 import { useStore } from '@/data/store';
-import { useLang, useTFor } from '@/i18n';
+import { useTFor } from '@/i18n';
+import { useInvoiceAcceptance } from '@/data/use-invoice-acceptance';
 import { addDays, formatters } from '@/lib/format';
 import { businessDate } from '@/lib/invoice-aging';
 import { lineTotal } from '@/lib/money';
@@ -19,7 +23,6 @@ import { usePalette } from '@/theme/use-palette';
 
 function CustomerInvoice() {
   const p = usePalette();
-  const { t } = useLang();
   const { state } = useStore();
   const { id } = useLocalSearchParams<{ id: string }>();
   const invoice = invoiceById(id)!;
@@ -27,7 +30,24 @@ function CustomerInvoice() {
   const customer = customerOf(job);
   const tc = useTFor(customer.lang);
   const fc = formatters(customer.lang);
-  const [payTapped, setPayTapped] = useState(false);
+  const connected = state.mode === 'connected';
+  const businessId = state.businessId;
+  const [options, setOptions] = useState<{ businessId: string; value: Awaited<ReturnType<typeof loadInvoiceOptions>> } | null>(null);
+  useFocusEffect(useCallback(() => {
+    if (!connected || !businessId) return;
+    let active = true;
+    let revision = 0;
+    const refresh = () => {
+      const request = ++revision;
+      void loadInvoiceOptions().then((value) => { if (active && request === revision) setOptions({ businessId, value }); })
+        .catch(() => { if (active && request === revision) setOptions(null); });
+    };
+    refresh();
+    const unsubscribe = onLiveRefresh(refresh);
+    return () => { active = false; unsubscribe(); };
+  }, [connected, businessId]));
+  const online = options?.businessId === businessId ? options?.value : undefined;
+  const acceptance = useInvoiceAcceptance(invoice.id, businessId, connected && state.sentInvoices.includes(invoice.id));
 
   const lines = invoiceLines(state, invoice);
   const totals = invoiceTotals(state, invoice);
@@ -35,7 +55,7 @@ function CustomerInvoice() {
   const issuedOn = issued?.issuedOn ?? businessDate(state.mode, sample.TODAY);
   const itemized = (issued?.materialsMode ?? state.materialsMode[invoice.id] ?? 'items') === 'items';
   const shown = itemized ? lines : lines.filter((l) => l.kind !== 'material');
-  const pay = () => setPayTapped(true);
+  const pending = paidOnline(state, invoice.id).pending;
   const scope = taxScope(state, invoice);
   const tax = invoiceTax(state, invoice);
   const taxKey = scope === 'all' ? 'customer.taxAll' : scope === 'labor' ? 'customer.taxLabor' : scope === 'materials' ? 'customer.taxMaterials' : null;
@@ -52,18 +72,17 @@ function CustomerInvoice() {
         </View>
         <View style={{ gap: 2, alignItems: 'flex-end' }}>
           <T v="small" muted>{tc('customer.sent', { date: fc.date(issuedOn) })}</T>
-          <T v="label">{tc('customer.due', { date: fc.date(addDays(issuedOn, issued?.dueDays ?? state.settings.dueDays)) })}</T>
+          <T v="label">{tc('customer.due', { date: fc.date(addDays(issuedOn, issued?.dueDays ?? state.invoiceDueDays?.[invoice.id] ?? state.settings.dueDays)) })}</T>
         </View>
       </Row>
 
       <Card tone="accent" style={{ gap: 10, padding: 22, borderRadius: radius.lg }}>
         <T v="eyebrow" color={p.onAccent}>{tc('customer.amountDue')}</T>
         <T v="moneyBig" color={p.onAccent}>{fc.money(totals.due)}</T>
-        {/* the same two ways the real pay page offers */}
-        <Button label={tc('customer.wallet')} variant="dark" big onPress={pay} />
-        <Button label={tc('customer.bank')} variant="soft" style={{ backgroundColor: p.card }} onPress={pay} />
       </Card>
-      {payTapped ? <Notice text={t('customer.previewPay', { name: customer.firstName })} icon="eye" /> : null}
+      <InvoicePaymentChoices lang={customer.lang} methods={acceptance?.alternativeMethods ?? issued?.alternativeMethods ?? state.settings.alternativeMethods ?? {}}
+        wallet={!!online?.wallet} card={!!online?.card} bank={!!online?.bank} testMode={online?.testMode} canPay={totals.due > 0 && pending === 0}
+        acceptance={acceptance} />
 
       <Card style={{ gap: 6 }}>
         <T v="eyebrow">{tc('customer.payingFor')}</T>
@@ -83,11 +102,11 @@ function CustomerInvoice() {
         <LineRow label={tc('customer.total')} value={fc.money(totals.total)} strong />
       </Card>
 
-      <ScopeCard scope={issued ? issued.scope : state.estimates[job.id]?.scope}
+      <ScopeCard scope={issued ? issued.scope : documentScope(state, job)}
         excluded={issued ? issued.excludedScope : state.estimates[job.id]?.lines.filter((l) => l.excluded).map((l) => l.description)} t={tc} />
       <Card style={{ gap: 10 }}>
         <T v="eyebrow">{tc('customer.theWork')}</T>
-        <ProofPhotos jobId={job.id} t={tc} showLocation={!!state.showLocation[invoice.id]} height={120} />
+        <ProofPhotos jobId={job.id} t={tc} ids={issued?.proofPhotoIds ?? state.invoiceProofPhotos?.[invoice.id]} showLocation={!!state.showLocation[invoice.id]} height={120} />
         <T v="body">{invoiceSummary(state, invoice)}</T>
       </Card>
     </CustomerPage>

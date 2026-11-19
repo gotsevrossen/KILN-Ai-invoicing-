@@ -1,7 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
 import {
-  checkChange, checkCommands, checkGuess, checkTags, checkMissed, checkPrices, checkReceipt, checkScope,
+  checkChange, checkCommands, checkGuess, checkTags, checkMissed, checkPrices, checkReceipt, checkScope, checkInvoiceReview,
   type ChangeDraft, type Command, type Guess, type ImportedPrice, type MissedItem, type ScannedReceipt,
 } from '@/lib/ai-check';
 import { supabase } from '@/lib/supabase';
@@ -30,7 +30,7 @@ export function aiReady(mode: 'example' | 'connected'): boolean {
   return mode === 'connected' && supabase !== null;
 }
 
-async function call(task: 'guess' | 'missed' | 'scope' | 'prices' | 'receipt' | 'receiptReview' | 'change' | 'command' | 'tags' | 'findJobs', input: unknown): Promise<unknown> {
+async function call(task: 'guess' | 'missed' | 'scope' | 'prices' | 'receipt' | 'receiptReview' | 'change' | 'command' | 'tags' | 'findJobs' | 'invoiceReview', input: unknown): Promise<unknown> {
   if (!supabase) throw new AiFailed('not_set_up');
   const { data, error } = await supabase.functions.invoke('ai', { body: { task, input } });
   if (!error) return data;
@@ -89,6 +89,10 @@ export async function writeScope(input: ScopeInput): Promise<string> {
   return text;
 }
 
+export async function reviewInvoice(input: { lang: 'en' | 'es'; billed: string[]; records: string[] }) {
+  return checkInvoiceReview(await call('invoiceReview', input));
+}
+
 /** A photo as text, ready to send. */
 export type AiImage = { mediaType: 'image/jpeg' | 'image/png' | 'image/webp'; data: string };
 
@@ -102,9 +106,11 @@ export async function readPrices(input: PricesInput): Promise<ImportedPrice[]> {
   return checkPrices(await call('prices', input), input.items.map((i) => i.id));
 }
 
-/** Store, date, items before tax, and tax from one or two photos of a receipt. */
-export async function scanReceipt(images: AiImage[]): Promise<ScannedReceipt> {
-  const receipt = checkReceipt(await call('receipt', { images }));
+export type ReceiptScan = { images: AiImage[] } | { pdf: string };
+
+/** Store, date, items before tax, and tax from one receipt. */
+export async function scanReceipt(source: ReceiptScan): Promise<ScannedReceipt> {
+  const receipt = checkReceipt(await call('receipt', source));
   if (!receipt) throw new AiFailed('failed');
   return receipt;
 }

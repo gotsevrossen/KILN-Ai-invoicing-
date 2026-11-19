@@ -4,24 +4,34 @@ import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 
 import { ScopeCard } from '@/components/job-scope';
+import { CustomerDocumentExport } from '@/components/customer-document-export';
+import type { SavedSnapshot } from '@/data/job-cleanup';
+import { parseDollars } from '@/components/estimate-parts';
+import { InvoicePaymentChoices } from '@/components/invoice-payment-choices';
 import { LogoMark } from '@/components/logo';
 import { StripePay } from '@/components/stripe-pay';
-import { Button, Card, Hair, Icon, LineRow, Notice, Row, Screen, T } from '@/components/ui';
-import { checkPayment, loadPayPage, type PayPage } from '@/data/pay-page';
+import { Button, Card, Checkbox, Field, Hair, Icon, LineRow, Notice, Row, Screen, T } from '@/components/ui';
+import { onLiveRefresh } from '@/data/live-events';
+import { checkPayment, loadPayPage, returnSignedInvoice, type PayPage } from '@/data/pay-page';
 import { useTFor, type Lang } from '@/i18n';
 import { useLang } from '@/i18n';
 import { addDays, formatters } from '@/lib/format';
 import { localDate } from '@/lib/invoice-aging';
 import { lineTotal } from '@/lib/money';
 import { errorDetails, userError, type ErrorDetails } from '@/lib/user-errors';
-import { radius, tap } from '@/theme/tokens';
+import { radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
 /**
  * The customer's invoice, opened from the link the owner texted or emailed. No app, no account:
  * the link's code opens this one invoice. Everything shown is the copy saved when it was sent.
  */
-export default function PayInvoice() {
+export default function PayInvoiceRoute() {
+  const { token } = useLocalSearchParams<{ token: string }>();
+  return <PayInvoice key={token} />;
+}
+
+function PayInvoice() {
   const p = usePalette();
   const { lang: deviceLang } = useLang();
   const { token, payment_intent: returnedIntent } = useLocalSearchParams<{ token: string; payment_intent?: string }>();
@@ -29,6 +39,9 @@ export default function PayInvoice() {
   const [problem, setProblem] = useState<ErrorDetails | null>(null);
   const [done, setDone] = useState<'succeeded' | 'processing' | null>(null);
   const [paymentCheckFailed, setPaymentCheckFailed] = useState(false);
+  const [drawing, setDrawing] = useState(false);
+  const [partial, setPartial] = useState(false);
+  const [amount, setAmount] = useState('');
   const lang: Lang = page?.customer.lang ?? deviceLang;
   const tc = useTFor(lang);
   const fc = formatters(lang);
@@ -41,6 +54,8 @@ export default function PayInvoice() {
       setProblem(errorDetails(e));
     }
   }, [token]);
+  // pull down to see the latest payment status
+  useEffect(() => onLiveRefresh(() => void load()), [load]);
 
   useEffect(() => {
     void (async () => {
@@ -75,16 +90,36 @@ export default function PayInvoice() {
   const taxKey = invoice.tax.rateBps > 0 && (invoice.tax.labor || invoice.tax.materials)
     ? invoice.tax.labor && invoice.tax.materials ? 'customer.taxAll' : invoice.tax.labor ? 'customer.taxLabor' : 'customer.taxMaterials'
     : null;
-  const paidNow = invoice.paid || done === 'succeeded';
-  const onTheWay = !paidNow && (page.pending > 0 || done === 'processing');
+  const paidNow = invoice.paid;
+  const onTheWay = !paidNow && page.pending > 0;
+  const canPay = !paidNow && !onTheWay && !problem && page.due > 0;
+  const charge = page.reservation?.amountCents ?? (partial ? parseDollars(amount) : page.due);
+  const validCharge = charge !== null && charge >= 50 && charge <= page.due;
+  const es = lang === 'es';
+  const printable: SavedSnapshot = {
+    type: 'invoice', business: page.business,
+    customer: { ...page.customer, phone: null, email: null },
+    job: { title: '', address: invoice.address, workOrder: invoice.workOrder },
+    document: { number: invoice.number, issued_on: issuedOn, due_date: addDays(issuedOn, invoice.dueDays),
+      paid_at: invoice.paidAt, signed_at: page.acceptance?.signedAt, materials_mode: invoice.materialsMode, scope: invoice.scope,
+      tax_rate_bps: invoice.tax.rateBps, tax_labor: invoice.tax.labor, tax_materials: invoice.tax.materials,
+      summary: [invoice.summary, invoice.scope?.location, invoice.scope?.notes, invoice.scope?.details,
+        ...[invoice.scope?.exclusions, ...(invoice.excludedScope ?? [])].filter(Boolean)
+          .map((text) => `${tc('scope.exclusions')}: ${text}`)].filter(Boolean).join('\n') },
+    lines: page.lines.map((line) => ({ description: line.description, kind: line.kind, qty_hundredths: line.qtyHundredths, unit_cents: line.unitCents })),
+    payments: page.payments ?? [],
+    signatures: page.acceptance ? [{ ...page.acceptance, hash: page.hash, method: 'finger' }] : [],
+  };
 
   const paid = async (status: 'succeeded' | 'processing') => {
-    setDone(status);
     await load();
+    setDone(status);
+    setPartial(false);
+    setAmount('');
   };
 
   return (
-    <Screen>
+    <Screen scrollEnabled={!drawing}>
       <View style={{ maxWidth: 560, width: '100%', alignSelf: 'center', gap: 14 }}>
         {paymentCheckFailed ? <Notice text={tc('pay.checkFailed')} tone="danger" icon="alert-circle" /> : null}
         {problem ? <>
@@ -99,6 +134,12 @@ export default function PayInvoice() {
                 <T v="small" muted style={{ textDecorationLine: 'underline' }}>{page.business.phone}</T>
               </Pressable>
             ) : null}
+            {page.business.email ? (
+              <Pressable accessibilityRole="link" onPress={() => Linking.openURL(`mailto:${page.business.email}`)}>
+                <T v="small" muted style={{ textDecorationLine: 'underline' }}>{page.business.email}</T>
+              </Pressable>
+            ) : null}
+            {page.business.address ? <T v="small" muted>{page.business.address}</T> : null}
           </View>
         </Card>
 
@@ -132,19 +173,27 @@ export default function PayInvoice() {
             <>
               <T v="eyebrow" color={p.onAccent}>{tc('customer.amountDue')}</T>
               <T v="moneyBig" color={p.onAccent}>{fc.money(page.due)}</T>
-              {page.pay ? (
-                <StripePay token={String(token)} pay={page.pay} amountCents={page.due} amountText={fc.money(page.due)} lang={lang} tc={tc} onDone={paid} />
-              ) : null}
-              <T v="small" color={p.onAccent}>{tc('pay.offline', { business: page.business.name })}</T>
-              {page.business.phone ? (
-                <Pressable accessibilityRole="link" onPress={() => Linking.openURL(`tel:${page.business.phone.replace(/[^\d+]/g, '')}`)}
-                  style={{ minHeight: tap.min, justifyContent: 'center' }}>
-                  <T v="label" color={p.onAccent} style={{ textDecorationLine: 'underline' }}>{tc('pay.call', { phone: page.business.phone })}</T>
-                </Pressable>
-              ) : null}
             </>
           )}
         </Card>
+
+        {canPay && page.reservation ? <Notice text={es ? `Pago en línea iniciado por ${fc.money(page.reservation.amountCents)}.` : `An online checkout was started for ${fc.money(page.reservation.amountCents)}.`} /> : null}
+        {canPay && done === 'succeeded' ? <Notice text={es ? 'Pago recibido. Revisa el saldo restante.' : 'Payment received. See the remaining balance above.'} /> : null}
+        {canPay && !page.reservation && (page.pay?.wallet || page.pay?.card || page.pay?.bank) && page.due >= 50 ? <Card>
+          <Checkbox label={es ? 'Pagar otra cantidad' : 'Pay a different amount'} value={partial} onChange={setPartial} />
+          {partial ? <Field label={es ? 'Cantidad a pagar' : 'Amount to pay'} value={amount} keyboardType="decimal-pad" onChangeText={setAmount} /> : null}
+        </Card> : null}
+        <InvoicePaymentChoices lang={lang} methods={page.alternativeMethods ?? {}} wallet={!!page.pay?.wallet}
+          card={!!page.pay?.card} bank={!!page.pay?.bank} testMode={page.testMode} canPay={canPay} acceptance={page.acceptance ?? null}
+          alternativesOnHold={!!page.reservation}
+          onDrawing={setDrawing} onSign={page.hash ? async (name, ink, method) => {
+            const acceptance = await returnSignedInvoice(String(token), page.hash, name, ink, method);
+            setPage((current) => current ? { ...current, acceptance } : current);
+          } : undefined}
+          online={(choice) => page.pay && validCharge ? <StripePay key={`${choice}:${charge}`} token={String(token)}
+            pay={{ ...page.pay, wallet: choice === 'wallet' && page.pay.wallet, card: choice === 'stripe' && page.pay.card, bank: choice === 'stripe' && page.pay.bank }}
+            amountCents={charge} amountText={fc.money(charge)} lang={lang} tc={tc} onDone={paid} onAccent={false} />
+            : <T v="small" muted>{es ? 'Ingresa al menos $0.50 y hasta el saldo restante.' : 'Enter at least $0.50 and up to the remaining balance.'}</T>} />
 
         <Card style={{ gap: 6 }}>
           <T v="eyebrow">{tc('customer.payingFor')}</T>
@@ -186,6 +235,8 @@ export default function PayInvoice() {
           </Card>
         ) : null}
 
+        <CustomerDocumentExport snapshot={printable} lang={lang} />
+        {printable.payments.length ? <CustomerDocumentExport snapshot={printable} lang={lang} receipt /> : null}
         <Hair />
         <View style={{ alignItems: 'center', gap: 4 }}>
           <Row gap={6}>

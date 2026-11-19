@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path to public,extensions;
-select plan(17);
+select plan(24);
 insert into auth.users(id,email) values('30000000-0000-0000-0000-000000000001','payments-owner@example.test'),('30000000-0000-0000-0000-000000000002','payments-other@example.test');
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"30000000-0000-0000-0000-000000000001","role":"authenticated"}',true);
@@ -9,6 +9,7 @@ select public.create_business('Payment test','','{plumbing}','flat',0);
 reset role;
 create temp table payment_fixture as select business_id as bid,'30000000-0000-0000-0000-000000000003'::uuid as job from public.business_members where user_id='30000000-0000-0000-0000-000000000001';
 grant select on payment_fixture to authenticated;
+update public.businesses set alternative_methods='{"cash":""}' where id=(select bid from payment_fixture);
 insert into public.customers(id,business_id,name) select '30000000-0000-0000-0000-000000000004',bid,'Customer' from payment_fixture;
 insert into public.jobs(id,business_id,customer_id,title) select job,bid,'30000000-0000-0000-0000-000000000004','Bathroom' from payment_fixture;
 insert into public.estimates(id,business_id,job_id,number,deposit_bps) select '30000000-0000-0000-0000-000000000005',bid,job,'E-TEST',3000 from payment_fixture;
@@ -27,6 +28,8 @@ set local role authenticated;
 select throws_ok($$select public.record_job_cash('30000000-0000-0000-0000-000000000006')$$,'P0001','An online payment was started','cash cannot race an online reservation');
 reset role;
 update public.job_payment_requests set intent_id='pi_test123456' where id='30000000-0000-0000-0000-000000000006';
+select throws_ok($$update public.job_payment_requests set intent_id='pi_other123456' where id='30000000-0000-0000-0000-000000000006'$$,
+  'P0001','Payment intent already bound','a second Stripe intent cannot replace a bound advance intent');
 select lives_ok($$select public.record_job_payment('30000000-0000-0000-0000-000000000006','pi_test123456',20000,'wallet','failed')$$,'a failed Stripe attempt is recorded');
 set local role authenticated;
 insert into public.change_orders(id,business_id,job_id,number,description,amount_cents,base_cents,sent_at) select '30000000-0000-0000-0000-000000000008',bid,job,1,'Removed fixture',-10000,100000,now() from payment_fixture;
@@ -49,6 +52,10 @@ select lives_ok($$select public.record_job_payment('30000000-0000-0000-0000-0000
 select is(public.reserve_invoice_payment('30000000-0000-0000-0000-000000000009','wallet'),70000,'final reservation deducts confirmed advance');
 select throws_ok($$select public.reserve_invoice_payment('30000000-0000-0000-0000-000000000009','bank')$$,'P0001','Use the original payment method','final method remains frozen');
 update public.invoice_payment_reservations set intent_id='pi_final123456' where invoice_id='30000000-0000-0000-0000-000000000009';
+select lives_ok($$update public.invoice_payment_reservations set intent_id='pi_final123456' where invoice_id='30000000-0000-0000-0000-000000000009'$$,
+  'retrying the same intent binding succeeds');
+select throws_ok($$update public.invoice_payment_reservations set intent_id='pi_other123456' where invoice_id='30000000-0000-0000-0000-000000000009'$$,
+  'P0001','Payment intent already bound','a second Stripe intent cannot replace a bound invoice intent');
 select throws_ok($$select public.record_stripe_payment((select bid from payment_fixture),'30000000-0000-0000-0000-000000000009','pi_wrong123456',70000,'wallet','succeeded',100000)$$,'P0001','Payment does not match reservation','different intent cannot claim reserved payment');
 select lives_ok($$select public.record_stripe_payment((select bid from payment_fixture),'30000000-0000-0000-0000-000000000009','pi_final123456',70000,'wallet','succeeded',100000)$$,'reserved final intent can settle');
 select lives_ok($$select public.record_stripe_payment((select bid from payment_fixture),'30000000-0000-0000-0000-000000000009','pi_final123456',70000,'wallet','processing',100000)$$,'late processing notice is accepted idempotently');

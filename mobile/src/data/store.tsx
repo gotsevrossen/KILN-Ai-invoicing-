@@ -21,8 +21,9 @@ import * as photosApi from './db-photos';
 import * as sample from './sample';
 import { business, customers, initialAssignments, initialEstimates, invoices, jobs, priceList, timeEntries } from './sample';
 import type { TradeId } from './trades';
-import type { Assignment, ChangeOrder, Customer, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, Photo, PhotoTag, PriceItem, Receipt, TimeEntry, Unit, WorkItem } from './types';
-import { canDeleteJob, canDeleteReceipt, changeOrderBase, hoursFor, invoiceBilling, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, jobStage, paidOnline, receiptsOnJob, workLocked } from './selectors';
+import type { Assignment, ChangeOrder, Customer, DocumentTerms, EstimateDraft, EstimateLine, Invoice, InvoiceBilling, InvoiceSnapshot, Job, Photo, PhotoTag, PriceItem, Receipt, TimeEntry, Unit, WorkItem } from './types';
+import type { AlternativeMethod, AlternativeMethods } from '@/lib/invoice-payment';
+import { canDeleteJob, canDeleteReceipt, changeOrderBase, documentScope, hoursFor, invoiceBilling, invoiceLines, invoiceSummary, invoiceTax, invoiceTotals, jobStage, paidOnline, receiptsOnJob, workLocked } from './selectors';
 
 export type { EstimateDraft, EstimateLine };
 
@@ -48,6 +49,7 @@ export interface Capture {
 
 /** Pricing the owner can change in Settings. */
 export interface PricingSettings {
+  alternativeMethods?: AlternativeMethods;
   markupBps: number;
   tax: TaxRule;
   /** Default deposit for new estimates. */
@@ -60,6 +62,10 @@ export interface PricingSettings {
 export interface Profile {
   businessName: string;
   phone: string;
+  /** The business's contact email and mailing address (owner edits them in Settings). */
+  email?: string;
+  address?: string;
+  documentTerms?: DocumentTerms;
   trades: TradeId[];
   pricing: 'hourly' | 'flat';
   rateCents: Cents;
@@ -112,6 +118,8 @@ export interface State {
   showLocation: Record<string, boolean>;
   sentInvoices: string[];
   issuedInvoices: Record<string, InvoiceSnapshot>;
+  invoiceDueDays?: Record<string, number>;
+  invoiceProofPhotos?: Record<string, string[]>;
   invoiceBilling: Record<string, InvoiceBilling>;
   invoiceSummaries: Record<string, string>;
   voiceConfirmed: boolean;
@@ -167,6 +175,8 @@ function initialState(): State {
     showLocation: {},
     sentInvoices: [],
     issuedInvoices: {},
+    invoiceDueDays: {},
+    invoiceProofPhotos: {},
     invoiceBilling: {},
     invoiceSummaries: {},
     voiceConfirmed: false,
@@ -225,6 +235,8 @@ function connectedState(base: State): State {
     showLocation: {},
     sentInvoices: [],
     issuedInvoices: {},
+    invoiceDueDays: {},
+    invoiceProofPhotos: {},
     invoiceBilling: {},
     invoiceSummaries: {},
     voiceConfirmed: false,
@@ -501,6 +513,8 @@ function applyLoaded(loaded: dbApi.Loaded): void {
     sentInvoices: d.sentInvoices,
     paidInvoices: d.paidInvoices,
     issuedInvoices: d.issuedInvoices,
+    invoiceDueDays: d.invoiceDueDays,
+    invoiceProofPhotos: d.invoiceProofPhotos,
     invoiceBilling: d.invoiceBilling,
     materialsMode: d.materialsMode,
     showLocation: d.showLocation,
@@ -709,10 +723,24 @@ function makeActions() {
       set((s) => ({ ...s, materialsMode: { ...s.materialsMode, [invoiceId]: mode } }));
       persist(command('updateInvoice', invoiceId, { materialsMode: mode }));
     },
+    setInvoiceDueDays(invoiceId: string, dueDays: number | null) {
+      if (get().sentInvoices.includes(invoiceId)) return;
+      if (dueDays !== null && (!Number.isInteger(dueDays) || dueDays < 0 || dueDays > 365)) return;
+      const next = { ...get().invoiceDueDays };
+      if (dueDays === null) delete next[invoiceId];
+      else next[invoiceId] = dueDays;
+      set((s) => ({ ...s, invoiceDueDays: next }));
+      persist(command('updateInvoice', invoiceId, { dueDays }));
+    },
     setShowLocation(invoiceId: string, on: boolean) {
       if (get().issuedInvoices[invoiceId]) return;
       set((s) => ({ ...s, showLocation: { ...s.showLocation, [invoiceId]: on } }));
       persist(command('updateInvoice', invoiceId, { showLocation: on }));
+    },
+    setInvoiceProofPhotos(invoiceId: string, proofPhotoIds: string[]) {
+      if (get().sentInvoices.includes(invoiceId)) return;
+      set((s) => ({ ...s, invoiceProofPhotos: { ...s.invoiceProofPhotos, [invoiceId]: proofPhotoIds } }));
+      persist(command('updateInvoice', invoiceId, { proofPhotoIds }));
     },
     async sendInvoice(invoiceId: string): Promise<void> {
       const connected = get().mode === 'connected';
@@ -720,14 +748,17 @@ function makeActions() {
       const s = get();
       const invoice = invoices.find((i) => i.id === invoiceId);
       if (!invoice || s.sentInvoices.includes(invoiceId) || !invoiceBilling(s, invoice).reviewed) return;
+      if (!Object.keys(s.settings.alternativeMethods ?? {}).length) throw new payApi.PayFailed('alternative_methods_required');
       if (sample.changeOrders.some((change) => change.jobId === invoice.jobId && !s.signed[change.id] && !s.declinedChanges.includes(change.id))) return;
       const job = jobs.find((j) => j.id === invoice.jobId)!;
       if (needsActualHours(job, s.estimates[job.id], invoiceBilling(s, invoice), hoursFor(s, job.id))) return;
       const lines = invoiceLines(s, invoice);
       if (lines.length === 0) return;
       const snapshot: InvoiceSnapshot = copyDocument({ lines, tax: invoiceTax(s, invoice), summary: invoiceSummary(s, invoice),
-        scope: s.estimates[job.id]?.scope, excludedScope: s.estimates[job.id]?.lines.filter((l) => l.excluded).map((l) => l.description),
-        materialsMode: s.materialsMode[invoiceId] ?? 'items', dueDays: s.settings.dueDays,
+        alternativeMethods: s.settings.alternativeMethods,
+        proofPhotoIds: s.invoiceProofPhotos?.[invoiceId],
+        scope: documentScope(s, job), excludedScope: s.estimates[job.id]?.lines.filter((l) => l.excluded).map((l) => l.description),
+        materialsMode: s.materialsMode[invoiceId] ?? 'items', dueDays: s.invoiceDueDays?.[invoiceId] ?? s.settings.dueDays,
         issuedOn: businessDate(s.mode, sample.TODAY), address: job.address, workOrder: job.workOrder });
 
       // the summary being typed is saved first; then the lines and frozen copy
@@ -753,12 +784,14 @@ function makeActions() {
       const s = get(); const draft = s.estimates[jobId];
       if (draft?.sent) return;
       if (!draft || !estimateReady(draft) || invoices.some((i) => i.jobId === jobId && s.sentInvoices.includes(i.id))) throw new Error('Estimate is not ready');
-      const issued = copyDocument({ ...draft, sent: true, tax: s.settings.tax });
+      const job = jobs.find((j) => j.id === jobId);
+      if (!job) throw new Error('Estimate is not ready');
+      const issued = copyDocument({ ...draft, scope: documentScope(s, job), sent: true, tax: s.settings.tax });
       const apply = () => set((x) => ({ ...x, estimates: { ...x.estimates, [jobId]: issued } }));
       if (s.mode === 'connected') {
         await retryOffline();
         if (!active() || get().businessId !== s.businessId) throw new Error('signed_out');
-        await saveQueue.commit(() => docsApi.sendEstimate(s.businessId!, jobId, s.settings.tax), apply);
+        await saveQueue.commit(() => docsApi.sendEstimate(s.businessId!, jobId, s.settings.tax, issued.scope), apply);
         cacheCurrent();
       } else apply();
     },
@@ -934,7 +967,7 @@ function makeActions() {
     /** Final cash collection requires a server response. A stale or reserved
      * balance is rejected for review rather than stored in the ordinary outbox.
      */
-    async markPaid(invoiceId: string, confirmedCents?: number): Promise<void> {
+    async markPaid(invoiceId: string, confirmedCents?: number, method: AlternativeMethod = 'cash'): Promise<void> {
       const s = get();
       const active = saveQueue.scope();
       const invoice = invoices.find((i) => i.id === invoiceId);
@@ -946,11 +979,31 @@ function makeActions() {
       if (s.mode === 'example') { apply(); return; }
       await retryOffline();
       if (!active() || get().businessId !== s.businessId) throw new Error('signed_out');
-      await saveQueue.commit(() => docsApi.markInvoicePaid(invoiceId, left), apply);
+      await saveQueue.commit(() => docsApi.markInvoicePaid(invoiceId, left, method), apply);
       cacheCurrent();
       void refreshPay();
     },
     refreshPay,
+    async recordAlternativePayment(invoiceId: string, amountCents: number, method: AlternativeMethod, paymentId: string): Promise<void> {
+      const s = get();
+      const active = saveQueue.scope();
+      const invoice = invoices.find((item) => item.id === invoiceId);
+      if (!invoice || !s.sentInvoices.includes(invoiceId) || !Number.isSafeInteger(amountCents) || amountCents <= 0) throw new Error('Invoice is not ready for payment');
+      if (s.mode === 'example') {
+        if (s.payments.some((payment) => payment.id === paymentId)) return;
+        const due = invoiceTotals(s, invoice).due;
+        if (amountCents > due) throw new Error('Balance changed. Refresh first');
+        const record: payApi.PaymentRecord = { id: paymentId, invoiceId, jobId: invoice.jobId, amountCents, method: method === 'check' || method === 'cash' ? method : 'other',
+          alternativeMethod: method, status: 'succeeded', paidAt: new Date().toISOString() };
+        set((state) => ({ ...state, payments: [...state.payments, record],
+          paidInvoices: amountCents === due ? [...new Set([...state.paidInvoices, invoiceId])] : state.paidInvoices }));
+        return;
+      }
+      await retryOffline();
+      if (!active() || get().businessId !== s.businessId) throw new Error('signed_out');
+      await saveQueue.commit(() => docsApi.recordAlternativePayment(invoiceId, amountCents, method, paymentId), () => {});
+      await refreshPay();
+    },
     /**
      * The customer's link for a sent invoice. Waits for the send itself to reach the server first,
      * since a link only ever opens a sent invoice.
@@ -964,16 +1017,21 @@ function makeActions() {
     },
     stripeSetupUrl: payApi.stripeSetupUrl,
     /** Asks Stripe what the owner's account can take now, and keeps the answer. */
-    async checkStripe(): Promise<void> {
+    async checkStripe(recheck = false): Promise<payApi.OnlinePay | undefined> {
       if (get().mode !== 'connected') return;
       const active = saveQueue.scope();
-      const online = await payApi.checkStripe();
+      const online = await payApi.checkStripe(recheck);
       if (!active()) return;
       set((s) => ({ ...s, online }));
+      return online;
     },
     updateSettings(patch: Partial<PricingSettings>) {
       set((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
       persist(command('saveSettings', get().businessId!, get().settings, get().cardFee, get().aiScope));
+    },
+    setAlternativeMethods(alternativeMethods: AlternativeMethods) {
+      set((s) => ({ ...s, settings: { ...s.settings, alternativeMethods } }));
+      persist(command('saveAlternativeMethods', get().businessId!, alternativeMethods));
     },
     setCustomerEmail(id: string, email: string) {
       const index = customers.findIndex((customer) => customer.id === id);
@@ -1062,6 +1120,22 @@ function makeActions() {
      * Changes the work the owner does. New trades bring their starter items (no prices);
      * a trade that's turned off takes away the items only it used. The owner's own items stay.
      */
+    /** Owner only. Example mode just keeps it on the phone. */
+    setBusinessDetails(d: { name: string; phone: string; email: string; address: string; terms: string; warranty: string }) {
+      set((s) => ({ ...s, profile: { ...s.profile, businessName: d.name.trim(), phone: d.phone.trim(), email: d.email.trim(), address: d.address.trim(),
+        documentTerms: { terms: d.terms.trim(), warranty: d.warranty.trim() } } }));
+      if (get().mode === 'connected' && get().businessId) persist(command('saveBusinessDetails', get().businessId!, d));
+    },
+    setJobDocumentTerm(jobId: string, key: keyof DocumentTerms, value: string | null) {
+      const index = jobs.findIndex((job) => job.id === jobId);
+      const s = get();
+      if (index === -1 || (s.estimates[jobId]?.sent && !s.estimates[jobId]?.declinedAt) ||
+        invoices.some((invoice) => invoice.jobId === jobId && s.sentInvoices.includes(invoice.id))) return;
+      const job = jobs[index];
+      jobs[index] = { ...job, documentTerms: { ...job.documentTerms, [key]: value ?? undefined } };
+      set((state) => ({ ...state, version: state.version + 1 }));
+      persist(command('setJobFlags', jobId, key === 'terms' ? { document_terms: value } : { document_warranty: value }));
+    },
     setTrades(trades: TradeId[], newItems: PriceItem[], removedItemIds: string[] = []) {
       set((s) => ({
         ...s,

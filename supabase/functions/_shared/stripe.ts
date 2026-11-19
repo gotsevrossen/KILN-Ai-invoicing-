@@ -13,6 +13,89 @@ export function stripeConfigured(): boolean {
   return !!secret && secret[1] === publishable?.[1] && !!setting('STRIPE_WEBHOOK_SECRET') && /^https:\/\/[^/\s]+$/.test(setting('KILN_PAY_URL'));
 }
 
+export function stripeTestMode(): boolean {
+  return setting('STRIPE_SECRET_KEY').startsWith('sk_test_');
+}
+
+/** A sandbox payment can only be recorded in an explicitly enabled test environment. */
+export function stripeCheckoutEnabled(): boolean {
+  return stripeConfigured() && (!stripeTestMode() || setting('KILN_STRIPE_TEST_CHECKOUT') === 'true');
+}
+
+export const stripeAccountColumns = 'account_id, apple_pay_ready, google_pay_ready, bank_ready, card_ready, test_mode, domain_registered';
+export interface StripeAccount {
+  account_id: string;
+  apple_pay_ready: boolean;
+  google_pay_ready: boolean;
+  bank_ready: boolean;
+  card_ready: boolean;
+  test_mode: boolean;
+  domain_registered: string | null;
+}
+
+export function invoiceOnlineOptions(account: StripeAccount | null) {
+  if (!account || !stripeCheckoutEnabled() || account.test_mode !== stripeTestMode()) return null;
+  const registered = account.card_ready && account.domain_registered === new URL(setting('KILN_PAY_URL')).hostname;
+  const applePay = registered && account.apple_pay_ready;
+  const googlePay = registered && account.google_pay_ready;
+  return { wallet: applePay || googlePay, applePay, googlePay,
+    bank: account.bank_ready, card: account.card_ready, account: account.account_id, publishableKey: setting('STRIPE_PUBLISHABLE_KEY') };
+}
+
+export type WalletKind = 'applePay' | 'googlePay';
+export const isWalletKind = (value: unknown): value is WalletKind => value === 'applePay' || value === 'googlePay';
+
+interface PaymentDomain {
+  id: string;
+  domain_name: string;
+  enabled: boolean;
+  livemode: boolean;
+  apple_pay?: { status: string };
+  google_pay?: { status: string };
+}
+
+function walletState(domain: PaymentDomain | undefined, host: string, live: boolean) {
+  const registered = domain?.domain_name === host && domain.livemode === live;
+  const enabled = registered && domain.enabled;
+  return { registered, enabled, applePay: enabled && domain.apple_pay?.status === 'active',
+    googlePay: enabled && domain.google_pay?.status === 'active' };
+}
+
+/** Direct charges require registration on the connected merchant, in the same Stripe mode. */
+export async function merchantWalletDomain(key: string, account: string, host: string, operation: 'inspect' | 'register' | 'recheck') {
+  const path = '/v1/payment_method_domains';
+  const live = key.startsWith('sk_live_');
+  const listed = await stripe<{ data: PaymentDomain[] }>(key, {
+    method: 'GET', path: `${path}?domain_name=${encodeURIComponent(host)}`, account,
+  });
+  let domain = listed.data.find((item) => item.domain_name === host && item.livemode === live);
+  if (!domain && operation !== 'inspect') {
+    domain = await stripe<PaymentDomain>(key, {
+      method: 'POST', path, account, body: { domain_name: host }, idempotencyKey: `kiln-domain/${host}`,
+    });
+  } else if (domain?.enabled && operation === 'recheck' &&
+    (domain.apple_pay?.status !== 'active' || domain.google_pay?.status !== 'active')) {
+    domain = await stripe<PaymentDomain>(key, { method: 'POST', path: `${path}/${domain.id}/validate`, account });
+  }
+  return walletState(domain, host, live);
+}
+
+export async function walletAvailable(key: string, account: string, wallet: WalletKind | undefined) {
+  const domain = await merchantWalletDomain(key, account, new URL(setting('KILN_PAY_URL')).hostname, 'inspect');
+  return wallet ? domain[wallet] : domain.applePay || domain.googlePay;
+}
+
+export async function merchantCapabilities(key: string, account: string) {
+  type Capability = { status?: string };
+  const result = await stripe<{ id: string; livemode: boolean; configuration?: { merchant?: { capabilities?: {
+    ach_debit_payments?: Capability; card_payments?: Capability; stripe_balance?: { payouts?: Capability };
+  } } } }>(key, { method: 'GET', path: `/v2/core/accounts/${account}?include=configuration.merchant` });
+  const caps = result.configuration?.merchant?.capabilities;
+  if (result.id !== account || result.livemode !== key.startsWith('sk_live_')) throw new StripeError(409, 'account_mode_mismatch');
+  return { card: caps?.card_payments?.status === 'active', bank: caps?.ach_debit_payments?.status === 'active',
+    payouts: caps?.stripe_balance?.payouts?.status === 'active' };
+}
+
 export class StripeError extends Error {
   constructor(readonly status: number, readonly code: string) {
     super(code);

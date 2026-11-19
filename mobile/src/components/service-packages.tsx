@@ -89,7 +89,6 @@ export function ServicePackages({ jobId, target = 'estimate' }: { jobId?: string
     <T v="h3">{t('packages.title')}</T>
     <T muted>{t(target === 'work' ? 'packages.workHelp' : 'packages.help')}</T>
     <Button label={t('packages.create')} variant="outline" disabled={packages.busy} onPress={() => edit({ id: newUuid(), name: '', lines: [{ description: '', unit: 'flat', qtyHundredths: 100, unitCents: null, kind: 'labor' }], scope: {}, minimumCents: 0, afterHoursCents: 0 })} />
-    {state.mode === 'example' ? <T v="small" muted>{t('packages.example')}</T> : null}
     {packages.busy ? <T muted>{t('packages.loading')}</T> : null}
     {packages.error ? <><Notice text={t('packages.failed')} tone="danger" /><Button label={t('packages.retry')} variant="outline" onPress={() => void packages.reload()} /></> : null}
     {!packages.busy && !packages.items.length ? <T muted>{t('packages.empty')}</T> : null}
@@ -120,7 +119,6 @@ export function ServicePackages({ jobId, target = 'estimate' }: { jobId?: string
         {target === 'estimate' ? <SwitchRow label={t('packages.replaceScope')} help={t('packages.scopeHelp')} value={replaceScope} onChange={setReplaceScope} /> : null}
         <T muted>{[selected.scope.notes, selected.scope.details, selected.scope.exclusions].filter(Boolean).join('\n') || t('packages.noScope')}</T>
         {preview.lines.map((line, i) => <T key={i}>{line.description} · {f.qty(line.qtyHundredths)} × {line.unitCents === null ? t('estimate.needsPrice') : f.money(line.unitCents)}{line.unitCents === null ? '' : ` = ${f.money(lineTotal(line.qtyHundredths, line.unitCents))}`}</T>)}
-        <T v="small" muted>{t('packages.minimumReview')}</T>
         {preview.unresolvedMinimum ? <Notice text={t('packages.minimumUnknown')} tone="flag" /> : null}
         <Button label={t('packages.add')} disabled={!canApply || packages.busy || (target === 'work' && preview.lines.some((line) => line.unitCents === null))} onPress={() => {
           const now = currentState();

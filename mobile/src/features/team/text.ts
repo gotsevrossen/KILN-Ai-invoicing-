@@ -28,12 +28,12 @@ const en = {
 
   // invite sheet
   inviteTitle: 'Invite someone', theirName: 'Their name', role: 'Role', makeCode: 'Make invite code',
-  codeReady: 'Send this code to %{name}. It works once and expires in 7 days. You approve them after they enter it.',
+  codeReady: 'Send this code to %{name}. It works once, for 7 days.',
   send: 'Send code', shareMessage: 'Join %{business} on KILN. Install KILN, tap "I was invited to a team" and enter this code: %{code}',
   badName: 'Type their name.',
 
   // person page
-  assigned: 'Assigned jobs', assign: 'Assign jobs', notAssigned: 'Not on any jobs yet.', managerSeesAll: 'Managers see every job. Assigned jobs are the ones they look after.',
+  assigned: 'Assigned jobs', assign: 'Assign jobs', notAssigned: 'Not on any jobs yet.', managerSeesAll: 'Managers see every job.',
   activity: 'What they added', nothingYet: 'Nothing added yet.', makeManager: 'Make manager', makeCrew: 'Make crew member',
   removePerson: 'Remove from team', removeConfirm: 'Yes, remove', removeHelp: 'They lose access right away. What they added stays on the jobs.',
   notOnTeam: 'This person is no longer on the team.',
@@ -98,11 +98,11 @@ const es: Record<keyof typeof en, string> = {
   failed: 'No se pudo cargar el equipo. Revisa tu conexión e inténtalo de nuevo.',
 
   inviteTitle: 'Invitar a alguien', theirName: 'Su nombre', role: 'Puesto', makeCode: 'Crear código de invitación',
-  codeReady: 'Envía este código a %{name}. Sirve una vez y vence en 7 días. Lo apruebas después de que lo escriba.',
+  codeReady: 'Envía este código a %{name}. Sirve una vez, por 7 días.',
   send: 'Enviar código', shareMessage: 'Únete a %{business} en KILN. Instala KILN, toca "Me invitaron a un equipo" y escribe este código: %{code}',
   badName: 'Escribe su nombre.',
 
-  assigned: 'Trabajos asignados', assign: 'Asignar trabajos', notAssigned: 'Todavía no está en ningún trabajo.', managerSeesAll: 'Los encargados ven todos los trabajos. Los asignados son los que ellos atienden.',
+  assigned: 'Trabajos asignados', assign: 'Asignar trabajos', notAssigned: 'Todavía no está en ningún trabajo.', managerSeesAll: 'Los encargados ven todos los trabajos.',
   activity: 'Lo que agregó', nothingYet: 'Todavía no ha agregado nada.', makeManager: 'Hacer encargado', makeCrew: 'Hacer miembro del equipo',
   removePerson: 'Quitar del equipo', removeConfirm: 'Sí, quitar', removeHelp: 'Pierde el acceso de inmediato. Lo que agregó se queda en los trabajos.',
   notOnTeam: 'Esta persona ya no está en el equipo.',

@@ -103,24 +103,28 @@ export function PhotoSourceSheet({ open, onClose, onPicked }: { open: boolean; o
  * Before and after photos for proof of work. With `showLocation` (the owner's choice on the
  * invoice), where each was taken is shown too. Example jobs with no photos show stand-ins.
  */
-export function ProofPhotos({ jobId, t, showLocation = false, height = 110 }: { jobId: string; t: TFn; showLocation?: boolean; height?: number }) {
+export function proofCandidates(photos: Photo[], jobId: string) {
+  return photos.filter((photo) => photo.jobId === jobId && photo.tag !== 'during')
+    .sort((a, b) => Date.parse(a.takenAt) - Date.parse(b.takenAt) || a.id.localeCompare(b.id));
+}
+
+export function ProofPhotos({ jobId, t, ids, showLocation = false, height = 110 }: { jobId: string; t: TFn; ids?: string[]; showLocation?: boolean; height?: number }) {
   const { state } = useStore();
-  const photos = state.photos.filter((p) => p.jobId === jobId && p.tag !== 'during');
-  const before = photos.filter((p) => p.tag === 'before').slice(0, 2);
-  const after = photos.filter((p) => p.tag === 'after').slice(-2);
-  if (!before.length && !after.length) {
-    return state.mode === 'example' ? (
+  const photos = proofCandidates(state.photos, jobId);
+  const byId = new Map(photos.map((photo) => [photo.id, photo]));
+  const shown = ids?.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []) ?? photos.slice(0, 12);
+  if (!shown.length) {
+    return state.mode === 'example' && ids === undefined ? (
       <Row gap={8}>
         <PhotoTile tag={t('job.before')} height={height} />
         <PhotoTile tag={t('job.after')} height={height} />
       </Row>
     ) : <T v="small" muted>{t('photos.noProof')}</T>;
   }
-  const shown = [...before, ...after];
   return (
     <View style={{ gap: 8 }}>
-      <Row gap={8}>
-        {shown.map((photo) => <PhotoImage key={photo.id} photo={photo} height={height} tag={t(`job.${photo.tag}`)} style={{ flex: 1 }} />)}
+      <Row gap={8} style={{ flexWrap: 'wrap' }}>
+        {shown.map((photo) => <PhotoImage key={photo.id} photo={photo} height={height} tag={t(`job.${photo.tag}`)} style={{ width: '48%' }} />)}
       </Row>
       {showLocation ? shown.filter((p) => p.lat !== undefined).map((photo) => (
         <T key={photo.id} v="small" muted>

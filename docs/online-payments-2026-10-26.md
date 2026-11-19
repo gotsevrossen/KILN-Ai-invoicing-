@@ -1,5 +1,11 @@
 # Sending invoices and getting paid online (Oct 26, 2026)
 
+## Wallet checkout update
+
+Settings → Payments now shows Apple Pay and Google Pay separately. **Check again** registers the configured HTTPS checkout domain on the connected merchant if needed and asks Stripe to revalidate inactive wallets on an enabled domain. Customers open the invoice link in a compatible browser. Wallet charges are direct Stripe Connect charges for that merchant.
+
+Deploy the pending migrations and updated `payments`, `pay`, and `stripe-webhook` functions with the customer web export. Open Payment settings once per merchant after rollout to refresh the individual wallet flags. Only a dedicated sandbox environment should set `KILN_STRIPE_TEST_CHECKOUT=true`. Complete Stripe onboarding and verify the webhook, each wallet on a supported device, and the bank payout separately before using live checkout. [Stripe domain registration for Connect](https://docs.stripe.com/payments/payment-methods/pmd-registration?dashboard-or-api=api) · [Stripe PaymentIntent parameters](https://docs.stripe.com/api/payment_intents/create)
+
 ## What it does
 
 - **Send.** On a finished invoice, **Send to [name]** offers **Text**, **Email**, and **Share link**. KILN freezes the invoice as sent, makes a private link, and opens the phone's texting or email app (or the share menu) with a short message in the customer's language. The owner taps send there. **Send again** on a sent invoice makes a fresh link; older links keep working until they expire (90 days).

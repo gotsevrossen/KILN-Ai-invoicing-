@@ -146,7 +146,7 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
               accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: focused }}
               style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, opacity: pressed && !focused ? 0.6 : 1 })}>
               <Feather name={icons[route.name]} size={22} color={color} />
-              <Text numberOfLines={1} style={{ fontFamily: font.semi, fontSize: 12, color }}>{label}</Text>
+              <Text numberOfLines={1} style={{ includeFontPadding: false, fontFamily: font.semi, fontSize: 12, color }}>{label}</Text>
             </Pressable>
           );
         })}

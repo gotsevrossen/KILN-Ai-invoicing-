@@ -231,7 +231,6 @@ export default function SignIn() {
         <T style={{ fontFamily: font.black, fontSize: 26, letterSpacing: 4 }}>KILN</T>
       </Row>
       <T v="title" accessibilityRole="header">{mode === 'in' ? t('auth.signInTitle') : t('auth.signUpTitle')}</T>
-      <T v="body" muted>{t('auth.body')}</T>
       <Segmented
         label={t('setup.language')}
         value={lang}

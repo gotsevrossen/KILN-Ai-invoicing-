@@ -2,6 +2,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { StripePay } from '@/components/stripe-pay';
 import { Button, Card, Notice, PageHeader, Screen, T } from '@/components/ui';
+import { onLiveRefresh } from '@/data/live-events';
 import { checkPayment } from '@/data/pay-page';
 import { loadCollectionPage, type CollectionPage } from '@/data/job-payments';
 import { useLang, useTFor } from '@/i18n';
@@ -18,6 +19,7 @@ function CollectionPageView() {
  const customerLang=page?.customer.lang??lang;const c=jobPaymentCopy[customerLang];const tc=useTFor(customerLang);const f=formatters(customerLang);
  const reload=useCallback(async()=>{try{const result=await loadCollectionPage(token);if(!result?.request)throw new Error();setPage(result);setError(false);}catch{setError(true);}},[token]);
  useEffect(()=>{let live=true;(returnedIntent ? checkPayment(token, returnedIntent).then(() => loadCollectionPage(token)) : loadCollectionPage(token)).then(result=>{if(live)setPage(result);},()=>{if(live)setError(true);});return()=>{live=false;};},[token,returnedIntent]);
+ useEffect(()=>onLiveRefresh(()=>void reload()),[reload]);
  useEffect(()=>{if(!page?.pending)return;const timer=setInterval(()=>void reload(),15000);return()=>clearInterval(timer);},[page?.pending,reload]);
  return <Screen header={<PageHeader title={c.collect}/>}>
  {error?<Notice text={c.unavailable}/>:null}

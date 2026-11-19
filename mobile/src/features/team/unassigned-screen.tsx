@@ -21,7 +21,7 @@ export function UnassignedScreen() {
   const team = useTeam();
   const jobs = useUnassignedJobs();
   const [picked, setPicked] = useState<Job | null>(null);
-  const header = <PageHeader title={c.unassigned} sub={c.unassignedSub} back={() => router.back()} />;
+  const header = <PageHeader title={c.unassigned} back={() => router.back()} />;
   if (!can(auth.role, 'assignJobs')) return <Screen header={header}><Notice text={c.ownerOnly} tone="soft" /></Screen>;
   return (
     <Screen header={header}>
