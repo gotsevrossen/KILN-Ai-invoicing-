@@ -61,11 +61,11 @@ export function useOperations() {
       }
       return true;
     } catch (error) {
-      if (currentScope.current === scope) setProblem({ scope, text: (error as { code?: string })?.code === '23P01' ? copy.overlap : userError(t, error) });
+      if (currentScope.current === scope) setProblem({ scope, text: userError(t, error) });
       return false;
     } finally {
       if (currentScope.current === scope) { writeInFlight.current = false; setBusy(false); }
     }
-  }, [data, busy, connected, businessId, scope, copy.overlap, t]);
+  }, [data, busy, connected, businessId, scope, t]);
   return { data: data ?? emptyOperations(), ready: !!data, error: problem?.scope === scope ? problem.text : null, busy, run, retry: () => setAttempt((a) => a + 1), connected, canEditCosts, businessId: businessId ?? 'example', copy };
 }

@@ -3,18 +3,17 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Tile } from '@/components/capture-tile';
 import { PhotoSourceSheet } from '@/components/job-photos';
-import { OfflineStatus } from '@/components/offline-status';
 import { Sheet } from '@/components/sheet';
 import { Button, Field, Hair, Notice, PageHeader, Row, Screen, Segmented, T } from '@/components/ui';
 import { VoiceSheet } from '@/components/voice-sheet';
-import { useAuth } from '@/data/auth';
 import { newUuid } from '@/data/db';
-import * as api from '@/data/team-access';
+import type * as api from '@/data/team-access';
 import { useLang } from '@/i18n';
 import type { NewPhoto } from '@/lib/job-photos';
 import { removeFromPhone } from '@/lib/photo-file';
 import { userError } from '@/lib/user-errors';
 
+import { CrewSyncStatus, useCrewOutbox } from './crew-outbox';
 import { teamText } from './text';
 
 /** The same four Capture tiles as the office, with saves limited to assigned jobs. */
@@ -23,7 +22,7 @@ export function CrewCaptureScreen({ jobs, error, retry }: {
 }) {
   const { t, lang } = useLang();
   const c = teamText(lang);
-  const auth = useAuth();
+  const outbox = useCrewOutbox();
   const [mode, setMode] = useState<'receipt' | 'note' | 'photo' | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -35,8 +34,6 @@ export function CrewCaptureScreen({ jobs, error, retry }: {
   const [saveError, setSaveError] = useState('');
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  const noteId = useRef('');
-  const [boundJob, setBoundJob] = useState<string | null>(null);
   const waiting = useRef<NewPhoto[]>([]);
   const live = useRef(true);
   const transition = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,7 +56,6 @@ export function CrewCaptureScreen({ jobs, error, retry }: {
     if (inFlight.current) return;
     for (const photo of waiting.current) removeFromPhone(photo.localUri);
     waiting.current = []; setPhotos([]);
-    setBoundJob(null); noteId.current = '';
     setMode(null); setSaveError('');
   };
   const pick = async (job: api.CrewJob) => {
@@ -69,22 +65,17 @@ export function CrewCaptureScreen({ jobs, error, retry }: {
       router.push({ pathname: '/crew/receipt', params: { job: job.id, title: job.title } });
       return;
     }
-    if (!auth.businessId || (boundJob && boundJob !== job.id)) return;
-    setBoundJob(job.id);
     inFlight.current = true; setBusy(true); setSaveError('');
     try {
       if (mode === 'photo') {
-        for (const photo of [...waiting.current]) {
-          await api.saveTeamPhoto(auth.businessId, job.id, photo, tag);
-          removeFromPhone(photo.localUri);
-          waiting.current = waiting.current.filter((item) => item.id !== photo.id);
-          if (live.current) setPhotos([...waiting.current]);
-        }
+        await outbox.save(waiting.current.map(({ id, localUri, takenAt }) => ({
+          kind: 'photo', id, job: job.id, photo: { id, localUri, takenAt }, tag,
+        })));
+        waiting.current = [];
+        if (live.current) setPhotos([]);
       } else {
-        if (!noteId.current) noteId.current = newUuid();
-        await api.addTeamNote(noteId.current, job.id, note.trim());
+        await outbox.save([{ kind: 'note', id: newUuid(), job: job.id, text: note.trim() }]);
       }
-      setBoundJob(null); noteId.current = '';
       if (live.current) { setSaved(job.title); setNote(''); setMode(null); }
     } catch (e: unknown) {
       if (live.current) setSaveError(userError(t, e));
@@ -94,10 +85,10 @@ export function CrewCaptureScreen({ jobs, error, retry }: {
       else for (const photo of waiting.current) removeFromPhone(photo.localUri);
     }
   };
-  const openJobs = (jobs ?? []).filter((job) => job.is_open && (!boundJob || job.id === boundJob));
+  const openJobs = (jobs ?? []).filter((job) => job.is_open);
 
   return <Screen tabs header={<PageHeader title={t('capture.title')} sub={t('capture.sub')} />}>
-    <OfflineStatus />
+    <CrewSyncStatus />
     <Row gap={12}>
       <Tile icon="file-text" label={t('capture.receipt')} accent onPress={() => { setSaveError(''); setMode('receipt'); }} />
       <Tile icon="mic" label={t('capture.voice')} onPress={() => setVoiceOpen(true)} />
@@ -106,13 +97,13 @@ export function CrewCaptureScreen({ jobs, error, retry }: {
       <Tile icon="camera" label={t('capture.photo')} onPress={() => setPhotoOpen(true)} />
       <Tile icon="edit-3" label={t('capture.note')} onPress={() => setNoteOpen(true)} />
     </Row>
-    {saved ? <Notice text={t('common.savedTo', { job: saved })} /> : null}
+    {saved ? <Notice text={c.savedOnDevice} /> : null}
     {error ? <><Notice text={error} tone="danger" icon="alert-circle" /><Button label={c.retry} variant="outline" onPress={retry} /></> : null}
     {!jobs && !error ? <T muted>{c.loading}</T> : null}
     {jobs && !jobs.some((job) => job.is_open) ? <Notice text={c.noJobs} tone="soft" icon="info" /> : null}
 
     <VoiceSheet open={voiceOpen} onClose={() => setVoiceOpen(false)} onDone={(text) => {
-      setVoiceOpen(false); setNote(text); noteId.current = ''; setSaveError('');
+      setVoiceOpen(false); setNote(text); setSaveError('');
       pickJobAfterSheet('note');
     }} />
     <PhotoSourceSheet open={photoOpen} onClose={() => setPhotoOpen(false)} onPicked={(picked) => {
@@ -123,12 +114,12 @@ export function CrewCaptureScreen({ jobs, error, retry }: {
       <Field value={note} onChangeText={setNote} placeholder={t('capture.notePlaceholder')} multiline maxLength={2000}
         autoFocus style={{ minHeight: 120 }} />
       <Button label={t('common.save')} disabled={!note.trim()} onPress={() => {
-        setNoteOpen(false); noteId.current = ''; setSaveError(''); pickJobAfterSheet('note');
+        setNoteOpen(false); setSaveError(''); pickJobAfterSheet('note');
       }} />
     </Sheet>
     <Sheet open={mode !== null} onClose={closePicker} title={c.pickJob}>
       {mode === 'photo' ? <>
-        <Segmented label={c.stage} value={tag} onChange={(value) => { if (!inFlight.current && !boundJob) setTag(value); }}
+        <Segmented label={c.stage} value={tag} onChange={(value) => { if (!inFlight.current) setTag(value); }}
           options={[{ key: 'before', label: c.before }, { key: 'during', label: c.during }, { key: 'after', label: c.after }]} />
         <T muted>{photos.length} · {c.photos}</T>
       </> : null}

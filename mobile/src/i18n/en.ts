@@ -15,7 +15,7 @@ const en = {
     cashConfirm: 'Confirm cash received', cashHelp: 'Record %{amount} only once you have the cash. This doesn’t charge the customer.',
     cashReceived: 'I received this cash', cashFailed: 'Cash was not confirmed. Refresh the invoice and retry. If an online payment was started, resolve it before recording cash.',
 
-    approvalFailed: 'Acceptance was not confirmed. Check your connection and try again.', operations: 'Team & schedule', operationsHelp: 'Workers, visit windows and assignments',
+    approvalFailed: 'Acceptance was not confirmed. Check your connection and try again.', operations: 'Worker costs', operationsHelp: 'Hourly labor costs',
     profitability: 'Job profitability', profitabilityHelp: 'Worker costs, budget and actual margin',
     tradeTools: 'Measurements & completion', tradeToolsHelp: 'Room worksheets, specifications and electrical records',
     packages: 'Service packages', packagesHelp: 'Reusable work, scope and callout pricing',
@@ -724,8 +724,6 @@ const en = {
     needPrices: { one: '1 item needs a price', other: '%{count} items need a price' },
     itemCount: { one: '1 item', other: '%{count} items' },
     payments: 'Payments',
-    cardFee: 'Add card fee for customers',
-    cardFeeHelp: 'Off: you pay the card fee. On: customers paying by card pay it.',
     pricing: 'Markup and tax',
     pricingSub: 'Markup %{markup}% · Tax %{tax}%',
     markup: 'Markup on receipt items',

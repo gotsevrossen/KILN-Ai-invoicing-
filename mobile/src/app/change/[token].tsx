@@ -48,6 +48,7 @@ function CustomerChange({ token }: { token: string }) {
   };
   return <Screen><View style={{ alignSelf: 'center', width: '100%', maxWidth: 600, gap: 14 }}>
     <T v="label">{co.business_name}</T>
+    <T muted>{[co.business_phone, co.business_email, co.business_address].filter(Boolean).join('\n')}</T>
     <T v="title">{title}</T>
     <T muted>{[co.customer_name, co.address].filter(Boolean).join(' · ')}</T>
     <Card style={{ gap: 8 }}>
@@ -68,7 +69,7 @@ function CustomerChange({ token }: { token: string }) {
       </>}
     {error}
     <CustomerDocumentExport lang={language} snapshot={{
-      type: 'change_order', business: { name: co.business_name, phone: co.business_phone },
+      type: 'change_order', business: { name: co.business_name, phone: co.business_phone, email: co.business_email, address: co.business_address },
       customer: { name: co.customer_name, lang: language, phone: null, email: null },
       job: { title: co.job_title, address: co.address, workOrder: co.work_order },
       document: { number: String(co.number), sent_at: co.issued_at, signed_at: page.signedAt, declined_at: page.declinedAt,

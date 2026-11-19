@@ -47,7 +47,7 @@ function CustomerQuote() {
     { rateBps: q.tax.rate_bps ?? 0, labor: !!q.tax.labor, materials: !!q.tax.materials });
   const consent = es ? 'Acepto este presupuesto exacto y uso mi nombre escrito como firma electrónica.' : 'I accept this exact estimate and use my typed name as my electronic signature.';
   return <Screen><View style={{ maxWidth: 640, width: '100%', alignSelf: 'center', gap: 16 }}>
-    <T v="title">{q.business_name}</T><T>{q.business_phone}</T>
+    <T v="title">{q.business_name}</T><T>{[q.business_phone, q.business_email, q.business_address].filter(Boolean).join('\n')}</T>
     <T v="h3">{es ? 'Presupuesto' : 'Estimate'} {q.number}</T>
     <T>{q.customer_name} · {q.address}</T><T>{q.title}</T>
     <Card><T>{q.scope?.location}</T><T>{q.scope?.notes}</T><T>{q.scope?.details}</T>
@@ -96,7 +96,7 @@ function CustomerQuote() {
       <T v="small" muted>{es ? 'Si ya pagaste o el pago está en proceso, no pagues de nuevo. Consulta a la empresa.' : 'If already paid or processing, do not pay again. Check with the business.'}</T>
     </> : null}
     <CustomerDocumentExport lang={q.lang} snapshot={{
-      type: 'estimate', business: { name: q.business_name, phone: q.business_phone },
+      type: 'estimate', business: { name: q.business_name, phone: q.business_phone, email: q.business_email, address: q.business_address },
       customer: { name: q.customer_name, lang: q.lang, phone: null, email: null }, job: { title: q.title, address: q.address, workOrder: null },
       document: { number: q.number, sent_at: q.issued_at, signed_at: page.acceptedAt, declined_at: page.declinedAt,
         tax_rate_bps: q.tax.rate_bps, tax_labor: q.tax.labor, tax_materials: q.tax.materials,

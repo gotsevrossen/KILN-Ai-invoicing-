@@ -15,7 +15,7 @@ export function countedLines(s: SavedSnapshot) {
 /** Money received for this document (failed or refunded payments don't count). */
 export function paidCents(s: SavedSnapshot): number {
   return s.payments
-    .filter((p) => Number.isInteger(p.amountCents) && p.amountCents > 0 && (!p.status || p.status === 'succeeded' || p.status === 'paid'))
+    .filter((p) => Number.isInteger(p.amountCents) && (p.amountCents > 0 || p.method === 'refund' || p.method === 'dispute') && (!p.status || p.status === 'succeeded' || p.status === 'paid'))
     .reduce((sum, p) => sum + p.amountCents, 0);
 }
 
@@ -28,8 +28,8 @@ export function savedTotals(s: SavedSnapshot): Totals {
   const tax = { rateBps: Number(d.tax_rate_bps ?? 0), labor: !!d.tax_labor, materials: !!d.tax_materials };
   const totals = documentTotals(countedLines(s), tax);
   // an invoice marked paid (for example in cash before payments were recorded) is paid in full
-  const paid = s.type === 'invoice' ? (d.paid_at ? Math.max(totals.total, paidCents(s)) : paidCents(s)) : paidCents(s);
-  const shown = Math.min(paid, totals.total);
+  const paid = s.type === 'invoice' ? (d.paid_at && !s.payments.some((p) => p.method === 'refund' || p.method === 'dispute') ? Math.max(totals.total, paidCents(s)) : paidCents(s)) : paidCents(s);
+  const shown = Math.max(0, Math.min(paid, totals.total));
   return { ...totals, paid: shown, due: Math.max(0, totals.total - shown) };
 }
 
@@ -73,7 +73,7 @@ export function savedDocHtml(s: SavedSnapshot, labels: SavedDocLabels, lang: 'en
     d.due_date ? `${labels.dueDate}: ${date(d.due_date)}` : '',
     d.signed_at ? `${labels.signed}: ${date(d.signed_at)}` : '',
     d.declined_at ? `${labels.declined}: ${date(d.declined_at)}` : '',
-    d.paid_at ? `${labels.paidOn}: ${date(d.paid_at)}` : '',
+    d.paid_at && totals.due === 0 ? `${labels.paidOn}: ${date(d.paid_at)}` : '',
   ].filter(Boolean).map((x) => `<div>${x}</div>`).join('');
   const sum = (label: string, cents: number, strong = false) => `<tr${strong ? ' class="strong"' : ''}><td>${escape(label)}</td><td class="n">${money(cents)}</td></tr>`;
   const totalsTable = s.type === 'change_order'
@@ -98,7 +98,7 @@ h1{font-size:26px;margin:0 0 4px;text-transform:uppercase;letter-spacing:.5px}h2
 th{font-size:11px;text-transform:uppercase;color:#4B524F}.n{text-align:right;white-space:nowrap}.sum{width:55%;margin-left:auto;margin-top:12px}.strong td{font-weight:700}
 section,tr{break-inside:avoid}small{overflow-wrap:anywhere}p{white-space:pre-wrap}
 </style></head><body>
-<div class="top"><div><h1>${escape(labels.title)}${d.number ? ` ${escape(d.number)}` : ''}</h1><h2>${escape(s.business.name)}</h2><div class="muted">${escape(s.business.phone ?? '')}</div></div><div class="muted">${facts}</div></div>
+<div class="top"><div><h1>${escape(labels.title)}${d.number ? ` ${escape(d.number)}` : ''}</h1><h2>${escape(s.business.name)}</h2><div class="muted">${[s.business.phone, s.business.email, s.business.address].filter(Boolean).map(escape).join('<br>')}</div></div><div class="muted">${facts}</div></div>
 <p><strong>${escape(labels.billTo)}:</strong> ${escape(s.customer.name)}${s.customer.phone ? ` · ${escape(s.customer.phone)}` : ''}${s.customer.email ? ` · ${escape(s.customer.email)}` : ''}<br>
 ${s.job.title || s.job.address ? `<strong>${escape(labels.job)}:</strong> ${[s.job.title, s.job.address].filter(Boolean).map(escape).join(' · ')}` : ''}${s.job.workOrder ? `<br><strong>${escape(labels.workOrder)}:</strong> ${escape(s.job.workOrder)}` : ''}</p>
 ${!receipt && scope ? `<p>${escape(scope)}</p>` : ''}

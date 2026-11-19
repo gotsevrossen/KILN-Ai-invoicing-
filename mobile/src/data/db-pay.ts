@@ -89,6 +89,8 @@ export interface PaymentRecord {
   amountCents: number;
   method: PaymentMethod;
   alternativeMethod?: AlternativeMethod;
+  adjustment?: 'refund' | 'dispute';
+  disputeOpen?: boolean;
   status: 'processing' | 'succeeded' | 'failed';
   paidAt: string;
 }
@@ -101,11 +103,27 @@ export interface PayState {
   online: OnlinePay;
 }
 
+interface PaymentRow {
+  id: string; invoice_id: string | null; job_id: string | null; request_id: string | null;
+  amount_cents: number; method: PaymentMethod; status: PaymentRecord['status']; paid_at: string;
+  alternative_method: AlternativeMethod | null;
+  stripe_adjustment_kind?: PaymentRecord['adjustment']; stripe_dispute_open?: boolean;
+}
+
+async function readPayments() {
+  const columns = 'id, invoice_id, job_id, request_id, amount_cents, method, alternative_method, status, paid_at';
+  const result = await db().from('payments').select(`${columns}, stripe_adjustment_kind, stripe_dispute_open`).order('paid_at').returns<PaymentRow[]>();
+  // An Expo preview can reload before its hosted database migration is applied.
+  if (result.error?.code === '42703' && /stripe_adjustment_kind|stripe_dispute_open/.test(result.error.message)) {
+    return db().from('payments').select(columns).order('paid_at').returns<PaymentRow[]>();
+  }
+  return result;
+}
+
 /** Payments, opened links, and paid invoices as saved on the server (row rules limit it to this business). */
 export async function loadPayState(): Promise<PayState> {
   const [payments, links, invoices, account] = await Promise.all([
-    db().from('payments').select('id, invoice_id, job_id, request_id, amount_cents, method, alternative_method, status, paid_at').order('paid_at')
-      .returns<{ id: string; invoice_id: string | null; job_id: string | null; request_id: string | null; amount_cents: number; method: PaymentMethod; status: PaymentRecord['status']; paid_at: string; alternative_method: AlternativeMethod | null }[]>(),
+    readPayments(),
     db().from('share_links').select('document_id, opened_at').eq('document_type', 'invoice').not('opened_at', 'is', null)
       .returns<{ document_id: string; opened_at: string }[]>(),
     db().from('invoices').select('id').not('paid_at', 'is', null).returns<{ id: string }[]>(),
@@ -117,7 +135,7 @@ export async function loadPayState(): Promise<PayState> {
   for (const l of ok(links) ?? []) if (!opened[l.document_id] || l.opened_at < opened[l.document_id]) opened[l.document_id] = l.opened_at;
   const acct = ok(account);
   return {
-    payments: (ok(payments) ?? []).map((p) => ({ id: p.id, invoiceId: p.invoice_id, jobId: p.job_id ?? undefined, requestId: p.request_id ?? undefined, amountCents: p.amount_cents, method: p.method, alternativeMethod: p.alternative_method ?? undefined, status: p.status, paidAt: p.paid_at })),
+    payments: (ok(payments) ?? []).map((p) => ({ id: p.id, invoiceId: p.invoice_id, jobId: p.job_id ?? undefined, requestId: p.request_id ?? undefined, amountCents: p.amount_cents, method: p.method, alternativeMethod: p.alternative_method ?? undefined, adjustment: p.stripe_adjustment_kind ?? undefined, disputeOpen: p.stripe_dispute_open, status: p.status, paidAt: p.paid_at })),
     opened,
     paidInvoices: (ok(invoices) ?? []).map((i) => i.id),
     online: { connected: !!acct, walletReady: !!acct?.wallet_ready, bankReady: !!acct?.bank_ready, cardReady: !!acct?.card_ready, testMode: acct?.test_mode ?? undefined },

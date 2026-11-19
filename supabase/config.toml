@@ -423,7 +423,7 @@ verify_jwt = false
 
 # Removes the owner's paid jobs that are due to leave, and their files: signed in only (owner checked inside).
 [functions.job-cleanup]
-verify_jwt = true
+verify_jwt = false
 
 [analytics]
 enabled = true

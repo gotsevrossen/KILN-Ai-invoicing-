@@ -1,6 +1,7 @@
 import { serviceClient, setting, totalsOf, type LineRow } from '../_shared/invoice.ts';
 import { validPaymentProof } from '../_shared/payment-proof.ts';
-import { stripeCheckoutEnabled, stripeTestMode, verifyWebhook } from '../_shared/stripe.ts';
+import { stripeCheckoutEnabled, stripeConfigured, stripeTestMode, verifyWebhook } from '../_shared/stripe.ts';
+import { reconcileAdjustment } from './adjustments.ts';
 
 // POST /functions/v1/stripe-webhook — Stripe telling KILN a payment changed: on its way (bank
 // payments take a few business days), went through, or failed. Only notices signed with KILN's
@@ -31,13 +32,16 @@ Deno.serve(async (req) => {
     return new Response('bad signature', { status: 400 });
   }
 
-  let event: { type?: string; account?: string; livemode?: boolean; data?: { object?: Intent } };
+  let event: { type?: string; account?: string; created?: number; livemode?: boolean; data?: { object?: Intent } };
   try {
     event = JSON.parse(payload);
   } catch {
     return new Response('bad payload', { status: 400 });
   }
-  if (!stripeCheckoutEnabled() || event.livemode !== !stripeTestMode()) return new Response('ok');
+  if (!stripeConfigured() || event.livemode !== !stripeTestMode()) return new Response('ok');
+  const correction = await reconcileAdjustment(event);
+  if (correction) return correction;
+  if (!stripeCheckoutEnabled()) return new Response('ok');
   const status = STATUS[event.type ?? ''];
   const intent = event.data?.object;
   // anything else (or a payment KILN didn't start) is acknowledged and ignored

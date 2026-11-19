@@ -4,7 +4,7 @@ import type { JobScope } from './types';
 
 export interface ChangeOrderAccess {
   snapshot: { number: number; description: string; amount_cents: number; base_cents: number; business_name: string;
-    business_phone: string; customer_name: string; lang: 'en' | 'es'; job_title: string; address: string; work_order: string | null; issued_at: string };
+    business_phone: string; business_email?: string | null; business_address?: string | null; customer_name: string; lang: 'en' | 'es'; job_title: string; address: string; work_order: string | null; issued_at: string };
   hash: string; signedAt: string | null; declinedAt: string | null;
   signature: { name: string; method: string | null; ink?: unknown } | null;
 }
@@ -45,7 +45,7 @@ export async function loadDeliveryEvents(): Promise<DeliveryEvent[]> {
 
 export interface QuoteSnapshot {
   id: string; number: string; title: string; address: string; lang: 'en' | 'es';
-  business_name: string; business_phone: string; customer_name: string; issued_at: string;
+  business_name: string; business_phone: string; business_email?: string | null; business_address?: string | null; customer_name: string; issued_at: string;
   deposit_on: boolean; deposit_bps: number;
   scope?: JobScope;
   tax: { rate_bps: number; labor: boolean; materials: boolean };

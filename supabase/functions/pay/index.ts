@@ -45,8 +45,8 @@ async function loadInvoice(db: SupabaseClient, link: Link) {
   if (!invoice?.sent_at) throw new Refused(404, 'not_found');
   const [lines, payments, account, reservation] = await Promise.all([
     db.from('invoice_lines').select('description, kind, qty_hundredths, unit_cents, unit, position').eq('invoice_id', invoice.id).order('position').returns<LineRow[]>(),
-    db.from('payments').select('amount_cents,status,method,alternative_method,paid_at').eq('job_id', invoice.job_id).order('paid_at')
-      .returns<{ amount_cents: number; status: 'processing' | 'succeeded' | 'failed'; method: string; alternative_method: string | null; paid_at: string }[]>(),
+    db.from('payments').select('amount_cents,status,method,alternative_method,paid_at,stripe_adjustment_kind').eq('job_id', invoice.job_id).order('paid_at')
+      .returns<{ amount_cents: number; status: 'processing' | 'succeeded' | 'failed'; method: string; alternative_method: string | null; paid_at: string; stripe_adjustment_kind: string | null }[]>(),
     db.from('stripe_accounts').select(stripeAccountColumns)
       .eq('business_id', invoice.business_id).eq('test_mode', stripeTestMode())
       .maybeSingle<StripeAccount>(),
@@ -113,7 +113,7 @@ async function view(db: SupabaseClient, link: Link) {
     lines: lines.map((l) => ({ description: l.description, kind: l.kind, qtyHundredths: l.qty_hundredths, unitCents: l.unit_cents, unit: l.unit })),
     totals, ...money,
     payments: payments.filter((payment) => payment.status === 'succeeded').map((payment) => ({
-      amountCents: payment.amount_cents, method: payment.alternative_method ?? payment.method, paidAt: payment.paid_at, status: payment.status,
+      amountCents: payment.amount_cents, method: payment.stripe_adjustment_kind ?? payment.alternative_method ?? payment.method, paidAt: payment.paid_at, status: payment.status,
     })),
     photos: shown.map((p, i) => ({
       url: signed.data[i]?.signedUrl ?? null, tag: p.tag, takenAt: p.taken_at,

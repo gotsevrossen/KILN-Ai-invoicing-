@@ -13,7 +13,7 @@ export function documentLabels(type: SavedSnapshot['type'], lang: Lang, receipt 
   const c = cleanupText(lang);
   const title = receipt ? (lang === 'es' ? 'Recibo de pago' : 'Payment receipt')
     : type === 'change_order' ? c.changeOrder : c[type];
-  const methods = { ...invoicePaymentCopy[lang].methods, card: c.card, bank: c.bank, wallet: c.wallet, other: c.other } as Record<string, string>;
+  const methods = { ...invoicePaymentCopy[lang].methods, card: c.card, bank: c.bank, wallet: c.wallet, other: c.other, refund: lang === 'es' ? 'Reembolso' : 'Refund', dispute: lang === 'es' ? 'Contracargo' : 'Chargeback' } as Record<string, string>;
   return { ...c, title, dueDate: lang === 'es' ? 'Vencimiento' : 'Due date', method: (name) => methods[name] ?? c.other,
     signedBy: (name) => c.signedBy.replace('%{name}', name) };
 }

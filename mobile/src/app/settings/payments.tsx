@@ -111,8 +111,6 @@ export default function PaymentSettings() {
         <DueDaysPicker days={s.dueDays} onChange={(dueDays) => actions.updateSettings({ dueDays })} />
         <Hair />
         <PercentRow label={t('settings.deposit')} bps={s.depositBps} onChange={(depositBps) => actions.updateSettings({ depositBps })} />
-        <Hair />
-        <SwitchRow label={t('settings.cardFee')} help={t('settings.cardFeeHelp')} value={state.cardFee} onChange={actions.setCardFee} />
       </Card>
     </Screen>
   );

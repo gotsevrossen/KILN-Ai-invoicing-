@@ -100,7 +100,10 @@ export function SavedDocumentScreen() {
   // the document is in the customer's language, like the one they were sent
   const docLang = s.customer.lang === 'es' ? 'es' : s.customer.lang === 'en' ? 'en' : lang;
   const dc = cleanupText(docLang);
-  const methods: Record<string, string> = { cash: dc.cash, check: dc.check, card: dc.card, bank: dc.bank, wallet: dc.wallet, other: dc.other };
+  const methods: Record<string, string> = {
+    cash: dc.cash, check: dc.check, card: dc.card, bank: dc.bank, wallet: dc.wallet, other: dc.other,
+    refund: docLang === 'es' ? 'Reembolso' : 'Refund', dispute: docLang === 'es' ? 'Contracargo' : 'Chargeback',
+  };
   const labels: SavedDocLabels = {
     title: typeName(dc, s.type), billTo: dc.billTo, job: dc.job, workOrder: dc.workOrder, issued: dc.issued, paidOn: dc.paidOn,
     signed: dc.signed, declined: dc.declined, description: dc.description, qty: dc.qty, price: dc.price, amount: dc.amount, excluded: dc.excluded,

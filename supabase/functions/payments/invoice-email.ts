@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { Refused, setting } from '../_shared/invoice.ts';
 
 const resend = 'https://api.resend.com/emails';
+const emailAddress = /^[^\s,;<>@]+@[^\s,;<>@]+\.[^\s,;<>@]+$/;
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 type Status = 'sending' | 'accepted' | 'delivered' | 'delayed' | 'failed' | 'unknown';
 type Attempt = { id: string; provider_id: string | null; status: Status; created_at: string };
@@ -22,10 +23,10 @@ export async function invoiceEmail(
   makeLink: (invoiceId: string) => Promise<string>,
 ) {
   if (typeof invoiceId !== 'string' || !uuid.test(invoiceId)) throw new Refused(400, 'bad_request');
-  const invoice = await db.from('invoices').select('number,sent_at,paid_at,job_id,jobs(customers(email,lang)),businesses(name)')
+  const invoice = await db.from('invoices').select('number,sent_at,paid_at,job_id,jobs(customers(email,lang)),businesses(name,email)')
     .eq('id', invoiceId).eq('business_id', businessId).maybeSingle<{
       number: string; sent_at: string | null; paid_at: string | null; job_id: string; jobs: { customers: { email: string | null; lang: string } | null } | null;
-      businesses: { name: string } | null;
+      businesses: { name: string; email: string | null } | null;
     }>();
   if (invoice.error) throw new Error('invoice lookup failed');
   if (!invoice.data) throw new Refused(404, 'not_found');
@@ -62,7 +63,7 @@ export async function invoiceEmail(
   if (!key || !from) throw new Refused(503, 'email_not_set_up');
   if (!/^https:\/\/[^/\s]+$/.test(setting('KILN_PAY_URL'))) throw new Refused(503, 'not_set_up');
   const customer = invoice.data.jobs?.customers;
-  if (!customer?.email || customer.email !== send.recipient || customer.email.length > 254 || !/^[^\s,;<>@]+@[^\s,;<>@]+\.[^\s,;<>@]+$/.test(customer.email)) {
+  if (!customer?.email || customer.email !== send.recipient || customer.email.length > 254 || !emailAddress.test(customer.email)) {
     throw new Refused(409, 'email_changed');
   }
   if (send.reminder) {
@@ -90,11 +91,17 @@ export async function invoiceEmail(
       : es ? `Factura ${number} de ${business}` : `Invoice ${number} from ${business}`;
     const text = send.reminder ? (es ? `Consulta el saldo de tu factura de ${business}:\n\n${url}` : `Review your invoice balance from ${business}:\n\n${url}`)
       : es ? `Consulta tu factura de ${business}:\n\n${url}` : `View your invoice from ${business}:\n\n${url}`;
+    const sender = (/<([^<>]+)>$/.exec(from)?.[1] ?? from).trim();
+    const displayName = business.replace(/[<>",;\\]/g, '').trim() || 'KILN';
+    const replyTo = invoice.data.businesses?.email;
     status = 'unknown';
     const response = await fetch(resend, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json', 'Idempotency-Key': `invoice/${attemptId}` },
-      body: JSON.stringify({ from, to: [customer.email], subject, text }),
+      body: JSON.stringify({
+        from: `${displayName} (via KILN) <${sender}>`, to: [customer.email], subject, text,
+        ...(replyTo && emailAddress.test(replyTo) ? { reply_to: replyTo } : {}),
+      }),
       signal: AbortSignal.timeout(10_000),
     });
     if (response.ok) {

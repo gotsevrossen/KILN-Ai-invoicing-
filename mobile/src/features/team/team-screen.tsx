@@ -158,7 +158,7 @@ export function TeamScreen() {
 
       {can(auth.role, 'seeCosts', { managersSeeCosts: data?.settings.managersSeeCosts }) ? (
         <Card style={{ paddingVertical: 6 }}>
-          <ListRow icon="calendar" title={c.schedule} onPress={() => router.push('/operations')} />
+          <ListRow icon="dollar-sign" title={c.workerCosts} onPress={() => router.push('/operations')} />
         </Card>
       ) : null}
     </Screen>

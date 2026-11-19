@@ -538,22 +538,25 @@ function applyLoaded(loaded: dbApi.Loaded): void {
   void refreshPay();
 }
 
+let payRefreshVersion = 0;
+
 /**
  * Picks up what happened outside the app: the customer opened the link, or paid by Apple Pay,
- * Google Pay, or bank (Stripe tells the server). A paid invoice never goes back to unpaid here.
+ * Google Pay, or bank (Stripe tells the server). The server also reconciles refunds and disputes.
  */
 async function refreshPay(): Promise<void> {
   if (get().mode !== 'connected' || !get().businessId) return;
   const active = saveQueue.scope();
+  const version = ++payRefreshVersion;
   try {
     const pay = await payApi.loadPayState();
-    if (!active()) return;
+    if (!active() || version !== payRefreshVersion) return;
     set((s) => ({
       ...s,
       payments: pay.payments,
       opened: pay.opened,
       online: pay.online,
-      paidInvoices: [...new Set([...s.paidInvoices, ...pay.paidInvoices])],
+      paidInvoices: pay.paidInvoices,
     }));
   } catch {
     // no signal: the next refresh tries again
@@ -1143,10 +1146,6 @@ function makeActions() {
         priceList: [...s.priceList.filter((i) => !removedItemIds.includes(i.id)), ...newItems],
       }));
       persist(command('saveTrades', get().businessId!, trades, newItems, removedItemIds));
-    },
-    setCardFee(on: boolean) {
-      set((s) => ({ ...s, cardFee: on }));
-      persist(command('saveSettings', get().businessId!, get().settings, on, get().aiScope));
     },
     setAiScope(on: boolean) {
       set((s) => ({ ...s, aiScope: on }));

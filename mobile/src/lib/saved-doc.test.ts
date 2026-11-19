@@ -48,6 +48,18 @@ describe('saved document totals', () => {
     assert.equal(t.due, 0);
     assert.equal(t.paid, t.total);
   });
+  it('shows the remaining balance when Stripe refunds part of an archived payment', () => {
+    const snapshot = base({
+      document: { ...base().document, paid_at: '2026-10-05T00:00:00Z' },
+      payments: [
+        { amountCents: 19070, method: 'card', paidAt: null, status: 'succeeded' },
+        { amountCents: -2500, method: 'refund', paidAt: null, status: 'succeeded' },
+      ],
+    });
+    assert.equal(savedTotals(snapshot).paid, 16570);
+    assert.equal(savedTotals(snapshot).due, 2500);
+    assert.match(savedDocHtml(snapshot, labels, 'en', true), /\$165\.70/);
+  });
   it('a change order totals its own amount', () => {
     const t = savedTotals(base({ type: 'change_order', lines: [], document: { number: 'C-1', amount_cents: 25000, base_cents: 100000 } }));
     assert.equal(t.total, 25000);

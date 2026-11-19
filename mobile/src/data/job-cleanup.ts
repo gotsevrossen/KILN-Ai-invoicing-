@@ -33,10 +33,10 @@ export async function chooseDocuments(jobId: string, choice: 'save' | 'discard')
 }
 
 /** Asks the server to remove the owner's jobs that are due. Returns how many went. */
-export async function removeDueJobs(): Promise<{ removed: number; saved: number }> {
+export async function removeDueJobs(): Promise<{ removed: number; saved: number; failed?: number }> {
   const { data, error } = await db().functions.invoke('job-cleanup', { body: {} });
   if (error) throw error;
-  return data as { removed: number; saved: number };
+  return data as { removed: number; saved: number; failed?: number };
 }
 
 export async function loadAutoSave(businessId: string): Promise<boolean> {
@@ -65,7 +65,7 @@ export interface SavedLine {
 
 export interface SavedSnapshot {
   type: SavedDocType;
-  business: { name: string; phone: string | null };
+  business: { name: string; phone: string | null; email?: string | null; address?: string | null };
   customer: { name: string; phone: string | null; email: string | null; lang: 'en' | 'es' | null };
   job: { title: string; address: string; workOrder: string | null };
   document: Record<string, unknown> & {

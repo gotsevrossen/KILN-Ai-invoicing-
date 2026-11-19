@@ -1,9 +1,9 @@
--- Owner-only financial data, tenant integrity, scheduling, frozen internal rates.
+-- Owner-only financial data, tenant integrity, retired scheduling, frozen internal rates.
 -- Run against local migrations: npx supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path to "$user", public, extensions;
-select plan(24);
+select plan(20);
 insert into auth.users(id, email) values
  ('11111111-1111-1111-1111-11111111111a', 'ops-owner-a@example.test'),
  ('11111111-1111-1111-1111-11111111111b', 'ops-owner-b@example.test'),
@@ -40,12 +40,8 @@ select is((select loaded_rate_cents from public.operations_labor_costs),3200,'hi
 select lives_ok($$update public.operations_labor_costs set loaded_rate_cents=5 where time_entry_id='55555555-5555-5555-5555-55555555555a'$$,'same worker attribution update succeeds');
 select is((select loaded_rate_cents from public.operations_labor_costs),3200,'same worker update preserves snapshot');
 select throws_ok($$insert into public.operations_labor_costs(time_entry_id,business_id,worker_id,loaded_rate_cents) values ('55555555-5555-5555-5555-55555555555b','22222222-2222-2222-2222-22222222222a','66666666-6666-6666-6666-66666666666a',1)$$,'23503',null,'cannot attach another business time entry');
-select lives_ok($$insert into public.operations_visits(business_id,job_id,worker_id,starts_at,ends_at) values ('22222222-2222-2222-2222-22222222222a','44444444-4444-4444-4444-44444444444a','66666666-6666-6666-6666-66666666666a','2026-11-20 09:00Z','2026-11-20 10:00Z')$$,'owner plans visit');
-select throws_ok($$insert into public.operations_visits(business_id,job_id,worker_id,starts_at,ends_at) values ('22222222-2222-2222-2222-22222222222a','44444444-4444-4444-4444-44444444444a','66666666-6666-6666-6666-66666666666a','2026-11-20 09:30Z','2026-11-20 10:30Z')$$,'23P01',null,'overlap blocked');
-select lives_ok($$insert into public.operations_visits(business_id,job_id,worker_id,starts_at,ends_at) values ('22222222-2222-2222-2222-22222222222a','44444444-4444-4444-4444-44444444444a','66666666-6666-6666-6666-66666666666a','2026-11-20 10:00Z','2026-11-20 11:00Z')$$,'adjacent visits allowed');
-select throws_ok($$insert into public.operations_visits(business_id,job_id,worker_id,starts_at,ends_at) values ('22222222-2222-2222-2222-22222222222a','44444444-4444-4444-4444-44444444444a','66666666-6666-6666-6666-66666666666a','2026-11-20 12:00Z','2026-11-20 11:00Z')$$,'23514',null,'reversed visit rejected');
-select throws_ok($$insert into public.operations_visits(business_id,job_id,worker_id,starts_at,ends_at) values ('22222222-2222-2222-2222-22222222222a','44444444-4444-4444-4444-44444444444b','66666666-6666-6666-6666-66666666666a','2026-11-20 12:00Z','2026-11-20 13:00Z')$$,'23503',null,'cross-business job rejected');
-select throws_ok($$insert into public.operations_visits(business_id,job_id,worker_id,starts_at,ends_at) values ('22222222-2222-2222-2222-22222222222a','44444444-4444-4444-4444-44444444444a','66666666-6666-6666-6666-66666666666b','2026-11-20 12:00Z','2026-11-20 13:00Z')$$,'23514',null,'cross-business worker rejected');
+select ok(not has_table_privilege(current_user,'public.operations_visits','INSERT'),'owner cannot add a scheduled visit');
+select ok(not has_table_privilege(current_user,'public.operations_visits','UPDATE'),'owner cannot edit a scheduled visit');
 select pg_temp.ops_as('11111111-1111-1111-1111-11111111111c');
 select is((select count(*)::int from public.operations_workers),0,'helper cannot read internal rates');
 select is((select count(*)::int from public.operations_labor_costs),0,'helper cannot read cost attributions');

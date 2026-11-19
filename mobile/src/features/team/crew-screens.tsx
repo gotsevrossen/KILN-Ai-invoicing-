@@ -12,20 +12,24 @@ import { userError } from '@/lib/user-errors';
 import { useThemeMode } from '@/theme/theme-mode';
 
 import { fill, teamText } from './text';
+import { crewRead } from './crew-cache';
+import { CrewSyncStatus } from './crew-outbox';
 import { CrewCaptureScreen } from './crew-capture';
 
 /** The crew member's assigned jobs, reloaded each time the page comes back into view. */
 function useCrewJobs() {
   const { t } = useLang();
+  const auth = useAuth();
+  const scope = `${auth.session?.user.id}:${auth.businessId}`;
   const [jobs, setJobs] = useState<api.CrewJob[] | null>(null);
   const [error, setError] = useState('');
   const live = useRef(true);
   const request = useRef(0);
   const load = useCallback(() => {
     const token = ++request.current;
-    api.loadCrewJobs().then((j) => { if (live.current && token === request.current) { setJobs(j); setError(''); } },
+    crewRead(scope, 'jobs', api.loadCrewJobs).then((j) => { if (live.current && token === request.current) { setJobs(j); setError(''); } },
       (e: unknown) => { if (live.current && token === request.current) { setJobs(null); setError(userError(t, e)); } });
-  }, [t]);
+  }, [scope, t]);
   useFocusEffect(useCallback(() => {
     live.current = true;
     load();
@@ -61,6 +65,7 @@ function Jobs({ title, sub, home }: { title: string; sub?: string; home?: boolea
   return (
     <Screen tabs header={<PageHeader title={title} sub={sub}
       right={home ? <IconButton icon="settings" label={c.settings} onPress={() => router.push('/crew/settings')} /> : undefined} />}>
+      <CrewSyncStatus />
       {error ? <><Notice text={error} tone="danger" icon="alert-circle" /><Button label={c.retry} variant="outline" onPress={retry} /></> : null}
       {!jobs && !error ? <T muted>{c.loading}</T> : null}
       {jobs && !jobs.length ? <Notice text={c.noJobs} tone="soft" icon="info" /> : null}

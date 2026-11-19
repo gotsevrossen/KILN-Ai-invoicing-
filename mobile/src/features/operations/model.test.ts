@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { centsInput, jobProfitability, visitOverlaps, visitTimeInput, type LaborCost, type Visit } from './model.ts';
+import { centsInput, jobProfitability, type LaborCost } from './model.ts';
 const cost = (id: string, rate: number): LaborCost => ({ time_entry_id: id, worker_id: 'w', business_id: 'b', loaded_rate_cents: rate });
 describe('actual job profitability', () => {
   it('uses frozen loaded cost, includes purchase tax in material input, excludes sales tax from revenue input', () => {
@@ -27,23 +27,10 @@ describe('actual job profitability', () => {
     assert.throws(() => jobProfitability(100, 0, 0, [{ id: 'a', hundredths: 2401 }], []));
   });
 });
-describe('planning inputs and overlap', () => {
+describe('cost inputs', () => {
   it('parses dollars without fractional-cent rounding', () => {
     assert.equal(centsInput('32,50'), 3250);
     assert.equal(centsInput('0'), 0);
     for (const v of ['-1', '12.345', '', '1e3', '99999999']) assert.equal(centsInput(v), null);
-  });
-  it('rejects invalid wall-clock dates', () => {
-    assert.equal(visitTimeInput('2026-02-30T09:00'), null);
-    assert.equal(visitTimeInput('2026-11-20T25:00'), null);
-    assert.notEqual(visitTimeInput('2026-11-20T09:00'), null);
-  });
-  it('detects same-worker overlaps but allows adjacent visits and different workers', () => {
-    const visits: Visit[] = [{ id: 'v', business_id: 'b', worker_id: 'w', job_id: 'j', starts_at: '2026-11-20T09:00:00Z', ends_at: '2026-11-20T10:00:00Z', note: '' }];
-    assert.equal(visitOverlaps(visits, 'w', '2026-11-20T09:30:00Z', '2026-11-20T10:30:00Z'), true);
-    assert.equal(visitOverlaps(visits, 'w', '2026-11-20T10:00:00Z', '2026-11-20T11:00:00Z'), false);
-    assert.equal(visitOverlaps(visits, 'other', '2026-11-20T09:30:00Z', '2026-11-20T10:30:00Z'), false);
-    assert.equal(visitOverlaps(visits, 'w', '2026-11-20T09:30:00Z', '2026-11-20T10:30:00Z', 'v'), false);
-    assert.throws(() => visitOverlaps(visits, 'w', 'bad', 'bad'));
   });
 });

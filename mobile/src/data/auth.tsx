@@ -2,7 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { passwordResetUrl, supabase } from '@/lib/supabase';
-import { errorDetails, type ErrorDetails } from '@/lib/user-errors';
+import { errorDetails, userErrorKey, type ErrorDetails } from '@/lib/user-errors';
 
 import { loadAll } from './db';
 import { loadTeamMembership, type TeamMembership, type TeamRole } from './team-access';
@@ -105,9 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (error) {
           let cached: unknown = null;
           try { cached = JSON.parse(localStorage.getItem(`kiln.membership:${userId}`) ?? 'null'); } catch { /* No cached authority. */ }
-          // offline: owners and managers can keep working from this phone's copy
+          // A previously active member can use their own cached view during a connection failure.
           const value = cached as Partial<TeamMembership> | null;
-          if ((value?.role !== 'owner' && value?.role !== 'manager') || value.status !== 'active' || typeof value.businessId !== 'string') throw error;
+          if (userErrorKey(error) !== 'errors.connection' || !value?.role || !['owner', 'manager', 'crew'].includes(value.role) || value.status !== 'active' || typeof value.businessId !== 'string') throw error;
           member = value as TeamMembership;
         }
         if (cancelled) return;

@@ -12,7 +12,7 @@ import { localDay } from '@/lib/photo-facts';
 import { font } from '@/theme/tokens';
 
 import { PhotoStrip } from './job-photos';
-import { Card, IconButton, ListRow, PhotoTile, Row, T } from './ui';
+import { Card, ListRow, PhotoTile, Row, T } from './ui';
 
 export interface ActivityItem {
   key: string;
@@ -129,7 +129,6 @@ export function useJobActivity(jobId: string): ActivityItem[] {
       ) : (
         <Card key={item.id}>
           <Row style={{ alignItems: 'flex-start' }} gap={12}>
-            <IconButton icon="play" label={t('job.play')} tone="dark" />
             <View style={{ flex: 1, gap: 4 }}>
               <Row style={{ justifyContent: 'space-between' }}>
                 <T v="small" muted>{t('job.voiceNote', { length: item.length })}</T>

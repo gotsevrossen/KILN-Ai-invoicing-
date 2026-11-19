@@ -91,11 +91,15 @@ export function paidOnline(state: State, invoiceId: string) {
     return true;
   });
   const paid = mine.filter((p) => p.status === 'succeeded');
+  const lastReceipt = paid.findLast((p) => p.amountCents > 0);
   return {
     paid: paid.reduce((a, p) => a + p.amountCents, 0),
     pending: mine.filter((p) => p.status === 'processing').reduce((a, p) => a + p.amountCents, 0),
-    method: paid.length ? paid[paid.length - 1].method : null,
-    alternativeMethod: paid.at(-1)?.alternativeMethod,
+    method: lastReceipt?.method ?? null,
+    alternativeMethod: lastReceipt?.alternativeMethod,
+    refunded: -paid.filter((payment) => payment.adjustment === 'refund').reduce((total, payment) => total + payment.amountCents, 0),
+    chargedBack: -paid.filter((payment) => payment.adjustment === 'dispute').reduce((total, payment) => total + payment.amountCents, 0),
+    disputeOpen: mine.some((payment) => payment.disputeOpen),
     failed: mine.some((p) => p.status === 'failed') && !paid.length,
   };
 }

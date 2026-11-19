@@ -35,6 +35,12 @@ The rules that stop sent documents, their lines, sent-invoice work and photos, a
 ## Not done / limits
 
 - Deployed to the hosted server on Nov 18: the migration, `job-cleanup` (new), `ai` (v8, `findJobs`) and the other functions; customer pages republished. Backups: `builds/backups/hosted-schema-before-cleanup-2026-11-18.sql`, `hosted-data-before-cleanup-2026-11-18.sql`.
-- Removal only runs when the owner opens KILN, so with automatic saving a due job can stay until the next time the owner opens the app. A daily scheduled run would need a scheduler (pg_cron or a scheduled function).
+- Opening Home also triggers a cleanup run. The hourly task requires the hosted setup below.
 - No push notification for the warning. It shows on Home only.
 - Trade and job type filters only know jobs that have estimate job details.
+
+## Hosted scheduled cleanup
+
+Apply the cleanup migration and deploy `job-cleanup` before enabling the hourly task. Create a random token of at least 32 characters. Store it as `KILN_CLEANUP_TOKEN` in the Edge Function secrets and as `kiln_cleanup_token` in Supabase Vault. Store the hosted `job-cleanup` URL in Vault as `kiln_cleanup_endpoint`. Run `scripts/enable-job-cleanup.sql` to enable the task.
+
+The hourly scan uses the same paid date, owner warning, and save choice as Home. Open Stripe disputes pause removal. Database removal records pending storage deletions in the same transaction, so a failed storage request can be retried by the next run. Check both Cron history and Edge Function logs after enabling the task.

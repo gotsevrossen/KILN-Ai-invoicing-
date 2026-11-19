@@ -15,7 +15,7 @@ const es: Dict = {
     cashConfirm: 'Confirmar efectivo recibido', cashHelp: 'Registra %{amount} solo cuando tengas el efectivo. Esto no cobra al cliente.',
     cashReceived: 'Recibí este efectivo', cashFailed: 'No se confirmó el efectivo. Actualiza la factura e inténtalo de nuevo. Si se inició un pago en línea, resuélvelo antes de registrar efectivo.',
 
-    approvalFailed: 'No se confirmó la aceptación. Comprueba tu conexión y vuelve a intentarlo.', operations: 'Equipo y agenda', operationsHelp: 'Trabajadores, visitas y asignaciones',
+    approvalFailed: 'No se confirmó la aceptación. Comprueba tu conexión y vuelve a intentarlo.', operations: 'Costos de trabajadores', operationsHelp: 'Costo de mano de obra por hora',
     profitability: 'Rentabilidad del trabajo', profitabilityHelp: 'Costos laborales, presupuesto y margen real',
     tradeTools: 'Medidas y finalización', tradeToolsHelp: 'Medidas por habitación, especificaciones y registros eléctricos',
     packages: 'Paquetes de servicios', packagesHelp: 'Trabajo reutilizable, alcance y precios de visitas',
@@ -724,8 +724,6 @@ const es: Dict = {
     needPrices: { one: '1 artículo sin precio', other: '%{count} artículos sin precio' },
     itemCount: { one: '1 artículo', other: '%{count} artículos' },
     payments: 'Pagos',
-    cardFee: 'Cobrar la comisión de tarjeta al cliente',
-    cardFeeHelp: 'Apagado: tú pagas la comisión. Encendido: la paga el cliente que use tarjeta.',
     pricing: 'Margen e impuestos',
     pricingSub: 'Margen %{markup}% · Impuesto %{tax}%',
     markup: 'Margen en artículos de recibo',

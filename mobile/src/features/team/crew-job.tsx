@@ -19,6 +19,8 @@ import { userError } from '@/lib/user-errors';
 import { usePalette } from '@/theme/use-palette';
 
 import { PhotoThumb } from './person-screen';
+import { crewRead } from './crew-cache';
+import { CrewSyncStatus, useCrewOutbox } from './crew-outbox';
 import { fill, teamText } from './text';
 
 const UNITS: Unit[] = ['flat', 'each', 'hour', 'sq_ft', 'linear_ft', 'board', 'cu_yd'];
@@ -34,7 +36,9 @@ export function CrewJobScreen() {
   const c = teamText(lang);
   const f = useFormat();
   const auth = useAuth();
+  const outbox = useCrewOutbox();
   const me = auth.session?.user.id;
+  const cacheScope = `${me}:${auth.businessId}:${auth.crewSeesPrices}`;
   const [data, setData] = useState<api.CrewJobDetail | null>(null);
   const [loadError, setLoadError] = useState('');
   const loadRequest = useRef(0);
@@ -50,9 +54,9 @@ export function CrewJobScreen() {
 
   const reload = useCallback(() => {
     const request = ++loadRequest.current;
-    api.loadCrewJob(id).then((d) => { if (request === loadRequest.current) { setData(d); setLoadError(''); } },
+    crewRead(cacheScope, `job:${id}`, () => api.loadCrewJob(id)).then((d) => { if (request === loadRequest.current) { setData(d); setLoadError(''); } },
       (e: unknown) => { if (request === loadRequest.current) { setData(null); setLoadError(userError(t, e)); } });
-  }, [id, t]);
+  }, [cacheScope, id, t]);
   useFocusEffect(useCallback(() => {
     reload();
     const unsubscribe = onLiveRefresh(reload);
@@ -81,7 +85,7 @@ export function CrewJobScreen() {
       <IconButton icon="phone" label={c.call} onPress={() => callNumber(data.job.customer_phone)} />
       <IconButton icon="message-square" label={c.text} onPress={() => textNumber(data.job.customer_phone)} />
     </> : undefined} />;
-  if (!data) return <Screen header={header}>
+  if (!data) return <Screen header={header}><CrewSyncStatus />
     {loadError ? <><Notice text={loadError} tone="danger" icon="alert-circle" /><Button label={c.retry} variant="outline" onPress={reload} /></> : <T muted>{c.loading}</T>}
   </Screen>;
 
@@ -93,7 +97,7 @@ export function CrewJobScreen() {
   const scope = data.estimate?.scope ?? {};
 
   return (
-    <Screen header={header}>
+    <Screen header={header}><CrewSyncStatus />
       {status ? <Notice text={status} tone="accent" /> : null}
       {error && !open ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
 
@@ -163,16 +167,16 @@ export function CrewJobScreen() {
         id: r.id, title: r.description, sub: who(r.created_by), removable: mine(r.created_by) && r.status === 'open', kind: 'change' as const }))}
         onRemove={(kind, rowId) => void run(() => api.crewRemoveMine(kind, rowId), c.saved)} busy={busy} />
 
-      <WorkSheet key={`work-${opened}`} open={open === 'work'} onClose={() => setOpen(null)} prices={job.prices} busy={busy} error={error}
-        onAdd={(item, qty) => run((rowId) => api.crewAddWork(rowId, job.id, item.id, qty), c.saved)}
+      <WorkSheet cacheScope={cacheScope} key={`work-${opened}`} open={open === 'work'} onClose={() => setOpen(null)} prices={job.prices} busy={busy} error={error}
+        onAdd={(item, qty) => run((id) => outbox.save([{ kind: 'work', id, job: job.id, item: item.id, quantity: qty }]), c.savedOnDevice)}
         onNewItem={(name, unit, cents) => run((rowId) => api.crewAddPriceItem(rowId, name, unit, cents), c.itemAdded)} />
       <HoursSheet key={`hours-${opened}`} open={open === 'hours'} onClose={() => setOpen(null)} busy={busy} error={error}
-        onSave={(hundredths, note) => run((rowId) => api.logTeamHours(rowId, job.id, hundredths, note), c.saved)} />
+        onSave={(hundredths, note) => run((id) => outbox.save([{ kind: 'hours', id, job: job.id, hours: hundredths, note }]), c.savedOnDevice)} />
       <TextSheet key={`note-${opened}`} open={open === 'note'} onClose={() => setOpen(null)} title={c.addNote} label={c.noteField} busy={busy} error={error}
-        onSave={(body) => run((rowId) => api.addTeamNote(rowId, job.id, body), c.saved)} />
+        onSave={(body) => run((id) => outbox.save([{ kind: 'note', id, job: job.id, text: body }]), c.savedOnDevice)} />
       <TextSheet key={`change-${opened}`} open={open === 'change'} onClose={() => setOpen(null)} title={c.suggest} help={c.suggestHelp} label={c.suggestion} busy={busy} error={error}
-        onSave={(body) => run((rowId) => api.crewSuggestChange(rowId, job.id, body), c.sent)} />
-      <PhotoSheet open={open === 'photo'} onClose={() => setOpen(null)} jobId={job.id} onSaved={() => { setStatus(c.photosSaved); setOpen(null); reload(); }} />
+        onSave={(body) => run((id) => outbox.save([{ kind: 'change', id, job: job.id, text: body }]), c.savedOnDevice)} />
+      <PhotoSheet open={open === 'photo'} onClose={() => setOpen(null)} jobId={job.id} onSaved={() => { setStatus(c.savedOnDevice); setOpen(null); reload(); }} />
     </Screen>
   );
 }
@@ -196,8 +200,8 @@ function Entries({ title, rows, onRemove, busy }: {
   </>;
 }
 
-function WorkSheet({ open, onClose, prices, busy, error, onAdd, onNewItem }: {
-  open: boolean; onClose: () => void; prices: boolean; busy: boolean; error: string;
+function WorkSheet({ open, onClose, prices, busy, error, onAdd, onNewItem, cacheScope }: {
+  open: boolean; onClose: () => void; prices: boolean; busy: boolean; error: string; cacheScope: string;
   onAdd: (item: api.CrewPriceItem, qtyHundredths: number) => Promise<boolean>;
   onNewItem: (name: string, unit: Unit, cents: number | null) => Promise<boolean>;
 }) {
@@ -217,9 +221,9 @@ function WorkSheet({ open, onClose, prices, busy, error, onAdd, onNewItem }: {
   useEffect(() => {
     if (!open) return;
     let live = true;
-    api.loadCrewPriceList().then((list) => { if (live) { setItems(list); setListError(''); } }, (e: unknown) => { if (live) setListError(userError(t, e)); });
+    crewRead(cacheScope, 'price-list', api.loadCrewPriceList).then((list) => { if (live) { setItems(list); setListError(''); } }, (e: unknown) => { if (live) setListError(userError(t, e)); });
     return () => { live = false; };
-  }, [open, t]);
+  }, [cacheScope, open, t]);
   const unitName = (u: Unit) => (u === 'flat' ? t('estimate.unitFlat') : t(`estimate.units.${u}` as 'estimate.units.each'));
   return (
     <Sheet open={open} onClose={onClose} title={c.addWork}>
@@ -303,19 +307,11 @@ function TextSheet({ open, onClose, title, help, label, busy, error, onSave }: {
 function PhotoSheet({ open, onClose, jobId, onSaved }: { open: boolean; onClose: () => void; jobId: string; onSaved: () => void }) {
   const { lang, t } = useLang();
   const c = teamText(lang);
-  const auth = useAuth();
+  const outbox = useCrewOutbox();
   const [tag, setTag] = useState<'before' | 'during' | 'after'>('during');
   const [waiting, setWaiting] = useState<NewPhoto[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const upload = async (photos: NewPhoto[]) => {
-    if (!auth.businessId) return;
-    for (const photo of photos) {
-      await api.saveTeamPhoto(auth.businessId, jobId, photo, tag);
-      removeFromPhone(photo.localUri);
-      setWaiting((old) => old.filter((x) => x.id !== photo.id));
-    }
-  };
   const go = async (camera: boolean | 'retry') => {
     if (busy) return;
     setBusy(true); setError('');
@@ -328,12 +324,20 @@ function PhotoSheet({ open, onClose, jobId, onSaved }: { open: boolean; onClose:
         photos = picked.photos;
         setWaiting(photos);
       }
-      await upload(photos);
+      await outbox.save(photos.map(({ id, localUri, takenAt }) => ({
+        kind: 'photo', id, job: jobId, photo: { id, localUri, takenAt }, tag,
+      })));
+      setWaiting([]);
       onSaved();
     } catch (e) { setError(userError(t, e)); }
     finally { setBusy(false); }
   };
-  return <Sheet open={open} onClose={onClose} title={c.photos}>
+  return <Sheet open={open} onClose={() => {
+    if (busy) return;
+    for (const photo of waiting) removeFromPhone(photo.localUri);
+    setWaiting([]);
+    onClose();
+  }} title={c.photos}>
     <Segmented label={c.stage} value={tag} onChange={setTag} options={[{ key: 'before', label: c.before }, { key: 'during', label: c.during }, { key: 'after', label: c.after }]} />
     {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
     {waiting.length ? <>

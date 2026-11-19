@@ -31,6 +31,7 @@ export function LeavingJobs() {
   const [jobs, setJobs] = useState<api.LeavingJob[]>([]);
   const [removed, setRemoved] = useState(0);
   const [error, setError] = useState('');
+  const [cleanupError, setCleanupError] = useState('');
   const [busy, setBusy] = useState(false);
   const live = useRef(true);
   const owner = auth.role === 'owner' && state.mode === 'connected';
@@ -40,8 +41,13 @@ export function LeavingJobs() {
     try {
       if (Date.now() - lastCleanup > CLEANUP_EVERY) {
         lastCleanup = Date.now();
-        const result = await api.removeDueJobs().catch(() => ({ removed: 0, saved: 0 }));
-        if (result.removed) {
+        let failureMessage = '';
+        const result = await api.removeDueJobs().catch((failure) => {
+          failureMessage = userError(t, failure);
+          return null;
+        });
+        if (live.current) setCleanupError(result?.failed ? t('errors.failed') : failureMessage);
+        if (result?.removed) {
           if (live.current) setRemoved(result.removed);
           await storeActions.refreshDocuments();
         }
@@ -82,10 +88,10 @@ export function LeavingJobs() {
   const open = jobs.filter((j) => j.choice === null);
   return <>
     {removed ? <Notice text={c.removed.replace('%{count}', String(removed))} tone="soft" icon="info" /> : null}
+    {error || cleanupError ? <Notice text={error || cleanupError} tone="danger" icon="alert-circle" /> : null}
     {jobs.length ? <Card tone="flag" style={{ gap: 10 }}>
       <T v="h3">{c.leavingTitle}</T>
       <T v="small">{c.leavingHelp}</T>
-      {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
       {jobs.map((j, i) => <View key={j.id} style={{ gap: 8 }}>
         {i ? <Hair /> : null}
         <T v="label">{j.title}</T>

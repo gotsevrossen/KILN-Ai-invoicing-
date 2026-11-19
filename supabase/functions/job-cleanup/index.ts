@@ -1,54 +1,57 @@
 import { createClient } from '@supabase/supabase-js';
-
-import { cors, Refused, reply, serviceClient } from '../_shared/invoice.ts';
-
-// POST /functions/v1/job-cleanup — removes the signed-in owner's paid jobs that are due to leave
-// (30 days after payment, after the owner saw the warning; see 20261117170000_paid_job_cleanup.sql).
-// The database decides which jobs are due, as the owner. purge_job() saves the documents when the
-// owner asked (or saves automatically), erases the job's records and returns its files, which are
-// then deleted here from storage. The app calls this when the owner opens KILN.
+import { cors, Refused, reply, serviceClient, setting } from '../_shared/invoice.ts';
 
 const BUCKETS = ['job-photos', 'voice-notes', 'receipts'] as const;
-// at most this many jobs per call, so one call stays quick; the rest go next time
 const PER_CALL = 25;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return reply(405, { error: 'bad_request' });
+  const suppliedToken = req.headers.get('X-Kiln-Cleanup-Token');
+  const configuredToken = setting('KILN_CLEANUP_TOKEN');
+  const scheduled = configuredToken.length >= 32 && suppliedToken === configuredToken;
   const auth = req.headers.get('Authorization');
-  if (!auth) return reply(401, { error: 'signed_out' });
+  if (!scheduled && !auth) return reply(401, { error: 'signed_out' });
   try {
-    // as the signed-in user: jobs_due_for_removal() only answers for the business's owner
-    const user = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: auth } },
+    const db = serviceClient();
+    const user = scheduled ? db : createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: auth! } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const due = await user.rpc('jobs_due_for_removal');
-    if (due.error) throw new Refused(401, 'signed_out');
-    const jobs = ((due.data ?? []) as string[]).slice(0, PER_CALL);
-
-    const db = serviceClient();
+    const due = await user.rpc(scheduled ? 'scheduled_jobs_due_for_removal' : 'jobs_due_for_removal');
+    if (due.error) throw new Refused(scheduled ? 500 : 401, scheduled ? 'failed' : 'signed_out');
     let removed = 0;
     let saved = 0;
-    for (const job of jobs) {
-      // checks again that the job is due, inside the same database step that removes it
-      const result = await db.rpc('purge_job', { p_job: job });
+    let failed = 0;
+    const files = new Map<string, string[]>();
+    for (const job of ((due.data ?? []) as string[]).slice(0, PER_CALL)) {
+      const result = await db.rpc('purge_job_and_queue_files', { p_job: job });
       if (result.error) {
-        console.error('job-cleanup: a job could not be removed', result.error.code);
+        // Another worker can finish the same job after the due list was read.
+        if (result.error.code !== '42501') { failed++; console.error('job-cleanup: purge failed', result.error.code); }
         continue;
       }
       const out = result.data as { saved: number; files: Record<string, string[]> };
-      removed += 1;
+      removed++;
       saved += out.saved;
-      for (const bucket of BUCKETS) {
-        const paths = out.files[bucket] ?? [];
-        if (!paths.length) continue;
-        const gone = await db.storage.from(bucket).remove(paths);
-        // the records are already gone; a file left behind is only reachable by its exact path
-        if (gone.error) console.error(`job-cleanup: files in ${bucket} were not all removed`);
+      for (const bucket of BUCKETS) files.set(bucket, [...(files.get(bucket) ?? []), ...(out.files[bucket] ?? [])]);
+    }
+    for (const bucket of BUCKETS) {
+      let paths = files.get(bucket) ?? [];
+      if (scheduled) {
+        const queued = await db.from('job_cleanup_files').select('path').eq('bucket', bucket).order('queued_at').limit(100);
+        if (queued.error) { failed++; continue; }
+        paths = queued.data.map((row) => row.path);
+      }
+      for (let start = 0; start < paths.length; start += 100) {
+        const batch = paths.slice(start, start + 100);
+        const result = await db.storage.from(bucket).remove(batch);
+        if (result.error) { failed++; console.error('job-cleanup: storage removal failed', bucket); continue; }
+        const acknowledged = await db.from('job_cleanup_files').delete().eq('bucket', bucket).in('path', batch);
+        if (acknowledged.error) failed++;
       }
     }
-    return reply(200, { removed, saved });
+    return reply(failed && scheduled ? 500 : 200, { removed, saved, failed });
   } catch (e) {
     if (e instanceof Refused) return reply(e.status, { error: e.code });
     console.error('job-cleanup: unexpected error', e instanceof Error ? e.name : typeof e);

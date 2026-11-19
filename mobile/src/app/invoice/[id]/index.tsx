@@ -139,6 +139,9 @@ function InvoiceDraft() {
       }>
       <OfflineStatus />
       {sent ? <DeliveryStatus invoiceId={invoice.id} refresh={sendOpen} /> : null}
+      {online.refunded > 0 ? <Notice tone="flag" text={es ? `Reembolso de Stripe: ${f.money(online.refunded)}` : `Stripe refund: ${f.money(online.refunded)}`} /> : null}
+      {online.chargedBack > 0 ? <Notice tone="flag" text={es ? `Contracargo de Stripe: ${f.money(online.chargedBack)}` : `Stripe chargeback: ${f.money(online.chargedBack)}`} /> : null}
+      {online.disputeOpen ? <Notice tone="flag" text={es ? 'Hay una disputa abierta en Stripe.' : 'This payment has an open dispute in Stripe.'} /> : null}
       {waiting && !checkoutActive && !online.pending && totals.due > 0 ? <Button label={es ? 'Enviar recordatorio' : 'Send payment reminder'} icon="mail" variant="outline"
         onPress={() => { setReminder(true); setSendOpen(true); }} /> : null}
       {checkoutActive ? <Button label={es ? 'Cancelar intento de pago en línea' : 'Cancel online checkout'} variant="outline"

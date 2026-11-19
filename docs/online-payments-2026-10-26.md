@@ -78,7 +78,13 @@ Deploy the pending migrations and updated `payments`, `pay`, and `stripe-webhook
 
 - Only the whole amount left can be paid online: no partial payments yet, and deposits on estimates aren't collected.
 - The app doesn't save customer emails yet, so **Email** opens the email app with the subject and message filled in, and the owner adds the address. Emails sent by KILN itself wait for KILN's domain and email service.
-- The "Card fee for customers" setting doesn't add a fee to online payments yet.
+- Checkout does not add a card surcharge. The old card-fee switch has been removed.
 - The owner's terms and warranty aren't on the customer page yet (they aren't saved anywhere yet).
-- Refunds and disputes are handled in the owner's Stripe Dashboard. KILN doesn't show them yet.
+- Owners handle refunds and disputes in their Stripe Dashboard. With the adjustment migration and webhook deployed, KILN reconciles completed refunds and lost disputes and shows open disputes on the invoice.
 - Expo hosting builds the whole web app, so the owner's sign-in page is also reachable at kiln.expo.app (same rules and data as the phone app).
+
+## Stripe adjustment events
+
+Deploy the database migrations before updating the payment Edge Functions and customer web build. Add `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, and `charge.dispute.closed` to the signed Stripe Connect webhook endpoint. Keep the existing PaymentIntent events enabled. Use the endpoint for the same Stripe environment as the configured API credentials.
+
+In Stripe test mode, refund part of a KILN payment and confirm that the same invoice balance, printable receipt, and billing export show the net amount. Replay the event to confirm the refund only counts once. Then verify that a test dispute holds cleanup while open and reduces the balance only if lost. Older archived invoices may lack the Stripe payment reference required for reconciliation.

@@ -116,7 +116,6 @@ export default function Capture() {
             </View>
             <ButtonRow gap={10}>
               <Button label={t('capture.addBoth')} icon="check" flex onPress={actions.confirmVoice} />
-              <Button label={t('capture.edit')} variant="soft" />
             </ButtonRow>
           </>
         )}
