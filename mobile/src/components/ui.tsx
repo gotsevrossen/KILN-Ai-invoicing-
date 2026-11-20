@@ -83,6 +83,7 @@ export function Screen({
   children,
   footer,
   tabs,
+  floatingBar = tabs,
   scroll = true,
   scrollEnabled = true,
   noTopInset,
@@ -93,6 +94,8 @@ export function Screen({
   header?: ReactNode;
   footer?: ReactNode;
   tabs?: boolean;
+  /** Reserve space for a floating control without enabling tab swipes. */
+  floatingBar?: boolean;
   scroll?: boolean;
   /** Turn off while the user draws (signature pad) so the page doesn't move under the finger. */
   scrollEnabled?: boolean;
@@ -103,7 +106,7 @@ export function Screen({
   const insets = useSafeAreaInsets();
   // room for the floating menu (64), the gap below it, the phone's home area, and the fade above
   // the bar (40, components/tab-bar.tsx), so the last card can scroll fully clear of it
-  const content = { padding: space.lg, gap: 14, paddingBottom: tabs ? 64 + Math.max(insets.bottom, 12) + 40 + space.lg : space.xxl };
+  const content = { padding: space.lg, gap: 14, paddingBottom: floatingBar ? 64 + Math.max(insets.bottom, 12) + 40 + space.lg : space.xxl };
   const sheetOpen = useSheetOpen();
   const top: ('top' | 'bottom')[] = noTopInset ? [] : ['top'];
   const [pulling, setPulling] = useState(false);
@@ -131,7 +134,7 @@ export function Screen({
   });
   return (
     <GestureDetector gesture={swipe}>
-    <SafeAreaView edges={footer || tabs ? top : [...top, 'bottom']} style={{ flex: 1, backgroundColor: p.ground }}>
+    <SafeAreaView edges={footer || floatingBar ? top : [...top, 'bottom']} style={{ flex: 1, backgroundColor: p.ground }}>
       {header ? <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: 4, gap: 12, backgroundColor: p.ground }}>{header}</View> : null}
       {scroll ? (
         <ScrollView

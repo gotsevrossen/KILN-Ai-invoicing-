@@ -1,6 +1,7 @@
+import { Image } from 'expo-image';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Sheet } from '@/components/sheet';
 import { Button, Card, Checkbox, Hair, ListRow, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';

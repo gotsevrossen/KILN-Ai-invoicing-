@@ -1,6 +1,6 @@
 import { Redirect, Tabs } from 'expo-router';
 
-import { FloatingTabBar } from '@/components/tab-bar';
+import { FloatingCaptureBar } from '@/components/tab-bar';
 import { useAuth } from '@/data/auth';
 import { teamText } from '@/features/team/text';
 import { useLang } from '@/i18n';
@@ -13,10 +13,10 @@ export default function CrewTabs() {
   if (auth.ready && auth.role !== 'crew') return <Redirect href="/" />;
   return (
     <Tabs
+      backBehavior="initialRoute"
       screenOptions={{ headerShown: false }}
-      tabBar={(props) => <FloatingTabBar {...props} icons={{ index: 'home', jobs: 'briefcase' }} capture={{ route: 'capture', label: c.capture }} />}>
-      <Tabs.Screen name="index" options={{ title: c.home }} />
-      <Tabs.Screen name="jobs" options={{ title: c.jobs }} />
+      tabBar={(props) => <FloatingCaptureBar {...props} capture={{ route: 'capture', label: c.capture }} />}>
+      <Tabs.Screen name="index" options={{ title: c.jobs }} />
       <Tabs.Screen name="capture" options={{ title: c.capture }} />
     </Tabs>
   );

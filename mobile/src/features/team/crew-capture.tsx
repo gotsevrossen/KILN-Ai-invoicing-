@@ -87,7 +87,7 @@ export function CrewCaptureScreen({ jobs, error, retry }: {
   };
   const openJobs = (jobs ?? []).filter((job) => job.is_open);
 
-  return <Screen tabs header={<PageHeader title={t('capture.title')} sub={t('capture.sub')} />}>
+  return <Screen floatingBar header={<PageHeader title={t('capture.title')} sub={t('capture.sub')} back={() => router.navigate('/crew')} />}>
     <CrewSyncStatus />
     <Row gap={12}>
       <Tile icon="file-text" label={t('capture.receipt')} accent onPress={() => { setSaveError(''); setMode('receipt'); }} />

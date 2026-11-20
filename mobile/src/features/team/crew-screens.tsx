@@ -11,7 +11,7 @@ import { useLang } from '@/i18n';
 import { userError } from '@/lib/user-errors';
 import { useThemeMode } from '@/theme/theme-mode';
 
-import { fill, teamText } from './text';
+import { teamText } from './text';
 import { crewRead } from './crew-cache';
 import { CrewSyncStatus } from './crew-outbox';
 import { CrewCaptureScreen } from './crew-capture';
@@ -58,33 +58,21 @@ function JobList({ jobs, onPick }: { jobs: api.CrewJob[]; onPick: (job: api.Crew
   </>;
 }
 
-function Jobs({ title, sub, home }: { title: string; sub?: string; home?: boolean }) {
+export function CrewJobs() {
   const { lang } = useLang();
   const c = teamText(lang);
+  const { businessName } = useAuth();
   const { jobs, error, retry } = useCrewJobs();
   return (
-    <Screen tabs header={<PageHeader title={title} sub={sub}
-      right={home ? <IconButton icon="settings" label={c.settings} onPress={() => router.push('/crew/settings')} /> : undefined} />}>
+    <Screen floatingBar header={<PageHeader title={c.jobs} sub={businessName}
+      right={<IconButton icon="settings" label={c.settings} onPress={() => router.push('/crew/settings')} />} />}>
       <CrewSyncStatus />
       {error ? <><Notice text={error} tone="danger" icon="alert-circle" /><Button label={c.retry} variant="outline" onPress={retry} /></> : null}
       {!jobs && !error ? <T muted>{c.loading}</T> : null}
       {jobs && !jobs.length ? <Notice text={c.noJobs} tone="soft" icon="info" /> : null}
-      {jobs?.length ? <>{home ? <T v="eyebrow">{c.yourJobs}</T> : null}<JobList jobs={jobs} onPick={(j) => router.push(`/crew/job/${j.id}`)} /></> : null}
+      {jobs?.length ? <JobList jobs={jobs} onPick={(j) => router.push(`/crew/job/${j.id}`)} /> : null}
     </Screen>
   );
-}
-
-export function CrewHome() {
-  const { lang } = useLang();
-  const auth = useAuth();
-  const c = teamText(lang);
-  const me = auth.memberName || (auth.session?.user.email?.split('@')[0] ?? '');
-  return <Jobs home title={fill(c.hello, { name: me })} sub={auth.businessName} />;
-}
-
-export function CrewJobs() {
-  const { lang } = useLang();
-  return <Jobs title={teamText(lang).jobs} />;
 }
 
 /** Capture shares the office layout, while its picker only lists assigned jobs. */

@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import * as Haptics from 'expo-haptics';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
@@ -20,6 +20,28 @@ const PAD = 5;
 const FADE = 40;
 const SPRING = { damping: 20, stiffness: 220, mass: 0.8 };
 
+type Capture = { route: string; label: string };
+
+function pressTab({ emitter, navigateToTab }: Pick<BottomTabBarProps, 'emitter' | 'navigateToTab'>, key: string, focused: boolean) {
+  const event = emitter.emit({ type: 'tabPress', target: key, canPreventDefault: true });
+  if (!focused && !event.defaultPrevented) {
+    void Haptics.selectionAsync().catch(() => {});
+    navigateToTab(key);
+  }
+}
+
+/** Crew have one jobs screen and the same floating Capture button. */
+export function FloatingCaptureBar({ state, emitter, navigateToTab, insets, capture }: BottomTabBarProps & { capture: Capture }) {
+  const route = state.routes.find((r) => r.name === capture.route);
+  if (!route) return null;
+  const active = state.routes[state.index]?.key === route.key;
+  return (
+    <FloatingBar bottomInset={insets.bottom}>
+      <CaptureButton label={capture.label} active={active} onPress={() => pressTab({ emitter, navigateToTab }, route.key, active)} />
+    </FloatingBar>
+  );
+}
+
 /**
  * Floating menu: a white card holding the pages, with an orange slider that moves to the
  * selected one, and Capture as its own round button on the right. Holding the slider and
@@ -28,7 +50,7 @@ const SPRING = { damping: 20, stiffness: 220, mass: 0.8 };
 export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, insets, icons, capture }: BottomTabBarProps & {
   /** Icon for each page by route name. Routes not listed (and Capture) stay out of the bar. */
   icons: Record<string, IconName>;
-  capture: { route: string; label: string };
+  capture: Capture;
 }) {
   const p = usePalette();
   const [width, setWidth] = useState(0);
@@ -61,13 +83,7 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
     opacity: shown.get(),
   }));
 
-  const press = (key: string, focused: boolean) => {
-    const event = emitter.emit({ type: 'tabPress', target: key, canPreventDefault: true });
-    if (!focused && !event.defaultPrevented) {
-      void Haptics.selectionAsync().catch(() => {});
-      navigateToTab(key);
-    }
-  };
+  const press = (key: string, focused: boolean) => pressTab({ emitter, navigateToTab }, key, focused);
 
   // A sideways drag that starts on the orange slider moves it between pages. Taps still go to
   // the page buttons: the drag only starts after the finger moves a few points sideways.
@@ -110,24 +126,8 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
     const next = order[order.findIndex((r) => r.name === focusedName) + step];
     if (next) press(next.key, false);
   }));
-  const bottom = Math.max(insets.bottom, 12);
-  const fadeHeight = FADE + TAB_BAR_HEIGHT + bottom;
-
   return (
-    <View pointerEvents="box-none"
-      style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingBottom: bottom, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      {/* cards scrolling down fade into the background before they reach the bar, and stay hidden behind it */}
-      <Svg pointerEvents="none" width="100%" height={fadeHeight} style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
-        <Defs>
-          <LinearGradient id="kilnTabFade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={p.ground} stopOpacity={0} />
-            <Stop offset={String((FADE * 0.85) / fadeHeight)} stopColor={p.ground} stopOpacity={0.92} />
-            <Stop offset={String(FADE / fadeHeight)} stopColor={p.ground} stopOpacity={1} />
-            <Stop offset="1" stopColor={p.ground} stopOpacity={1} />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#kilnTabFade)" />
-      </Svg>
+    <FloatingBar bottomInset={insets.bottom}>
       <GestureDetector gesture={pan}>
       <View role="tablist" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
         style={{ flex: 1, height: TAB_BAR_HEIGHT, borderRadius: radius.pill, backgroundColor: p.card, padding: PAD, flexDirection: 'row', ...lift }}>
@@ -153,16 +153,46 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
       </View>
       </GestureDetector>
       {captureRoute ? (
-        <Pressable onPress={() => press(captureRoute.key, captureOn)}
-          accessibilityRole="tab" accessibilityLabel={capture.label} accessibilityState={{ selected: captureOn }}
-          style={({ pressed }) => ({
-            width: TAB_BAR_HEIGHT, height: TAB_BAR_HEIGHT, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center',
-            backgroundColor: captureOn ? p.accent : p.inverse, transform: [{ scale: pressed ? 0.94 : 1 }], ...lift,
-          })}>
-          <Feather name="plus" size={30} color={captureOn ? p.onAccent : p.onInverse} />
-        </Pressable>
+        <CaptureButton label={capture.label} active={captureOn} onPress={() => press(captureRoute.key, captureOn)} />
       ) : null}
+    </FloatingBar>
+  );
+}
+
+function FloatingBar({ children, bottomInset }: { children: ReactNode; bottomInset: number }) {
+  const p = usePalette();
+  const bottom = Math.max(bottomInset, 12);
+  const fadeHeight = FADE + TAB_BAR_HEIGHT + bottom;
+  return (
+    <View pointerEvents="box-none"
+      style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingBottom: bottom, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
+      {/* Cards scrolling down fade into the background before they reach the controls. */}
+      <Svg pointerEvents="none" width="100%" height={fadeHeight} style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
+        <Defs>
+          <LinearGradient id="kilnTabFade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={p.ground} stopOpacity={0} />
+            <Stop offset={String((FADE * 0.85) / fadeHeight)} stopColor={p.ground} stopOpacity={0.92} />
+            <Stop offset={String(FADE / fadeHeight)} stopColor={p.ground} stopOpacity={1} />
+            <Stop offset="1" stopColor={p.ground} stopOpacity={1} />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#kilnTabFade)" />
+      </Svg>
+      {children}
     </View>
+  );
+}
+
+function CaptureButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const p = usePalette();
+  return (
+    <Pressable onPress={onPress} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: active }}
+      style={({ pressed }) => ({
+        width: TAB_BAR_HEIGHT, height: TAB_BAR_HEIGHT, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: active ? p.accent : p.inverse, transform: [{ scale: pressed ? 0.94 : 1 }], ...lift,
+      })}>
+      <Feather name="plus" size={30} color={active ? p.onAccent : p.onInverse} />
+    </Pressable>
   );
 }
 

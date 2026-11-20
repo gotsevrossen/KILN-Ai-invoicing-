@@ -1,1 +1,1 @@
-export { CrewHome as default } from '@/features/team/crew-screens';
+export { CrewJobs as default } from '@/features/team/crew-screens';

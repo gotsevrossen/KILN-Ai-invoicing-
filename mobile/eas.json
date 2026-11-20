@@ -9,6 +9,13 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "samsung-preview": {
+      "extends": "preview",
+      "environment": "preview",
+      "android": {
+        "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a -Pexpo.gif.enabled=false -Pexpo.webp.enabled=false"
+      }
     }
   }
 }
