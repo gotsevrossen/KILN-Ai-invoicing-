@@ -20,6 +20,7 @@ import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 import { font, radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
+import { laborRateCents } from '@/lib/billing';
 
 /** Job details: trade, job type, and the quantities that become owner-priced line items. */
 function EstimateDetails() {
@@ -46,7 +47,7 @@ function EstimateDetails() {
   const addTrade = () => {
     const latest = currentState();
     if (latest.profile.trades.includes(trade.id)) return;
-    const items = starterItemsToAdd(trade.id, latest.priceList, latest.profile.pricing, latest.profile.rateCents,
+    const items = starterItemsToAdd(trade.id, latest.priceList, latest.profile.pricing, laborRateCents(latest.priceList, latest.profile.rateCents),
       (id) => t(`items.${id}` as 'items.trip'));
     actions.setTrades([...latest.profile.trades, trade.id], items);
   };

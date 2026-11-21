@@ -4,7 +4,7 @@ import { invoiceOnlineOptions, isWalletKind, merchantCapabilities, stripe, strip
   walletAvailable, type StripeAccount } from './stripe.ts';
 import { validPaymentProof } from './payment-proof.ts';
 
-interface RequestRow { id:string; business_id:string; job_id:string; kind:string; label:string; amount_cents:number; expires_at:string; intent_id:string|null; intent_method:'wallet'|'bank'|null; reserved_at:string|null }
+interface RequestRow { id:string; business_id:string; job_id:string; kind:string; label:string; amount_cents:number; expires_at:string; intent_id:string|null; intent_method:'wallet'|'bank'|'card'|null; reserved_at:string|null }
 export async function requestByToken(db:SupabaseClient, token:unknown) {
  if (!tokenShape(token)) return null;
  const res=await db.from('job_payment_requests').select('*').eq('token_hash',await hashToken(token)).maybeSingle<RequestRow>();
@@ -18,23 +18,25 @@ async function context(db:SupabaseClient,r:RequestRow) {
  db.from('stripe_accounts').select(stripeAccountColumns)
    .eq('business_id',r.business_id).eq('test_mode',stripeTestMode()).maybeSingle<StripeAccount>(),
  db.from('payments').select('amount_cents,status,method').eq('request_id',r.id).maybeSingle(),
- db.from('businesses').select('name,phone').eq('id',r.business_id).single(),
+ db.from('businesses').select('name,phone,alternative_methods').eq('id',r.business_id).single<{name:string;phone:string;alternative_methods:Record<string,string>|null}>(),
  ]);
  if(job.error||account.error||payment.error||business.error) throw new Error('load failed');
  const customer=await db.from('customers').select('name,lang').eq('id',job.data.customer_id).single();
  if(customer.error) throw new Error('load failed');
- return {job:job.data,account:account.data,payment:payment.data,business:business.data,customer:customer.data};
+ const {alternative_methods:alternativeMethods,...publicBusiness}=business.data;
+ return {job:job.data,account:account.data,payment:payment.data,business:publicBusiness,alternativeMethods:alternativeMethods??{},customer:customer.data};
 }
 export async function jobRequestAction(db:SupabaseClient,r:RequestRow,body:{action?:unknown;method?:unknown;intent?:unknown;wallet?:unknown}) {
  const c=await context(db,r);
  const online=invoiceOnlineOptions(c.account);
  if(body.action==='view') return {business:c.business,customer:c.customer,request:{label:r.label,kind:r.kind,amountCents:r.amount_cents,job:c.job.title,address:c.job.address},paid:c.payment?.status==='succeeded',pending:c.payment?.status==='processing',expiresAt:r.expires_at,
- pay:online&&(online.wallet||online.bank)&&c.payment?.status!=='succeeded'&&c.payment?.status!=='processing'?{...online,card:false}:null};
+ alternativeMethods:c.alternativeMethods,
+ pay:online&&(online.wallet||online.bank||online.card)&&c.payment?.status!=='succeeded'&&c.payment?.status!=='processing'?online:null};
  const key=setting('STRIPE_SECRET_KEY'); if(!stripeCheckoutEnabled()) throw new Refused(503,'not_set_up');
  if(!c.account) throw new Refused(409,'not_ready');
  if(body.action==='start') {
  const method=body.method;
- if(method!=='wallet'&&method!=='bank') throw new Refused(400,'bad_request');
+ if(method!=='wallet'&&method!=='bank'&&method!=='card') throw new Refused(400,'bad_request');
  if(body.wallet!==undefined&&(method!=='wallet'||!isWalletKind(body.wallet))) throw new Refused(400,'bad_request');
  if(!online?.[method]) throw new Refused(409,'not_ready');
  const caps=await merchantCapabilities(key,c.account.account_id);
@@ -54,7 +56,7 @@ export async function jobRequestAction(db:SupabaseClient,r:RequestRow,body:{acti
  // A crash before persisting the intent may be retried within Stripe's idempotency window only.
  if(Date.now()-Date.parse(current.data.reserved_at)>23*60*60*1000) throw new Refused(409,'not_ready');
  const intent=await stripe<{id:string;client_secret:string}>(key,{method:'POST',path:'/v1/payment_intents',account:c.account.account_id,idempotencyKey:`kiln-request-allowed-methods-${r.id}`,
- body:{amount:r.amount_cents,currency:'usd',allowed_payment_method_types:[method==='wallet'?'card':'us_bank_account'],description:r.label,metadata:{request_id:r.id,business_id:r.business_id,kiln_method:method}}});
+ body:{amount:r.amount_cents,currency:'usd',allowed_payment_method_types:[method==='bank'?'us_bank_account':'card'],description:r.label,metadata:{request_id:r.id,business_id:r.business_id,kiln_method:method}}});
  const saved=await db.from('job_payment_requests').update({intent_id:intent.id}).eq('id',r.id).select('id').maybeSingle();
  if(saved.error||!saved.data) throw new Error('save failed');
  return {clientSecret:intent.client_secret,amount:r.amount_cents};

@@ -17,6 +17,7 @@ import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 import type { NewPhoto } from '@/lib/job-photos';
 import { removeFromPhone } from '@/lib/photo-file';
+import { canReadNoteForWork, NoteWorkSheet } from '@/components/note-work';
 import { radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
@@ -38,6 +39,7 @@ export default function Capture() {
   // photos are taken (or chosen) first, then the job is picked, like a note
   const [photoOpen, setPhotoOpen] = useState(false);
   const [picked, setPicked] = useState<NewPhoto[]>([]);
+  const [noteWork, setNoteWork] = useState<{ jobId: string; text: string } | null>(null);
   const dropPicked = () => {
     for (const photo of picked) removeFromPhone(photo.localUri);
     setPicked([]);
@@ -53,6 +55,8 @@ export default function Capture() {
       return;
     }
     actions.addCapture(jobId, mode, mode === 'note' ? note : undefined);
+    // a typed note can describe work done: KILN offers to add it (charged or just listed)
+    if (mode === 'note' && note.trim() && canReadNoteForWork(state.mode, jobId)) setNoteWork({ jobId, text: note.trim() });
     setSaved(jobById(jobId).title);
     setMode(null);
     setNote('');
@@ -152,6 +156,7 @@ export default function Capture() {
           }}
         />
       </Sheet>
+      {noteWork ? <NoteWorkSheet jobId={noteWork.jobId} text={noteWork.text} onClose={() => setNoteWork(null)} /> : null}
     </Screen>
   );
 }

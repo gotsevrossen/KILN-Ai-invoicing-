@@ -669,7 +669,7 @@ function makeActions() {
       if (!job || !photos.length || workLocked(s, jobId)) return false;
       const started = s.workItems.some((w) => w.jobId === jobId) || s.timeEntries.some((e) => e.jobId === jobId) || receiptsOnJob(s, jobId).length > 0;
       const tag = defaultTag(jobStage(s, job).stage, started);
-      const added: Photo[] = photos.map((n) => ({ id: n.id, jobId, tag, takenAt: n.takenAt, lat: n.lat, lng: n.lng, localUri: n.localUri }));
+      const added: Photo[] = photos.map((n) => ({ id: n.id, jobId, tag, takenAt: n.takenAt, localUri: n.localUri }));
       set((x) => ({ ...x, photos: [...x.photos, ...added], version: x.version + 1 }));
       savePhotoQueue();
       void flushPhotos();
@@ -735,11 +735,6 @@ function makeActions() {
       set((s) => ({ ...s, invoiceDueDays: next }));
       persist(command('updateInvoice', invoiceId, { dueDays }));
     },
-    setShowLocation(invoiceId: string, on: boolean) {
-      if (get().issuedInvoices[invoiceId]) return;
-      set((s) => ({ ...s, showLocation: { ...s.showLocation, [invoiceId]: on } }));
-      persist(command('updateInvoice', invoiceId, { showLocation: on }));
-    },
     setInvoiceProofPhotos(invoiceId: string, proofPhotoIds: string[]) {
       if (get().sentInvoices.includes(invoiceId)) return;
       set((s) => ({ ...s, invoiceProofPhotos: { ...s.invoiceProofPhotos, [invoiceId]: proofPhotoIds } }));
@@ -766,8 +761,9 @@ function makeActions() {
 
       // the summary being typed is saved first; then the lines and frozen copy
       flushSoon(`summary:${invoiceId}`);
-      const markSent = () => set((x) => ({ ...x, issuedInvoices: { ...x.issuedInvoices, [invoiceId]: snapshot }, sentInvoices: [...x.sentInvoices, invoiceId] }));
-      if (connected) { await retryOffline(); if (!active() || get().businessId !== s.businessId) throw new Error('signed_out'); await saveQueue.commit(() => docsApi.sendInvoice(invoiceId, snapshot, !!s.showLocation[invoiceId]), markSent); cacheCurrent(); }
+      const markSent = () => set((x) => ({ ...x, issuedInvoices: { ...x.issuedInvoices, [invoiceId]: snapshot },
+        sentInvoices: [...x.sentInvoices, invoiceId], showLocation: { ...x.showLocation, [invoiceId]: false } }));
+      if (connected) { await retryOffline(); if (!active() || get().businessId !== s.businessId) throw new Error('signed_out'); await saveQueue.commit(() => docsApi.sendInvoice(invoiceId, snapshot), markSent); cacheCurrent(); }
       else markSent();
     },
     setInvoiceBilling(invoiceId: string, patch: Partial<InvoiceBilling>) {

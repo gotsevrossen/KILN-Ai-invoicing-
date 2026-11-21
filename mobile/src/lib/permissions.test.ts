@@ -34,7 +34,7 @@ describe('team roles', () => {
     for (const action of ['addWork', 'addHours', 'addPhotos', 'addNotes', 'suggestChange', 'viewDocuments', 'addPriceItems'] as const) {
       assert.equal(can('crew', action), true, action);
     }
-    for (const action of ['editEstimates', 'editInvoices', 'sendDocuments', 'markPaid', 'changePrices', 'seeAllJobs', 'seeCustomerList', 'teamTab', 'seeMoneyOnHome', 'useServicePackages', 'useAi'] as const) {
+    for (const action of ['editEstimates', 'editInvoices', 'sendDocuments', 'markPaid', 'changePrices', 'seeAllJobs', 'seeCustomerList', 'teamTab', 'seeMoneyOnHome', 'useAi'] as const) {
       assert.equal(can('crew', action), false, action);
     }
   });

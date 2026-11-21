@@ -2,7 +2,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
 
-import { Button, Card, Hair, IconButton, ListRow, Notice, PageHeader, Screen, Segmented, T } from '@/components/ui';
+import { Button, Card, Hair, IconButton, ListCard, ListRow, Notice, PageHeader, Screen, Segmented, T } from '@/components/ui';
 import { accountText } from '@/features/account/text';
 import { useAuth } from '@/data/auth';
 import * as api from '@/data/team-access';
@@ -43,18 +43,18 @@ function JobList({ jobs, onPick }: { jobs: api.CrewJob[]; onPick: (job: api.Crew
   const open = jobs.filter((j) => j.is_open);
   const closed = jobs.filter((j) => !j.is_open);
   return <>
-    {open.length ? <Card style={{ paddingVertical: 4 }}>
+    {open.length ? <ListCard>
       {open.map((j, i) => <View key={j.id}>
         {i ? <Hair /> : null}
         <ListRow icon="briefcase" iconTone="accent" title={j.title} sub={`${j.address} · ${j.customer_name}`} onPress={() => onPick(j)} />
       </View>)}
-    </Card> : null}
-    {closed.length ? <Card style={{ paddingVertical: 4 }}>
+    </ListCard> : null}
+    {closed.length ? <ListCard>
       {closed.map((j, i) => <View key={j.id}>
         {i ? <Hair /> : null}
         <ListRow icon="lock" title={j.title} sub={j.address} onPress={() => onPick(j)} />
       </View>)}
-    </Card> : null}
+    </ListCard> : null}
   </>;
 }
 

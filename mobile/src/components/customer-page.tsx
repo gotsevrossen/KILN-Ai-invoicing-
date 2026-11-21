@@ -19,12 +19,15 @@ export function CustomerPage({
   tc,
   expires,
   scrollEnabled = true,
+  bare = false,
   children,
 }: {
   who: string;
   tc: TFn;
   expires: string;
   scrollEnabled?: boolean;
+  /** The page draws its own business card and footer (the shared invoice view). */
+  bare?: boolean;
   children: ReactNode;
 }) {
   const p = usePalette();
@@ -44,6 +47,7 @@ export function CustomerPage({
         </Row>
       </SafeAreaView>
       <Screen noTopInset scrollEnabled={scrollEnabled}>
+        {bare ? children : <>
         <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           {/* the business's first letter until logo upload exists */}
           <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: p.accent, alignItems: 'center', justifyContent: 'center' }}>
@@ -64,6 +68,7 @@ export function CustomerPage({
           </Row>
           <T v="small" muted>{tc('customer.sentWith')}</T>
         </View>
+        </>}
       </Screen>
     </View>
   );

@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
   if (!account.data || account.data.account_id !== event.account) return new Response('ok');
 
   if (intent.metadata.request_id) {
-    if (method !== 'bank' && method !== 'wallet') return new Response('ok');
+    if (method !== 'bank' && method !== 'wallet' && method !== 'card') return new Response('ok');
     if (!uuid.test(intent.metadata.request_id)) return new Response('ok');
     const r = await db.from('job_payment_requests').select('business_id,intent_id').eq('id',intent.metadata.request_id).maybeSingle();
     if (r.error) return new Response('try again',{status:500});

@@ -94,15 +94,11 @@ export function PhotoSourceSheet({ open, onClose, onPicked }: { open: boolean; o
       <Button label={busy ? t('photos.saving') : t('ai.takePhoto')} icon="camera" big disabled={busy} onPress={() => pick(true)} />
       <Button label={t('photos.choose')} icon="image" variant="outline" disabled={busy} onPress={() => pick(false)} />
       {error ? <T v="small" color={p.danger}>{error}</T> : null}
-      <T v="small" muted>{t('photos.help')}</T>
     </Sheet>
   );
 }
 
-/**
- * Before and after photos for proof of work. With `showLocation` (the owner's choice on the
- * invoice), where each was taken is shown too. Example jobs with no photos show stand-ins.
- */
+/** Before and after photos for proof of work. */
 export function proofCandidates(photos: Photo[], jobId: string) {
   return photos.filter((photo) => photo.jobId === jobId && photo.tag !== 'during')
     .sort((a, b) => Date.parse(a.takenAt) - Date.parse(b.takenAt) || a.id.localeCompare(b.id));
@@ -126,11 +122,11 @@ export function ProofPhotos({ jobId, t, ids, showLocation = false, height = 110 
       <Row gap={8} style={{ flexWrap: 'wrap' }}>
         {shown.map((photo) => <PhotoImage key={photo.id} photo={photo} height={height} tag={t(`job.${photo.tag}`)} style={{ width: '48%' }} />)}
       </Row>
-      {showLocation ? shown.filter((p) => p.lat !== undefined).map((photo) => (
-        <T key={photo.id} v="small" muted>
-          {t('photos.takenAt', { tag: t(`job.${photo.tag}`), lat: photo.lat!.toFixed(4), lng: photo.lng!.toFixed(4) })}
+      {showLocation ? shown.map(({ id, lat, lng, tag }) => lat !== undefined && lng !== undefined ? (
+        <T key={id} v="small" muted>
+          {t('photos.takenAt', { tag: t(`job.${tag}`), lat: lat.toFixed(4), lng: lng.toFixed(4) })}
         </T>
-      )) : null}
+      ) : null) : null}
     </View>
   );
 }

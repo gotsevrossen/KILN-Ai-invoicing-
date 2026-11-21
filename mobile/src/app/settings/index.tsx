@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import { Button, Card, Hair, ListRow, Notice, PageHeader, Screen, Segmented, SwitchRow, T } from '@/components/ui';
+import { Button, Card, Hair, ListCard, ListRow, Notice, PageHeader, Screen, Segmented, SwitchRow, T } from '@/components/ui';
 import { aiReady } from '@/data/ai';
 import { useAuth } from '@/data/auth';
 import { loadAutoSave, saveAutoSave } from '@/data/job-cleanup';
@@ -68,7 +68,7 @@ export default function Settings() {
         {auth.configured && auth.session ? <ListRow icon="user" title={a.accountTitle} sub={auth.session.user.email} chevron onPress={() => router.push('/settings/account')} /> : null}
       </Card>
 
-      <Card style={{ gap: 4 }}>
+      <ListCard>
         {owner ? <>
           <ListRow icon="tool" title={t('settings.trades')} sub={state.profile.trades.map((id) => t(`trades.${id}`)).join(', ')} onPress={() => router.push('/settings/trades')} />
           <Hair />
@@ -80,8 +80,6 @@ export default function Settings() {
           sub={unpriced > 0 ? t('settings.needPrices', { count: unpriced }) : t('settings.itemCount', { count: state.priceList.length })}
           onPress={() => router.push('/settings/prices')}
         />
-        <Hair />
-        <ListRow icon="layers" title={t('improvements.packages')} sub={t('improvements.packagesHelp')} onPress={() => router.push('/settings/packages')} />
         {owner ? <>
           <Hair />
           <ListRow icon="percent" title={t('settings.pricing')} sub={t('settings.pricingSub', { markup: s.markupBps / 100, tax: s.tax.rateBps / 100 })} onPress={() => router.push('/settings/pricing')} />
@@ -90,17 +88,11 @@ export default function Settings() {
             sub={`${t('settings.due')}: ${s.dueDays === 0 ? t('settings.dueOnReceipt') : t('settings.dueDays', { days: s.dueDays })}`}
             onPress={() => router.push('/settings/payments')} />
         </> : null}
-        {can(auth.role, 'seeCosts', { managersSeeCosts: team.data?.settings.managersSeeCosts }) ? <>
-          <Hair />
-          <ListRow icon="users" title={t('improvements.operations')} sub={t('improvements.operationsHelp')} onPress={() => router.push('/operations')} />
-        </> : null}
         {connected && (auth.role === 'owner' || auth.role === 'manager') ? <>
           <Hair />
-          <ListRow icon="file-text" title={lang === 'es' ? 'Historial de facturación' : 'Billing history'} onPress={() => router.push('/settings/billing-history')} />
-          <Hair />
-          <ListRow icon="archive" title={k.savedDocs} sub={k.savedDocsHelp} onPress={() => router.push('/saved-documents')} />
+          <ListRow icon="file-text" title={k.history} onPress={() => router.push('/saved-documents')} />
         </> : null}
-      </Card>
+      </ListCard>
 
       {team.businessId && owner && team.data ? (
         <Card style={{ gap: 12 }}>

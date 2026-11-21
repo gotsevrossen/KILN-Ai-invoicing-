@@ -80,6 +80,10 @@ Deno.test('wallet readiness comes from the connected merchant, domain, and envir
     const url = new URL(String(_input));
     assertEquals(new Headers(init?.headers).get('Stripe-Account'), 'acct_merchant');
     calls.push(`${init?.method} ${url.pathname}`);
+    if (url.pathname === '/v1/payment_method_configurations') {
+      return Promise.resolve(Response.json({ data: [{ id: 'pmc_1', active: true, is_default: true,
+        apple_pay: { display_preference: { value: 'on' } }, google_pay: { display_preference: { value: 'on' } } }] }));
+    }
     if (init?.method === 'GET') {
       assertEquals(url.searchParams.get('domain_name'), host);
       return Promise.resolve(Response.json({ data: [{ ...domain, livemode: true }, domain] }));
@@ -91,7 +95,8 @@ Deno.test('wallet readiness comes from the connected merchant, domain, and envir
       { registered: true, enabled: true, applePay: false, googlePay: true });
     assertEquals(await merchantWalletDomain('sk_test_example', 'acct_merchant', host, 'recheck'),
       { registered: true, enabled: true, applePay: true, googlePay: true });
-    assertEquals(calls, ['GET /v1/payment_method_domains', 'GET /v1/payment_method_domains', 'POST /v1/payment_method_domains/pmd_example/validate']);
+    assertEquals(calls, ['GET /v1/payment_method_domains', 'GET /v1/payment_method_configurations', 'GET /v1/payment_method_domains',
+      'POST /v1/payment_method_domains/pmd_example/validate', 'GET /v1/payment_method_configurations']);
   } finally {
     globalThis.fetch = original;
   }
@@ -107,6 +112,36 @@ Deno.test('a disabled wallet domain stays off during an owner recheck', async ()
   try {
     assertEquals(await merchantWalletDomain('sk_live_example', 'acct_merchant', 'checkout.example.test', 'recheck'),
       { registered: true, enabled: false, applePay: false, googlePay: false });
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test('a wallet switched off in the merchant payment settings is not offered, and an owner check turns it on', async () => {
+  const original = globalThis.fetch;
+  const host = 'checkout.example.test';
+  const config = (google: string) => ({ id: 'pmc_1', active: true, is_default: true,
+    apple_pay: { display_preference: { value: 'on', overridable: true } }, google_pay: { display_preference: { value: google, overridable: true } } });
+  const posted: string[] = [];
+  globalThis.fetch = (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/v1/payment_method_domains') {
+      return Promise.resolve(Response.json({ data: [{ id: 'pmd_1', domain_name: host, livemode: false, enabled: true,
+        apple_pay: { status: 'active' }, google_pay: { status: 'active' } }] }));
+    }
+    if (init?.method === 'POST') {
+      posted.push(`${url.pathname} ${decodeURIComponent(String(init.body))}`);
+      return Promise.resolve(Response.json(config('on')));
+    }
+    return Promise.resolve(Response.json({ data: [config('off')] }));
+  };
+  try {
+    // the customer's page only reads: Google Pay stays hidden and nothing is changed
+    assertEquals((await merchantWalletDomain('sk_test_example', 'acct_merchant', host, 'inspect')).googlePay, false);
+    assertEquals(posted, []);
+    // the owner's status check switches it on
+    assertEquals((await merchantWalletDomain('sk_test_example', 'acct_merchant', host, 'register')).googlePay, true);
+    assertEquals(posted, ['/v1/payment_method_configurations/pmc_1 google_pay[display_preference][preference]=on']);
   } finally {
     globalThis.fetch = original;
   }

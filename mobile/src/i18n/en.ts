@@ -1,10 +1,7 @@
 // English text. Spanish (es.ts) must have exactly the same keys; TypeScript checks it.
 // %{name} marks a value filled in at runtime. one/other pairs are plurals (pass count).
 
-import { packagesEn } from './packages.ts';
-
 const en = {
-  packages: packagesEn,
   offlineSave: {
     confirmed: 'Saved to your account',
     waiting: 'Saved on this phone — %{count} changes waiting to sync.',
@@ -16,9 +13,7 @@ const en = {
     cashReceived: 'I received this cash', cashFailed: 'Cash was not confirmed. Refresh the invoice and retry. If an online payment was started, resolve it before recording cash.',
 
     approvalFailed: 'Acceptance was not confirmed. Check your connection and try again.', operations: 'Worker costs', operationsHelp: 'Hourly labor costs',
-    profitability: 'Job profitability', profitabilityHelp: 'Worker costs, budget and actual margin',
-    tradeTools: 'Measurements & completion', tradeToolsHelp: 'Room worksheets, specifications and electrical records',
-    packages: 'Service packages', packagesHelp: 'Reusable work, scope and callout pricing',
+    tradeTools: 'Measurements', tradeToolsHelp: 'Room sizes to the estimate',
   },
   common: {
     back: 'Back',
@@ -99,6 +94,9 @@ const en = {
     labor: 'Labor',
     hours: 'Hours',
     partsCost: 'Parts cost',
+    afterMaterials: 'Revenue after materials',
+    afterMaterialsInvoice: 'Invoice before tax, minus material receipts.',
+    afterMaterialsSoFar: 'Estimated revenue before tax, minus material receipts.',
     perHour: '%{amount}/hr',
     flat: 'Flat',
     logHours: 'Log hours',
@@ -620,7 +618,6 @@ const en = {
     total: 'Total',
     proof: 'Proof of work',
     summaryLabel: 'Job summary (written by KILN, you can edit)',
-    showLocation: 'Show job location to customer',
     dueIn: 'Due in %{days} days',
     byText: 'Text (your phone)',
     byEmail: 'Email',
@@ -720,6 +717,12 @@ const en = {
     themeDark: 'Dark',
     business: 'Business',
     priceList: 'Price list',
+    priceEdit: 'Edit',
+    priceDone: 'Done',
+    priceRemove: 'Remove %{name}',
+    priceAdd: 'Add to price list',
+    priceNew: 'New item',
+    priceLaborStays: 'Labor sets your hourly rate for new jobs, so it stays on the list. Change its price instead.',
     priceListHelp: 'Your prices for estimates. Leave one blank and KILN flags it instead of guessing.',
     needPrices: { one: '1 item needs a price', other: '%{count} items need a price' },
     itemCount: { one: '1 item', other: '%{count} items' },
@@ -843,6 +846,7 @@ const en = {
     canFix: 'Tap the words to fix anything it heard wrong.',
     typeHere: 'Type the note here, then tap Done.',
     unavailable: 'Recording needs the full KILN app. Expo Go can’t use the phone’s speech recognition, so type the note for now.',
+    unavailableChat: 'Talking needs the full KILN app. Expo Go can’t use the phone’s speech recognition, so type your message for now.',
     done: 'Done',
     help: 'KILN keeps the text, not the recording.',
     denied: 'KILN needs microphone and speech access. You can turn them on in your phone settings.',
@@ -859,7 +863,6 @@ const en = {
     add: 'Add photos',
     choose: 'Choose photos',
     saving: 'Saving…',
-    help: 'Saved without location inside. Customers see where only if you turn it on.',
     failed: 'Couldn’t save that photo. Try again.',
     waiting: 'Waiting to upload',
     waitingCount: { one: '1 waiting for signal', other: '%{count} waiting for signal' },
@@ -868,13 +871,11 @@ const en = {
     tag: 'Before, during, or after',
     when: 'Taken %{date} at %{time}',
     where: 'Location saved: %{lat}, %{lng}',
-    noWhere: 'No location saved',
     locked: 'This job’s invoice was sent, so its photos are part of the record and can’t be changed.',
     delete: 'Delete photo',
     deleteTitle: 'Delete this photo?',
     deleteBody: 'It’s removed from the job and from KILN’s server. This can’t be undone.',
     noProof: 'No before or after photos yet. Add them on the job, then tag them Before or After.',
-    proofHelp: 'Customers see before and after photos. Location shows only if you turn it on.',
     takenAt: '%{tag} photo taken at %{lat}, %{lng}',
     added: { one: '1 photo added to %{job}.', other: '%{count} photos added to %{job}.' },
   },

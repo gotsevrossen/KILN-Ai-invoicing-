@@ -23,6 +23,7 @@ import { useLang } from '@/i18n';
 import { font, radius, space, tap, type Palette } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
+import { FloatingFooter } from './floating-footer';
 import { useSheetOpen } from './sheet-state';
 import { swipeTab } from './tab-swipe';
 
@@ -106,7 +107,10 @@ export function Screen({
   const insets = useSafeAreaInsets();
   // room for the floating menu (64), the gap below it, the phone's home area, and the fade above
   // the bar (40, components/tab-bar.tsx), so the last card can scroll fully clear of it
-  const content = { padding: space.lg, gap: 14, paddingBottom: floatingBar ? 64 + Math.max(insets.bottom, 12) + 40 + space.lg : space.xxl };
+  // a floating footer reports its height, so the last item can scroll clear of it
+  const [footerHeight, setFooterHeight] = useState(0);
+  const content = { padding: space.lg, gap: 14, paddingBottom: floatingBar ? 64 + Math.max(insets.bottom, 12) + 40 + space.lg
+    : footer ? footerHeight + space.md : space.xxl };
   const sheetOpen = useSheetOpen();
   const top: ('top' | 'bottom')[] = noTopInset ? [] : ['top'];
   const [pulling, setPulling] = useState(false);
@@ -155,11 +159,7 @@ export function Screen({
       ) : (
         <View style={[content, { flex: 1 }]}>{children}</View>
       )}
-      {footer ? (
-        <SafeAreaView edges={['bottom']} style={{ backgroundColor: p.card, borderTopWidth: 1, borderTopColor: p.line }}>
-          <View style={{ padding: space.lg, gap: 10 }}>{footer}</View>
-        </SafeAreaView>
-      ) : null}
+      {footer ? <FloatingFooter onHeight={setFooterHeight}>{footer}</FloatingFooter> : null}
     </SafeAreaView>
     </GestureDetector>
   );
@@ -185,18 +185,22 @@ export function PageHeader({
   sub,
   back,
   right,
+  beside,
 }: {
   title: string;
   sub?: string;
   back?: () => void;
   right?: ReactNode;
+  /** Shown on the title's line, right after it (e.g. the job the KILN chat is about). */
+  beside?: ReactNode;
 }) {
   const { t } = useLang();
-  const heading = (
-    <T v="title" accessibilityRole="header" style={{ flexShrink: 1 }}>
+  const titleText = (
+    <T v="title" accessibilityRole="header" style={{ flexShrink: beside ? 0 : 1 }}>
       {title}
     </T>
   );
+  const heading = beside ? <Row gap={12} style={{ alignItems: 'center', flexShrink: 1 }}>{titleText}{beside}</Row> : titleText;
   return (
     <View style={{ gap: 12, marginBottom: 4 }}>
       {back ? (
@@ -267,6 +271,16 @@ export function Card({
       {children}
     </Pressable>
   );
+}
+
+/**
+ * A card holding tappable rows (ListRow) separated by hairlines. Its padding is matched to the
+ * rows, so the space above the first row and below the last equals the space at the sides;
+ * a plain Card's padding plus each row's own padding left extra room top and bottom.
+ */
+export function ListCard({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  // a row is 64 tall with a 46 icon: 9 above the icon + 7 here = the 16 at the sides
+  return <Card style={[{ paddingVertical: 7, paddingHorizontal: 16, gap: 0 }, style]}>{children}</Card>;
 }
 
 // ---------- Buttons ----------
@@ -360,11 +374,14 @@ export function IconButton({
   label,
   onPress,
   tone = 'plain',
+  glyph,
 }: {
   icon: IconName;
   label: string;
   onPress?: () => void;
   tone?: 'plain' | 'dark' | 'accent';
+  /** Draws this instead of the Feather icon (e.g. KILN's flame), given the button's text color. */
+  glyph?: (color: string) => ReactNode;
 }) {
   const p = usePalette();
   const colors = {
@@ -383,7 +400,7 @@ export function IconButton({
         { width: tap.min, height: tap.min, borderRadius: radius.pill, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' },
         pressed && styles.pressed,
       ]}>
-      <Feather name={icon} size={22} color={fg} />
+      {glyph ? glyph(fg) : <Feather name={icon} size={22} color={fg} />}
     </Pressable>
   );
 }

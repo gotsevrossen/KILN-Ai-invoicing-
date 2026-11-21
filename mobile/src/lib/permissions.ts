@@ -11,7 +11,7 @@ export type Action =
   // jobs and customers
   | 'seeAllJobs' | 'editJobs' | 'seeCustomerList'
   // documents
-  | 'editEstimates' | 'editInvoices' | 'editChangeOrders' | 'sendDocuments' | 'markPaid' | 'useServicePackages'
+  | 'editEstimates' | 'editInvoices' | 'editChangeOrders' | 'sendDocuments' | 'markPaid'
   // prices
   | 'changePrices' | 'addPriceItems'
   // on assigned jobs
@@ -21,7 +21,7 @@ export type Action =
 const MANAGER: Action[] = [
   'seeMoneyOnHome', 'teamTab', 'inviteCrew', 'removeCrew', 'assignJobs', 'approveCrew',
   'seeAllJobs', 'editJobs', 'seeCustomerList',
-  'editEstimates', 'editInvoices', 'editChangeOrders', 'sendDocuments', 'markPaid', 'useServicePackages',
+  'editEstimates', 'editInvoices', 'editChangeOrders', 'sendDocuments', 'markPaid',
   'changePrices', 'addPriceItems',
   'addWork', 'addHours', 'addPhotos', 'addNotes', 'suggestChange', 'viewDocuments', 'useAi',
 ];

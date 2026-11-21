@@ -1,10 +1,9 @@
-import { Image } from 'expo-image';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { View } from 'react-native';
 
 import { Sheet } from '@/components/sheet';
-import { Button, Card, Checkbox, Hair, ListRow, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
+import { Button, Card, Checkbox, Hair, ListCard, ListRow, Notice, PageHeader, Screen, T, type IconName } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import * as sample from '@/data/sample';
 import * as api from '@/data/team-access';
@@ -13,29 +12,10 @@ import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 import { can, canManagePerson } from '@/lib/permissions';
 import { userError } from '@/lib/user-errors';
-import { radius } from '@/theme/tokens';
-import { usePalette } from '@/theme/use-palette';
 
 import { useTeamAction } from './team-screen';
 import { fill, teamText } from './text';
 import { useTeam } from './use-team';
-
-/** A private job photo, shown through a short-lived link. */
-export function PhotoThumb({ path, size = 92, onPress }: { path: string; size?: number; onPress?: () => void }) {
-  const p = usePalette();
-  const [uri, setUri] = useState<string | null>(null);
-  useEffect(() => {
-    let live = true;
-    api.photoLink(path).then((u) => { if (live) setUri(u); }, () => undefined);
-    return () => { live = false; };
-  }, [path]);
-  return (
-    <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : 'image'}
-      style={{ width: size, height: size, borderRadius: radius.xs, overflow: 'hidden', backgroundColor: p.placeholder }}>
-      {uri ? <Image source={{ uri }} style={{ width: size, height: size }} accessibilityIgnoresInvertColors /> : null}
-    </Pressable>
-  );
-}
 
 /** One person on the team: their jobs, what they added, and (for the owner) their role. */
 export function PersonScreen() {
@@ -74,9 +54,7 @@ export function PersonScreen() {
   const jobs = sample.jobs.filter((j) => assigned.has(j.id));
   const jobTitle = (id: string) => sample.jobs.find((j) => j.id === id)?.title ?? '';
   const manage = canManagePerson(auth.role, member.role) && member.user_id !== auth.session?.user.id;
-  const photos = activity?.filter((a) => a.kind === 'photo') ?? [];
-  const other = activity?.filter((a) => a.kind !== 'photo') ?? [];
-  const icon: Record<api.Activity['kind'], IconName> = { photo: 'camera', note: 'file-text', hours: 'clock', work: 'tool', receipt: 'file-text' };
+  const icon: Record<api.Activity['kind'], IconName> = { note: 'file-text', hours: 'clock', work: 'tool', receipt: 'file-text' };
   const title = (a: api.Activity) =>
     a.kind === 'hours' ? `${fill(c.hours, { hours: f.qty(a.amount ?? 0) })}${a.text ? ` · ${a.text}` : ''}`
       : a.kind === 'work' ? `${a.amount && a.amount !== 100 ? `${f.qty(a.amount)} × ` : ''}${a.text}` : a.text;
@@ -88,12 +66,12 @@ export function PersonScreen() {
       {member.status === 'active' ? <>
         {member.role === 'manager' ? <Notice text={c.managerSeesAll} tone="soft" icon="info" /> : null}
         <T v="eyebrow">{c.assigned}</T>
-        <Card style={{ paddingVertical: 4 }}>
+        <ListCard>
           {jobs.length ? jobs.map((j, i) => <View key={j.id}>
             {i ? <Hair /> : null}
             <ListRow icon="briefcase" title={j.title} sub={j.address} onPress={() => router.push(`/job/${j.id}`)} />
           </View>) : <T muted style={{ paddingVertical: 12 }}>{c.notAssigned}</T>}
-        </Card>
+        </ListCard>
         {can(auth.role, 'assignJobs') ? <Button label={c.assign} icon="plus" variant="outline" onPress={() => setAssignOpen(true)} /> : null}
         <Sheet open={assignOpen} onClose={() => setAssignOpen(false)} title={c.assign}>
           {sample.jobs.filter((j) => j.group !== 'done' || assigned.has(j.id)).map((j) => (
@@ -108,19 +86,13 @@ export function PersonScreen() {
       {activityError ? <Notice text={activityError} tone="danger" icon="alert-circle" /> : null}
       {!activity && !activityError ? <T muted>{c.loading}</T> : null}
       {activity && !activity.length ? <T muted>{c.nothingYet}</T> : null}
-      {photos.length ? <Card style={{ gap: 10 }}>
-        <T v="label">{c.photos}</T>
-        <Row style={{ flexWrap: 'wrap' }}>
-          {photos.slice(0, 24).map((a) => <PhotoThumb key={a.id} path={a.storagePath!} onPress={() => router.push(`/photo/${a.id}`)} />)}
-        </Row>
-      </Card> : null}
-      {other.length ? <Card style={{ paddingVertical: 4 }}>
-        {other.map((a, i) => <View key={`${a.kind}:${a.id}`}>
+      {activity?.length ? <ListCard>
+        {activity.map((a, i) => <View key={`${a.kind}:${a.id}`}>
           {i ? <Hair /> : null}
           <ListRow icon={icon[a.kind]} title={title(a)} sub={`${fill(c.onJob, { job: jobTitle(a.jobId) })} · ${f.date(a.at.slice(0, 10))}`}
             onPress={() => router.push(`/job/${a.jobId}`)} />
         </View>)}
-      </Card> : null}
+      </ListCard> : null}
 
       {manage ? <Card style={{ gap: 10 }}>
         {can(auth.role, 'changeRoles') ? (

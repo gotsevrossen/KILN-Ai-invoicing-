@@ -5,7 +5,7 @@ import { useStore } from '@/data/store';
 import { priceOnly } from '@/data/trades';
 import type { PriceItem, Unit } from '@/data/types';
 import { useLang } from '@/i18n';
-import { priceLooksOff, usualPrice, workItemValid } from '@/lib/billing';
+import { billsAsHours, priceLooksOff, usualPrice, workItemValid } from '@/lib/billing';
 import { useFormat } from '@/lib/format';
 import { lineTotal, type LineKind } from '@/lib/money';
 import { usePalette } from '@/theme/use-palette';
@@ -60,7 +60,9 @@ export function WorkSheet({ jobId, open, onClose, onEstimate }: {
         <>
           <Button label={t('work.typeIt')} icon="edit-3" onPress={() => setDraft(blank())} />
           <T v="label">{t('work.fromList')}</T>
-          <PriceItemPicker items={state.priceList} onPick={fromItem} />
+          {/* hours go through Log hours at the job's rate, never here */}
+          <PriceItemPicker items={state.priceList.filter((item) => !billsAsHours(item))} onPick={fromItem}
+            units={['flat', 'each', 'sq_ft', 'linear_ft', 'board', 'cu_yd']} />
         </>
       ) : (
         <>

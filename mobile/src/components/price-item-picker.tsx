@@ -17,7 +17,11 @@ const UNITS: Unit[] = ['flat', 'each', 'hour', 'sq_ft', 'linear_ft', 'board', 'c
  * Pick an item from the price list (with search), or add a new item of your own.
  * New items are saved to the price list, so they're there next time.
  */
-export function PriceItemPicker({ items, onPick }: { items: PriceItem[]; onPick: (item: PriceItem) => void }) {
+export function PriceItemPicker({ items, onPick, units = UNITS }: {
+  items: PriceItem[]; onPick: (item: PriceItem) => void;
+  /** Units a new item can have (Work done leaves out hours). */
+  units?: Unit[];
+}) {
   const p = usePalette();
   const { t } = useLang();
   const f = useFormat();
@@ -40,7 +44,7 @@ export function PriceItemPicker({ items, onPick }: { items: PriceItem[]; onPick:
         <Field label={t('estimate.itemName')} value={name} onChangeText={setName} autoCapitalize="sentences" maxLength={160} autoFocus />
         <T v="label">{t('estimate.unit')}</T>
         <Row gap={8} style={{ flexWrap: 'wrap' }}>
-          {UNITS.map((u) => <Chip key={u} label={unitLabel(u)} selected={unit === u} onPress={() => setUnit(u)} />)}
+          {units.map((u) => <Chip key={u} label={unitLabel(u)} selected={unit === u} onPress={() => setUnit(u)} />)}
         </Row>
         <Field label={t('estimate.priceOptional')} value={price} onChangeText={setPrice} placeholder={t('estimate.pricePlaceholder')} keyboardType="decimal-pad" />
         {priceBad ? <T v="small" color={p.danger}>{t('estimate.priceBad')}</T> : null}

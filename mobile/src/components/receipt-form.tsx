@@ -6,7 +6,7 @@ import { View } from 'react-native';
 
 import { aiErrorText } from '@/components/ai-parts';
 import { parseDollars } from '@/components/estimate-parts';
-import { Button, ButtonRow, Card, Chip, Field, Hair, IconButton, ListRow, Notice, PageHeader, Pill, Row, Screen, T } from '@/components/ui';
+import { Button, ButtonRow, Card, Chip, Field, Hair, IconButton, ListCard, ListRow, Notice, PageHeader, Pill, Row, Screen, T } from '@/components/ui';
 import { aiReady, reviewReceipt, scanReceipt, type ReceiptScan, type ScannedReceipt } from '@/data/ai';
 import { useAuth } from '@/data/auth';
 import { newUuid } from '@/data/db';
@@ -259,9 +259,9 @@ function ReceiptForm({ crew, draftKey }: ReceiptFormProps & { draftKey: string |
       {storageProblem ? <Notice text={es ? 'El dispositivo no pudo guardar parte del borrador.' : 'This device could not store part of the draft.'} tone="flag" /> : null}
       {draftKey && (hasDraft || source) && !storageProblem ? <T v="small" muted>{es ? 'Borrador guardado en este dispositivo. Conéctate para revisar y añadir el recibo.' : 'Draft saved on this device. Connect to review and add the receipt.'}</T> : null}
       {!crew && !job && firstWaiting ? (
-        <Card style={{ paddingVertical: 6 }}>
+        <ListCard>
           <ListRow icon="inbox" iconTone="flag" title={t('newReceipt.waiting', { count: waiting })} onPress={() => router.push(`/receipt/${firstWaiting.id}`)} />
-        </Card>
+        </ListCard>
       ) : null}
       {canScan ? (
         <Card style={{ gap: 12 }}>

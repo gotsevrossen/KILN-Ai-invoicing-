@@ -101,8 +101,9 @@ const toDoc = (r: ListRow): SavedDocument => ({
 });
 
 /** Owners and managers: documents kept from removed jobs, newest first. */
-export async function loadSavedDocuments(businessId: string): Promise<SavedDocument[]> {
-  const rows = ok(await db().from('saved_documents').select(LIST).eq('business_id', businessId).order('saved_at', { ascending: false }).limit(500)) as ListRow[];
+export async function loadSavedDocuments(businessId: string, includeInvoices: boolean): Promise<SavedDocument[]> {
+  const query = db().from('saved_documents').select(LIST).eq('business_id', businessId).order('saved_at', { ascending: false }).limit(500);
+  const rows = ok(await (includeInvoices ? query : query.neq('document_type', 'invoice'))) as ListRow[];
   return rows.map(toDoc);
 }
 

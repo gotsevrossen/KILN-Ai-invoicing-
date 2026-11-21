@@ -212,6 +212,9 @@ export async function saveTrades(businessId: string, trades: TradeId[], newItems
   ok(await db().from('businesses').update({ trades }).eq('id', businessId));
   if (removedItemIds.length) {
     ok(await db().from('price_list_items').delete().eq('business_id', businessId).in('catalog_id', removedItemIds));
+    // items with no catalog id (added by crew) are known by their database id
+    const rowIds = removedItemIds.filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+    if (rowIds.length) ok(await db().from('price_list_items').delete().eq('business_id', businessId).is('catalog_id', null).in('id', rowIds));
   }
   if (newItems.length) {
     ok(

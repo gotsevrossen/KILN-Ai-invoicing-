@@ -1,10 +1,8 @@
 import type { Dict } from './en';
-import { packagesEs } from './packages.ts';
 
 // Spanish text. Same keys as en.ts.
 
 const es: Dict = {
-  packages: packagesEs,
   offlineSave: {
     confirmed: 'Guardado en tu cuenta',
     waiting: 'Guardado en este teléfono — %{count} cambios pendientes de sincronizar.',
@@ -16,9 +14,7 @@ const es: Dict = {
     cashReceived: 'Recibí este efectivo', cashFailed: 'No se confirmó el efectivo. Actualiza la factura e inténtalo de nuevo. Si se inició un pago en línea, resuélvelo antes de registrar efectivo.',
 
     approvalFailed: 'No se confirmó la aceptación. Comprueba tu conexión y vuelve a intentarlo.', operations: 'Costos de trabajadores', operationsHelp: 'Costo de mano de obra por hora',
-    profitability: 'Rentabilidad del trabajo', profitabilityHelp: 'Costos laborales, presupuesto y margen real',
-    tradeTools: 'Medidas y finalización', tradeToolsHelp: 'Medidas por habitación, especificaciones y registros eléctricos',
-    packages: 'Paquetes de servicios', packagesHelp: 'Trabajo reutilizable, alcance y precios de visitas',
+    tradeTools: 'Medidas', tradeToolsHelp: 'Tamaños de cuartos al presupuesto',
   },
   common: {
     back: 'Atrás',
@@ -99,6 +95,9 @@ const es: Dict = {
     labor: 'Mano de obra',
     hours: 'Horas',
     partsCost: 'Costo de piezas',
+    afterMaterials: 'Ingresos después de materiales',
+    afterMaterialsInvoice: 'Factura antes de impuestos, menos los recibos de materiales.',
+    afterMaterialsSoFar: 'Ingresos estimados antes de impuestos, menos los recibos de materiales.',
     perHour: '%{amount}/h',
     flat: 'Fijo',
     logHours: 'Registrar horas',
@@ -620,7 +619,6 @@ const es: Dict = {
     total: 'Total',
     proof: 'Prueba del trabajo',
     summaryLabel: 'Resumen del trabajo (escrito por KILN, puedes editarlo)',
-    showLocation: 'Mostrar la ubicación al cliente',
     dueIn: 'Vence en %{days} días',
     byText: 'Mensaje (tu teléfono)',
     byEmail: 'Correo',
@@ -720,6 +718,12 @@ const es: Dict = {
     themeDark: 'Oscuro',
     business: 'Negocio',
     priceList: 'Lista de precios',
+    priceEdit: 'Editar',
+    priceDone: 'Listo',
+    priceRemove: 'Quitar %{name}',
+    priceAdd: 'Agregar a la lista',
+    priceNew: 'Artículo nuevo',
+    priceLaborStays: 'Mano de obra fija tu tarifa por hora para trabajos nuevos, así que se queda en la lista. Cambia su precio.',
     priceListHelp: 'Tus precios para presupuestos. Si dejas uno en blanco, KILN lo marca en vez de adivinar.',
     needPrices: { one: '1 artículo sin precio', other: '%{count} artículos sin precio' },
     itemCount: { one: '1 artículo', other: '%{count} artículos' },
@@ -843,6 +847,7 @@ const es: Dict = {
     canFix: 'Toca las palabras para corregir lo que escuchó mal.',
     typeHere: 'Escribe la nota aquí y toca Listo.',
     unavailable: 'Grabar necesita la app completa de KILN. Expo Go no puede usar el reconocimiento de voz del teléfono, así que escribe la nota por ahora.',
+    unavailableChat: 'Hablar necesita la app completa de KILN. Expo Go no puede usar el reconocimiento de voz del teléfono, así que escribe tu mensaje por ahora.',
     done: 'Listo',
     help: 'KILN guarda el texto, no la grabación.',
     denied: 'KILN necesita acceso al micrófono y al reconocimiento de voz. Puedes activarlos en la configuración del teléfono.',
@@ -859,7 +864,6 @@ const es: Dict = {
     add: 'Agregar fotos',
     choose: 'Elegir fotos',
     saving: 'Guardando…',
-    help: 'Se guardan sin ubicación dentro. Los clientes ven dónde solo si lo activas.',
     failed: 'No se pudo guardar la foto. Intenta de nuevo.',
     waiting: 'Esperando para subir',
     waitingCount: { one: '1 esperando señal', other: '%{count} esperando señal' },
@@ -868,13 +872,11 @@ const es: Dict = {
     tag: 'Antes, durante o después',
     when: 'Tomada el %{date} a las %{time}',
     where: 'Ubicación guardada: %{lat}, %{lng}',
-    noWhere: 'Sin ubicación guardada',
     locked: 'La factura de este trabajo ya se envió, así que sus fotos son parte del registro y no se pueden cambiar.',
     delete: 'Borrar foto',
     deleteTitle: '¿Borrar esta foto?',
     deleteBody: 'Se quita del trabajo y del servidor de KILN. No se puede deshacer.',
     noProof: 'Todavía no hay fotos de antes o después. Agrégalas en el trabajo y márcalas como Antes o Después.',
-    proofHelp: 'Los clientes ven fotos de antes y después. La ubicación solo aparece si la activas.',
     takenAt: 'Foto de %{tag} tomada en %{lat}, %{lng}',
     added: { one: '1 foto agregada a %{job}.', other: '%{count} fotos agregadas a %{job}.' },
   },

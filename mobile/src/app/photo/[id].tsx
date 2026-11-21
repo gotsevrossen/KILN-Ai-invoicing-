@@ -39,9 +39,9 @@ function PhotoPage() {
           />
         )}
         <T v="small" muted>{t('photos.when', { date: f.date(localDay(photo.takenAt)), time })}</T>
-        <T v="small" muted>
-          {photo.lat !== undefined ? t('photos.where', { lat: photo.lat.toFixed(4), lng: photo.lng!.toFixed(4) }) : t('photos.noWhere')}
-        </T>
+        {photo.lat !== undefined && photo.lng !== undefined ? (
+          <T v="small" muted>{t('photos.where', { lat: photo.lat.toFixed(4), lng: photo.lng.toFixed(4) })}</T>
+        ) : null}
       </Card>
       {!photo.path ? <Notice text={t('photos.waitingLong')} icon="upload-cloud" tone="soft" /> : null}
       {locked ? <Notice text={t('photos.locked')} icon="lock" tone="soft" /> : (

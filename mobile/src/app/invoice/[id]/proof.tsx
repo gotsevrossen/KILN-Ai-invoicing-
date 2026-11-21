@@ -6,13 +6,13 @@ import { InvoicePage, useInvoice } from '@/components/invoice-parts';
 import { PhotoImage, proofCandidates, ProofPhotos } from '@/components/job-photos';
 import { DocumentTermsEditor, ScopeCard } from '@/components/job-scope';
 import { RecordGate } from '@/components/record-gate';
-import { Button, Card, Checkbox, Field, Notice, SwitchRow, T } from '@/components/ui';
+import { Button, Card, Checkbox, Field, Notice, T } from '@/components/ui';
 import { aiReady, reviewInvoice } from '@/data/ai';
 import { customerOf, documentScope, hasInvoice, invoiceLines, invoiceSummary, workItemsFor } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
 
-/** Proof of work: before/after photos, the job summary, the agreed scope, and whether to show the location. */
+/** Proof of work: before/after photos, the job summary and the agreed scope. */
 function InvoiceProof() {
   const { t, lang } = useLang();
   const { state, actions } = useStore();
@@ -45,7 +45,7 @@ function InvoiceProof() {
 
   return (
     <InvoicePage title={t('invoice.proof')} footer={<Button label={t('estimate.done')} big onPress={() => router.back()} />}>
-      {sent || !photos.length ? <ProofPhotos jobId={job.id} t={t} ids={savedIds} showLocation={!!state.showLocation[invoice.id]} /> : <Card style={{ gap: 10 }}>
+      {sent || !photos.length ? <ProofPhotos jobId={job.id} t={t} ids={savedIds} showLocation={sent && !!state.showLocation[invoice.id]} /> : <Card style={{ gap: 10 }}>
         <T v="label">{es ? 'Fotos en la factura' : 'Photos on the invoice'}</T>
         <T v="small" muted>{es ? 'Elige hasta 12 fotos.' : 'Choose up to 12 photos.'}</T>
         {photos.map((photo, index) => <Card key={photo.id}>
@@ -61,9 +61,6 @@ function InvoiceProof() {
         <Field label={t('invoice.summaryLabel')} value={invoiceSummary(state, invoice)} editable={!sent} maxLength={4000}
           onChangeText={(text) => actions.setInvoiceSummary(invoice.id, text)} multiline
           style={{ minHeight: 100, fontSize: 16 }} />
-        {!sent ? <SwitchRow label={t('invoice.showLocation')} value={!!state.showLocation[invoice.id]}
-          onChange={(on) => actions.setShowLocation(invoice.id, on)} /> : null}
-        <T v="small" muted>{t('photos.proofHelp')}</T>
       </Card>
       {!sent && records.length > 0 && aiReady(state.mode) ? <Card style={{ gap: 10 }}>
         <T v="label">{es ? 'Revisión de factura con IA' : 'AI invoice review'}</T>

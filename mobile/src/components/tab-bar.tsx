@@ -1,15 +1,19 @@
+import { router, type Href } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import * as Haptics from 'expo-haptics';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Modal, Pressable, Text, View } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { useLang } from '@/i18n';
+import { assistantCopy } from '@/i18n/assistant';
 import { font, radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
+import { FlameIcon } from './flame-icon';
 import { setTabSwipe } from './tab-swipe';
 import type { IconName } from './ui';
 
@@ -20,7 +24,10 @@ const PAD = 5;
 const FADE = 40;
 const SPRING = { damping: 20, stiffness: 220, mass: 0.8 };
 
-type Capture = { route: string; label: string };
+/** Capture: its tab route and its page address (opened from the + menu). */
+type Capture = { route: string; label: string; path: '/capture' | '/crew/capture' };
+/** The KILN chat, opened from the top of the + menu. Left out, the menu has no chat. */
+type Assistant = { label: string; href: '/assistant' | '/crew/assistant' };
 
 function pressTab({ emitter, navigateToTab }: Pick<BottomTabBarProps, 'emitter' | 'navigateToTab'>, key: string, focused: boolean) {
   const event = emitter.emit({ type: 'tabPress', target: key, canPreventDefault: true });
@@ -30,24 +37,26 @@ function pressTab({ emitter, navigateToTab }: Pick<BottomTabBarProps, 'emitter' 
   }
 }
 
-/** Crew have one jobs screen and the same floating Capture button. */
-export function FloatingCaptureBar({ state, emitter, navigateToTab, insets, capture }: BottomTabBarProps & { capture: Capture }) {
+/** Crew have one jobs screen and the same floating + menu. */
+export function FloatingCaptureBar({ state, insets, capture, assistant }: BottomTabBarProps & { capture: Capture; assistant?: Assistant }) {
   const route = state.routes.find((r) => r.name === capture.route);
   if (!route) return null;
   const active = state.routes[state.index]?.key === route.key;
   return (
     <FloatingBar bottomInset={insets.bottom}>
-      <CaptureButton label={capture.label} active={active} onPress={() => pressTab({ emitter, navigateToTab }, route.key, active)} />
+      <CaptureMenu capture={capture} assistant={assistant} active={active} bottomInset={insets.bottom} />
     </FloatingBar>
   );
 }
 
 /**
  * Floating menu: a white card holding the pages, with an orange slider that moves to the
- * selected one, and Capture as its own round button on the right. Holding the slider and
- * sliding a finger moves it across the pages, switching page as it passes each one.
+ * selected one, and the round + on the right, which offers Talk to KILN or Capture. Holding the slider and sliding a finger moves it across the pages,
+ * switching page as it passes each one.
  */
-export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, insets, icons, capture }: BottomTabBarProps & {
+export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, insets, icons, capture, assistant }: BottomTabBarProps & {
+  /** The KILN chat at the top of the + menu; left out, the menu has no chat. */
+  assistant?: Assistant;
   /** Icon for each page by route name. Routes not listed (and Capture) stay out of the bar. */
   icons: Record<string, IconName>;
   capture: Capture;
@@ -152,9 +161,7 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
         })}
       </View>
       </GestureDetector>
-      {captureRoute ? (
-        <CaptureButton label={capture.label} active={captureOn} onPress={() => press(captureRoute.key, captureOn)} />
-      ) : null}
+      {captureRoute ? <CaptureMenu capture={capture} assistant={assistant} active={captureOn} bottomInset={insets.bottom} /> : null}
     </FloatingBar>
   );
 }
@@ -183,15 +190,68 @@ function FloatingBar({ children, bottomInset }: { children: ReactNode; bottomIns
   );
 }
 
-function CaptureButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+/**
+ * The round + button and the two choices it opens: Talk to KILN (the chat) and Capture (the
+ * Capture page). While open, the page dims and the + turns into an X in the same spot.
+ */
+function CaptureMenu({ capture, assistant, active, bottomInset }: { capture: Capture; assistant?: Assistant; active: boolean; bottomInset: number }) {
+  const p = usePalette();
+  const { lang } = useLang();
+  const c = assistantCopy[lang];
+  const [open, setOpen] = useState(false);
+  const bottom = Math.max(bottomInset, 12);
+
+  const toggle = () => {
+    void Haptics.selectionAsync().catch(() => {});
+    setOpen((o) => !o);
+  };
+  const go = (href: Href) => {
+    void Haptics.selectionAsync().catch(() => {});
+    setOpen(false);
+    router.navigate(href);
+  };
+  const items: { key: string; label: string; icon: ReactNode; chat?: boolean; onPress: () => void }[] = [
+    ...(assistant ? [{ key: 'chat', label: c.talk, chat: true, icon: <FlameIcon size={20} color={p.accent} />, onPress: () => go(assistant.href as Href) }] : []),
+    { key: 'capture', label: capture.label, icon: <Feather name="camera" size={19} color={p.ink} />, onPress: () => go(capture.path as Href) },
+  ];
+
+  return (
+    <>
+      <PlusButton label={assistant ? c.addMenu : capture.label} active={active} open={false} onPress={toggle} />
+      <Modal visible={open} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setOpen(false)}>
+        <Pressable accessibilityLabel={c.closeMenu} onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.42)' }} />
+        <View pointerEvents="box-none" style={{ position: 'absolute', right: 16, bottom: bottom + TAB_BAR_HEIGHT + 14, alignItems: 'flex-end', gap: 10 }}>
+          {items.map((item) => (
+            <Pressable key={item.key} onPress={item.onPress} accessibilityRole="button" accessibilityLabel={item.label}
+              style={({ pressed }) => ({
+                minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 6, paddingRight: 20, borderRadius: radius.pill,
+                backgroundColor: p.card, transform: [{ scale: pressed ? 0.96 : 1 }], ...lift,
+              })}>
+              <View style={{ width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: item.chat ? p.inverse : p.ground }}>
+                {item.icon}
+              </View>
+              <Text style={{ includeFontPadding: false, fontFamily: font.bold, fontSize: 17, color: p.ink }}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {/* the X sits exactly where the + was */}
+        <View style={{ position: 'absolute', right: 16, bottom }}>
+          <PlusButton label={c.closeMenu} active={false} open onPress={toggle} />
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+function PlusButton({ label, active, open, onPress }: { label: string; active: boolean; open: boolean; onPress: () => void }) {
   const p = usePalette();
   return (
-    <Pressable onPress={onPress} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: active }}
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active, expanded: open }}
       style={({ pressed }) => ({
         width: TAB_BAR_HEIGHT, height: TAB_BAR_HEIGHT, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center',
-        backgroundColor: active ? p.accent : p.inverse, transform: [{ scale: pressed ? 0.94 : 1 }], ...lift,
+        backgroundColor: active && !open ? p.accent : p.inverse, transform: [{ scale: pressed ? 0.94 : 1 }], ...lift,
       })}>
-      <Feather name="plus" size={30} color={active ? p.onAccent : p.onInverse} />
+      <Feather name={open ? 'x' : 'plus'} size={30} color={active && !open ? p.onAccent : p.onInverse} />
     </Pressable>
   );
 }

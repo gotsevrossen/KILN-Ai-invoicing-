@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path to public,extensions;
-select plan(24);
+select plan(25);
 insert into auth.users(id,email) values('30000000-0000-0000-0000-000000000001','payments-owner@example.test'),('30000000-0000-0000-0000-000000000002','payments-other@example.test');
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"30000000-0000-0000-0000-000000000001","role":"authenticated"}',true);
@@ -24,6 +24,7 @@ reset role;
 select lives_ok($$select public.reserve_job_payment('30000000-0000-0000-0000-000000000006','wallet')$$,'first online attempt reserves method');
 select throws_ok($$select public.record_job_payment('30000000-0000-0000-0000-000000000006','pi_test123456',20000,'wallet','succeeded')$$,'P0001','Payment does not match','unbound intent cannot credit ledger');
 select throws_ok($$select public.reserve_job_payment('30000000-0000-0000-0000-000000000006','bank')$$,'P0001','Use the original payment method','second payment method cannot produce another charge');
+select throws_ok($$select public.reserve_job_payment('30000000-0000-0000-0000-000000000006','card')$$,'P0001','Use the original payment method','a typed card is a payment method too and cannot produce another charge');
 set local role authenticated;
 select throws_ok($$select public.record_job_cash('30000000-0000-0000-0000-000000000006')$$,'P0001','An online payment was started','cash cannot race an online reservation');
 reset role;

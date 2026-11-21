@@ -180,6 +180,18 @@ export type Command =
   | { type: 'work'; jobId: string | null; description: string; qtyHundredths: number; unitCents: number | null; itemId: string | null; kind: LineKind }
   | { type: 'note'; jobId: string | null; text: string };
 
+/**
+ * "2 hours of labor" heard as work done becomes logged hours: hours are billed only through
+ * Log hours, at the job's own rate, never as a work line at a price-list price.
+ */
+export function hoursNotWork(commands: Command[], priceList: { id: string; unit: Unit }[]): Command[] {
+  return commands.map((c) => {
+    if (c.type !== 'work' || priceList.find((i) => i.id === c.itemId)?.unit !== 'hour') return c;
+    if (c.qtyHundredths < 1 || c.qtyHundredths > 2400) return c;
+    return { type: 'hours', jobId: c.jobId, hundredths: c.qtyHundredths, note: c.description };
+  });
+}
+
 /** Actions for the owner to confirm. A job or item that isn't theirs becomes "pick one", never a guess. */
 export function checkCommands(raw: unknown, jobIds: string[], itemIds: string[]): Command[] {
   return list(record(raw)?.actions).flatMap((a): Command[] => {

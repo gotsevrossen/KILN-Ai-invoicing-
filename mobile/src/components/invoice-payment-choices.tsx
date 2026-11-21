@@ -26,7 +26,7 @@ export function InvoiceSignature({ value, lang }: { value: InvoiceAcceptance; la
   </Card>;
 }
 
-export function InvoicePaymentChoices({ lang, methods, wallet, card, bank, testMode, canPay, alternativesOnHold = false, acceptance, online, onSign, onDrawing }: {
+export function InvoicePaymentChoices({ lang, methods, wallet, card, bank, testMode, canPay, alternativesOnHold = false, acceptance, online, onSign, onDrawing, signable = true }: {
   lang: Lang;
   methods: AlternativeMethods;
   wallet: boolean;
@@ -39,14 +39,17 @@ export function InvoicePaymentChoices({ lang, methods, wallet, card, bank, testM
   online?: (choice: 'wallet' | 'stripe') => ReactNode;
   onSign?: (name: string, ink: SignatureInk, method: AlternativeMethod | null) => Promise<void>;
   onDrawing?: (drawing: boolean) => void;
+  /** Invoices can be signed here; a deposit is paid only (its estimate was already accepted). */
+  signable?: boolean;
 }) {
   const c = invoicePaymentCopy[lang];
   const stripe = card || bank;
+  const bankLabel = card && bank ? c.bankOrCard : card ? c.card : c.bank;
   const [choice, setChoice] = useState<'wallet' | 'stripe' | 'alternative' | 'sign' | null>(null);
   const [method, setMethod] = useState<AlternativeMethod | null>(null);
   const enabled = alternativeMethods.filter((item) => methods[item] !== undefined);
   const selected = method && enabled.includes(method) ? method : null;
-  const signing = !acceptance && (choice === 'sign' || (canPay && !alternativesOnHold && choice === 'alternative' && !!selected));
+  const signing = signable && !acceptance && (choice === 'sign' || (canPay && !alternativesOnHold && choice === 'alternative' && !!selected));
   const choose = (next: NonNullable<typeof choice>) => {
     setChoice(next === choice ? null : next);
     setMethod(next === 'alternative' ? acceptance?.alternativeMethod ?? null : null);
@@ -54,10 +57,11 @@ export function InvoicePaymentChoices({ lang, methods, wallet, card, bank, testM
   return <>
     {canPay ? <Card style={{ gap: 10 }}>
       {testMode ? <Notice text={c.test} tone="flag" /> : null}
-      <Button label={wallet ? c.wallet : `${c.wallet} · ${c.unavailable}`} disabled={!wallet} variant={choice === 'wallet' ? 'dark' : 'outline'} onPress={() => choose('wallet')} />
-      <Button label={stripe ? c.stripe : `${c.stripe} · ${c.unavailable}`} disabled={!stripe} variant={choice === 'stripe' ? 'dark' : 'outline'} onPress={() => choose('stripe')} />
+      {/* Bank transfer (and card, when on), Apple Pay / Google Pay, Alternate: the same three everywhere */}
+      <Button label={stripe ? bankLabel : `${bankLabel} · ${c.unavailable}`} icon="briefcase" disabled={!stripe} variant={choice === 'stripe' ? 'dark' : 'outline'} onPress={() => choose('stripe')} />
+      <Button label={wallet ? c.wallet : `${c.wallet} · ${c.unavailable}`} icon="smartphone" disabled={!wallet} variant={choice === 'wallet' ? 'dark' : 'outline'} onPress={() => choose('wallet')} />
       <Button label={enabled.length && !alternativesOnHold ? c.alternative : `${c.alternative} · ${c.unavailable}`} disabled={!enabled.length || alternativesOnHold}
-        variant={choice === 'alternative' ? 'dark' : 'outline'} onPress={() => choose('alternative')} />
+        icon="dollar-sign" variant={choice === 'alternative' ? 'dark' : 'outline'} onPress={() => choose('alternative')} />
       {(choice === 'wallet' && wallet) || (choice === 'stripe' && stripe) ? online?.(choice) ?? <>
         {choice === 'stripe' && card ? <Button label={c.card} variant="outline" disabled /> : null}
         {choice === 'stripe' && bank ? <Button label={c.bank} variant="outline" disabled /> : null}
@@ -73,7 +77,7 @@ export function InvoicePaymentChoices({ lang, methods, wallet, card, bank, testM
         </> : null}
       </> : null}
     </Card> : null}
-    {acceptance ? <InvoiceSignature value={acceptance} lang={lang} /> : <>
+    {!signable ? null : acceptance ? <InvoiceSignature value={acceptance} lang={lang} /> : <>
       {choice === 'sign' ? null : <Button label={c.sign} icon="edit-3" variant="outline" onPress={() => choose('sign')} />}
       {signing ? onSign ? <SignInvoice key={selected ?? 'invoice'} lang={lang} method={selected} onSign={onSign} onDrawing={onDrawing} />
         : <Notice text={c.preview} tone="soft" /> : null}

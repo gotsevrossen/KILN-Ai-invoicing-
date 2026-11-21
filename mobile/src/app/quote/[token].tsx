@@ -1,6 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Linking, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { View } from 'react-native';
+
+import { DepositPayment } from '@/components/deposit-payment';
 
 import { Button, Card, Checkbox, Field, LineRow, Notice, Screen, T } from '@/components/ui';
 import { CustomerDocumentExport } from '@/components/customer-document-export';
@@ -26,6 +28,25 @@ function CustomerQuote() {
   const [name, setName] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [confirmDecline, setConfirmDecline] = useState(false);
+  // the deposit's own link code, once the customer opens the payment (or comes back from a bank page)
+  const [depositToken, setDepositToken] = useState<string | null>(null);
+  const { payment_intent: returnedIntent } = useLocalSearchParams<{ payment_intent?: string }>();
+  const openDeposit = useCallback(async () => {
+    setBusy(true); setFailed(false);
+    try {
+      const { url } = await prepareQuoteDeposit(String(token));
+      const code = new URL(url).pathname.split('/').pop();
+      if (!code) throw new Error('no link');
+      setDepositToken(code);
+    } catch { setFailed(true); } finally { setBusy(false); }
+  }, [token]);
+  // back from a bank's or wallet's own page: reopen the deposit so its result is recorded
+  const reopened = useRef(false);
+  useEffect(() => {
+    if (!returnedIntent || !page?.acceptedAt || reopened.current) return;
+    reopened.current = true;
+    void openDeposit();
+  }, [returnedIntent, page?.acceptedAt, openDeposit]);
   const load = useCallback(async () => {
     setFailed(false); setPage(null); setName(''); setAgreed(false); setConfirmDecline(false);
     try { setPage(await viewEstimateAccess(String(token))); } catch { setFailed(true); }
@@ -87,14 +108,14 @@ function CustomerQuote() {
         <Button label={es ? 'Cancelar' : 'Cancel'} variant="outline" disabled={busy} onPress={() => setConfirmDecline(false)} />
       </Card> : <Button label={es ? 'Rechazar presupuesto' : 'Decline estimate'} variant="outline" disabled={busy} onPress={() => setConfirmDecline(true)} />}
     </>}
-    {page.acceptedAt && q.deposit_on && percentOf(totals.total, q.deposit_bps) > 0 ? <>
-      <Button label={es ? 'Abrir pago del depósito' : 'Open deposit payment'} disabled={busy} onPress={async () => {
-        setBusy(true); setFailed(false);
-        try { const result = await prepareQuoteDeposit(String(token)); await Linking.openURL(result.url); }
-        catch { setFailed(true); } finally { setBusy(false); }
-      }} />
-      <T v="small" muted>{es ? 'Si ya pagaste o el pago está en proceso, no pagues de nuevo. Consulta a la empresa.' : 'If already paid or processing, do not pay again. Check with the business.'}</T>
-    </> : null}
+    {/* a deposit is paid right here, with the same choices as an invoice; no deposit = accept only */}
+    {page.acceptedAt && q.deposit_on && percentOf(totals.total, q.deposit_bps) > 0 ? depositToken
+      ? <DepositPayment key={depositToken} token={depositToken} lang={q.lang} returnedIntent={returnedIntent ? String(returnedIntent) : undefined} />
+      : <>
+        <Button label={busy ? es ? 'Abriendo…' : 'Opening…' : es ? `Pagar depósito · ${f.money(percentOf(totals.total, q.deposit_bps))}` : `Pay deposit · ${f.money(percentOf(totals.total, q.deposit_bps))}`}
+          icon="lock" big disabled={busy} onPress={openDeposit} />
+        <T v="small" muted>{es ? 'Si ya pagaste o el pago está en proceso, no pagues de nuevo. Consulta a la empresa.' : 'If already paid or processing, do not pay again. Check with the business.'}</T>
+      </> : null}
     <CustomerDocumentExport lang={q.lang} snapshot={{
       type: 'estimate', business: { name: q.business_name, phone: q.business_phone, email: q.business_email, address: q.business_address },
       customer: { name: q.customer_name, lang: q.lang, phone: null, email: null }, job: { title: q.title, address: q.address, workOrder: null },

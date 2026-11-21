@@ -14,12 +14,13 @@ const en = {
   docsSection: 'Old jobs',
   autoSave: 'Save documents automatically',
   autoSaveHelp: 'Keep estimates, invoices and change orders when paid jobs are removed.',
-  savedDocs: 'Saved documents', savedDocsHelp: 'Estimates, invoices and change orders from removed jobs',
+  history: 'Document history', historyUnavailable: 'Document history is available to owners and managers.',
+  invoices: 'Invoices', savedEstimatesAndChanges: 'Saved estimates & changes',
 
   // saved documents
   savedTitle: 'Saved documents', savedEmpty: 'No saved documents yet. Documents from removed jobs show here when you save them.',
   estimate: 'Estimate', invoice: 'Invoice', changeOrder: 'Change order',
-  removedOn: 'Saved %{when}', search: 'Search saved documents',
+  removedOn: 'Saved %{when}', search: 'Search documents', noDocumentsMatch: 'No matching documents.',
   sharePdf: 'Share as PDF', deleteDoc: 'Delete this document', deleteConfirm: 'Yes, delete', deleteHelp: 'It is gone for good.',
   cancel: 'Cancel', loading: 'Loading…', failed: "Couldn't load. Check your connection and try again.", retry: 'Try again',
   billTo: 'Customer', job: 'Job', workOrder: 'Work order', issued: 'Issued', paidOn: 'Paid', signed: 'Signed', declined: 'Declined',
@@ -30,11 +31,9 @@ const en = {
   cash: 'Cash', check: 'Check', card: 'Card', bank: 'Bank', wallet: 'Apple Pay / Google Pay', other: 'Other',
 
   // Jobs menu
-  menu: 'Filters and more', filters: 'Filter jobs', clear: 'Clear filters',
+  menu: 'Filter jobs', clear: 'Clear filters',
   customer: 'Customer', person: 'Assigned to', trade: 'Trade', jobType: 'Job type', unassigned: 'Nobody',
   any: 'Any', showing: 'Showing %{count} of %{total}',
-  aiSearch: 'Find with KILN', aiSearchHint: 'Like "sink repair" or "deck"', aiFind: 'Find', aiFinding: 'Looking…',
-  aiFound: 'KILN found %{count} jobs for "%{query}"', aiNone: 'KILN found no jobs for "%{query}"', aiOff: 'Sign in to search with KILN.',
 };
 
 const es: Record<keyof typeof en, string> = {
@@ -49,11 +48,12 @@ const es: Record<keyof typeof en, string> = {
   docsSection: 'Trabajos viejos',
   autoSave: 'Guardar documentos automáticamente',
   autoSaveHelp: 'Conserva presupuestos, facturas y órdenes de cambio cuando se eliminan trabajos pagados.',
-  savedDocs: 'Documentos guardados', savedDocsHelp: 'Presupuestos, facturas y órdenes de cambio de trabajos eliminados',
+  history: 'Historial de documentos', historyUnavailable: 'El historial está disponible para propietarios y gerentes.',
+  invoices: 'Facturas', savedEstimatesAndChanges: 'Presupuestos y cambios guardados',
 
   savedTitle: 'Documentos guardados', savedEmpty: 'Todavía no hay documentos guardados. Los documentos de trabajos eliminados aparecen aquí cuando los guardas.',
   estimate: 'Presupuesto', invoice: 'Factura', changeOrder: 'Orden de cambio',
-  removedOn: 'Guardado %{when}', search: 'Buscar documentos guardados',
+  removedOn: 'Guardado %{when}', search: 'Buscar documentos', noDocumentsMatch: 'No hay documentos que coincidan.',
   sharePdf: 'Compartir como PDF', deleteDoc: 'Borrar este documento', deleteConfirm: 'Sí, borrar', deleteHelp: 'Se borra para siempre.',
   cancel: 'Cancelar', loading: 'Cargando…', failed: 'No se pudo cargar. Revisa tu conexión e inténtalo de nuevo.', retry: 'Intentar de nuevo',
   billTo: 'Cliente', job: 'Trabajo', workOrder: 'Orden de trabajo', issued: 'Emitido', paidOn: 'Pagado', signed: 'Firmado', declined: 'Rechazado',
@@ -63,11 +63,9 @@ const es: Record<keyof typeof en, string> = {
   change: 'Cambio', base: 'Antes de este cambio', newTotal: 'Nuevo total', description: 'Descripción',
   cash: 'Efectivo', check: 'Cheque', card: 'Tarjeta', bank: 'Banco', wallet: 'Apple Pay / Google Pay', other: 'Otro',
 
-  menu: 'Filtros y más', filters: 'Filtrar trabajos', clear: 'Quitar filtros',
+  menu: 'Filtrar trabajos', clear: 'Quitar filtros',
   customer: 'Cliente', person: 'Asignado a', trade: 'Oficio', jobType: 'Tipo de trabajo', unassigned: 'Nadie',
   any: 'Todos', showing: 'Mostrando %{count} de %{total}',
-  aiSearch: 'Buscar con KILN', aiSearchHint: 'Como "reparar lavabo" o "terraza"', aiFind: 'Buscar', aiFinding: 'Buscando…',
-  aiFound: 'KILN encontró %{count} trabajos para "%{query}"', aiNone: 'KILN no encontró trabajos para "%{query}"', aiOff: 'Inicia sesión para buscar con KILN.',
 };
 
 export type CleanupText = typeof en;

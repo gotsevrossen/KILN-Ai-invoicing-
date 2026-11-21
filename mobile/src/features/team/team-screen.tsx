@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { Share } from 'react-native';
 
 import { Sheet } from '@/components/sheet';
-import { Button, ButtonRow, Card, Chip, Field, Hair, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
+import { Button, ButtonRow, Card, Chip, Field, Hair, ListCard, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import * as sample from '@/data/sample';
 import * as api from '@/data/team-access';
@@ -133,10 +133,10 @@ export function TeamScreen() {
       </> : null}
 
       {data && can(auth.role, 'assignJobs') ? (
-        <Card style={{ paddingVertical: 6 }}>
+        <ListCard>
           <ListRow icon="briefcase" iconTone={unassigned.length ? 'accent' : 'soft'} title={c.unassigned}
             sub={unassigned.length ? String(unassigned.length) : c.allAssigned} onPress={() => router.push('/team/unassigned')} />
-        </Card>
+        </ListCard>
       ) : null}
 
       {data ? <>
@@ -156,11 +156,6 @@ export function TeamScreen() {
         </Card>)}
       </> : null}
 
-      {can(auth.role, 'seeCosts', { managersSeeCosts: data?.settings.managersSeeCosts }) ? (
-        <Card style={{ paddingVertical: 6 }}>
-          <ListRow icon="dollar-sign" title={c.workerCosts} onPress={() => router.push('/operations')} />
-        </Card>
-      ) : null}
     </Screen>
   );
 }
@@ -168,14 +163,12 @@ export function TeamScreen() {
 function PersonRow({ member, me, first }: { member: api.TeamMember; me: boolean; first: boolean }) {
   const { lang } = useLang();
   const c = teamText(lang);
-  const f = useFormat();
   const role = member.role === 'owner' ? c.owner : member.role === 'manager' ? c.manager : c.crew;
-  const last = member.last_active ? fill(c.lastActive, { when: f.date(member.last_active.slice(0, 10)) }) : c.noActivity;
   const jobs = member.open_jobs ? ` · ${fill(c.openJobs, { count: member.open_jobs })}` : '';
   return <>
     {first ? null : <Hair />}
     <ListRow icon={member.role === 'crew' ? 'user' : 'shield'} iconTone={member.role === 'owner' ? 'accent' : 'soft'}
-      title={me ? `${member.name} (${c.you})` : member.name} sub={`${role}${jobs} · ${last}`}
+      title={me ? `${member.name} (${c.you})` : member.name} sub={`${role}${jobs}`}
       onPress={() => router.push(`/team/${member.user_id}`)} />
   </>;
 }

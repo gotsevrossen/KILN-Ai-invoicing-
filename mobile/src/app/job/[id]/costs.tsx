@@ -2,13 +2,16 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
 
 import { RecordGate } from '@/components/record-gate';
-import { Card, Hair, IconButton, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
+import { Card, Hair, IconButton, LineRow, ListCard, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
+import { useAuth } from '@/data/auth';
 import * as sample from '@/data/sample';
-import { hasJob, hoursFor, jobById, partsCost, receiptsOnJob, workItemsFor, workLocked } from '@/data/selectors';
+import { hasJob, hoursFor, jobById, jobProfit, partsCost, receiptsOnJob, workItemsFor, workLocked } from '@/data/selectors';
 import { useStore } from '@/data/store';
+import { useTeam } from '@/features/team/use-team';
 import { useLang } from '@/i18n';
 import { useFormat } from '@/lib/format';
 import { lineTotal } from '@/lib/money';
+import { can } from '@/lib/permissions';
 import { usePalette } from '@/theme/use-palette';
 
 function Stat({ label, value, last }: { label: string; value: string; last?: boolean }) {
@@ -28,6 +31,9 @@ function JobCosts() {
   const { state, actions } = useStore();
   const { id } = useLocalSearchParams<{ id: string }>();
   const job = jobById(id);
+  const { role } = useAuth();
+  const { data: team } = useTeam();
+  const earnings = can(role, 'seeCosts', team?.settings) ? jobProfit(state, job.id) : null;
   const entries = state.timeEntries.filter((x) => x.jobId === job.id);
   const receipts = receiptsOnJob(state, job.id);
   const work = workItemsFor(state, job.id);
@@ -41,10 +47,16 @@ function JobCosts() {
         <Stat label={t('job.hours')} value={f.qty(hoursFor(state, job.id))} />
         <Stat label={t('job.partsCost')} value={f.money(partsCost(state, job.id))} last />
       </Card>
+      {earnings && (earnings.revenueCents !== 0 || earnings.materialCostCents !== 0) ? (
+        <Card>
+          <LineRow label={t('job.afterMaterials')} value={f.money(earnings.earnedCents)} strong />
+          <T v="small" muted>{t(earnings.fromInvoice ? 'job.afterMaterialsInvoice' : 'job.afterMaterialsSoFar')}</T>
+        </Card>
+      ) : null}
 
       <T v="eyebrow" style={{ marginTop: 8 }}>{t('job.work')}</T>
       {work.length === 0 ? <T v="body" muted>{t('job.noWork')}</T> : (
-        <Card style={{ gap: 4 }}>
+        <ListCard>
           {work.map((item, i) => (
             <View key={item.id}>
               {i ? <Hair /> : null}
@@ -58,25 +70,25 @@ function JobCosts() {
                 } />
             </View>
           ))}
-        </Card>
+        </ListCard>
       )}
       {locked && work.length > 0 ? <Notice text={t('job.workLocked')} icon="lock" tone="soft" /> : null}
 
       <T v="eyebrow" style={{ marginTop: 8 }}>{t('job.hours')}</T>
       {entries.length === 0 ? <T v="body" muted>{t('job.noHours')}</T> : (
-        <Card style={{ gap: 4 }}>
+        <ListCard>
           {entries.map((entry, i) => (
             <View key={entry.id}>
               {i ? <Hair /> : null}
               <ListRow icon="clock" title={entry.note || t('job.hours')} sub={day(entry.date)} right={<T v="money">{f.qty(entry.hundredths)} h</T>} />
             </View>
           ))}
-        </Card>
+        </ListCard>
       )}
 
       <T v="eyebrow" style={{ marginTop: 8 }}>{t('job.receipts')}</T>
       {receipts.length === 0 ? <T v="body" muted>{t('job.noReceipts')}</T> : (
-        <Card style={{ gap: 4 }}>
+        <ListCard>
           {receipts.map(({ receipt, items, cost }, i) => (
             <View key={receipt.id}>
               {i ? <Hair /> : null}
@@ -89,7 +101,7 @@ function JobCosts() {
               />
             </View>
           ))}
-        </Card>
+        </ListCard>
       )}
     </Screen>
   );

@@ -3,7 +3,7 @@
 import { assertEquals, assertRejects } from 'jsr:@std/assert@1.0.13';
 import type Anthropic from '@anthropic-ai/sdk';
 
-import { AiError, checkInput, isTask, numbersIn, runTask, type Task } from './tasks.ts';
+import { AiError, checkAssistant, checkInput, crewOnly, isTask, numbersIn, OFF_TOPIC, runTask, type Task } from './tasks.ts';
 
 /** A pretend Claude that gives `answer` back, after making sure the answer format builds. */
 function fake(answer: unknown, stop = 'end_turn') {
@@ -301,4 +301,75 @@ Deno.test('findJobs: no jobs means no question to Claude', async () => {
   const { client, sent } = fake({ ids: ['j1'] });
   assertEquals(await run(client, 'findJobs', { ...findInput, jobs: [] }), { ids: [] });
   assertEquals(sent.length, 0);
+});
+
+// ---------------------------------------------------------------- the KILN chat
+
+const chatInput = (said: string) => checkInput('assistant', {
+  lang: 'en' as const, today: '2026-11-20', focusJobId: null,
+  messages: [{ role: 'owner' as const, text: said }],
+  jobs: [{ id: 'smith', title: 'Bathroom faucet', customer: 'Ann Smith', address: '12 Oak St', stage: 'work' as const, pricing: 'hourly' as const,
+    rateCents: 9000, hours: 2, workCents: 0, receiptCents: 0, estimate: null, invoice: null }],
+  inbox: [{ id: 'r1', name: 'PVC glue', store: 'Hardware', costCents: 899 }],
+  items,
+}) as Parameters<typeof checkAssistant>[1];
+const chatAction = { jobId: null, hours: null, description: null, qty: null, cents: null, itemId: null, kind: null, text: null,
+  send: null, customer: null, address: null, pricing: null, receiptItemId: null, sortTo: null };
+
+Deno.test('chat: off-topic questions get the fixed answer and do nothing', () => {
+  const out = checkAssistant({ onTopic: false, reply: 'The capital of France is Paris.', actions: [{ ...chatAction, type: 'note', text: 'x' }] },
+    chatInput('what is the capital of France?'));
+  assertEquals(out, { offTopic: true, reply: OFF_TOPIC.en, actions: [] });
+});
+
+Deno.test('chat: amounts must be ones the owner said; unknown jobs become "which job?"', () => {
+  const out = checkAssistant({ onTopic: true, reply: 'Plan ready.', actions: [
+    { ...chatAction, type: 'cashPaid', jobId: 'smith', cents: 45000 },
+    { ...chatAction, type: 'cashPaid', jobId: 'smith', cents: 99900 },
+    { ...chatAction, type: 'laborRate', cents: 12000 },
+    { ...chatAction, type: 'hours', jobId: 'jones', hours: 2 },
+  ] }, chatInput('Smith paid $450 cash, log 2 hours'));
+  assertEquals(out.actions, [
+    { type: 'cashPaid', jobId: 'smith', cents: 45000 },
+    { type: 'hours', jobId: null, hundredths: 200, note: '' },
+  ]);
+});
+
+Deno.test('chat: one document, placed after the work it should include', () => {
+  const out = checkAssistant({ onTopic: true, reply: 'Plan ready.', actions: [
+    { ...chatAction, type: 'invoice', jobId: 'smith', send: true },
+    { ...chatAction, type: 'estimate', jobId: 'smith', send: true },
+    { ...chatAction, type: 'hours', jobId: 'smith', hours: 1.5 },
+    { ...chatAction, type: 'sortReceipt', receiptItemId: 'r1', jobId: 'smith', sortTo: 'job' },
+    { ...chatAction, type: 'sortReceipt', receiptItemId: 'not-in-inbox', sortTo: 'overhead' },
+  ] }, chatInput('log 1.5 hours, glue was for Smith, then send the invoice'));
+  assertEquals(out.actions, [
+    { type: 'hours', jobId: 'smith', hundredths: 150, note: '' },
+    { type: 'sortReceipt', receiptItemId: 'r1', jobId: 'smith', sortTo: 'job' },
+    { type: 'invoice', jobId: 'smith', send: true },
+  ]);
+});
+
+Deno.test('chat for crew: only their assigned jobs, no money, only crew actions', () => {
+  const both = checkInput('assistant', {
+    ...chatInput('log 2 hours, add the trip fee, Smith paid $450'),
+    focusJobId: 'jones',
+    jobs: [...chatInput('x').jobs, { ...chatInput('x').jobs[0], id: 'jones', title: 'Deck', invoice: { number: '1001', totalCents: 90000, dueCents: 90000, sent: true, paid: false, overdueDays: 0 } }],
+  }) as Parameters<typeof checkAssistant>[1];
+  const crew = crewOnly(both, ['smith']);
+  assertEquals(crew.jobs.map((j) => j.id), ['smith']);
+  assertEquals(crew.focusJobId, null);
+  assertEquals(crew.jobs[0].rateCents, null);
+  assertEquals(crew.inbox, []);
+  const out = checkAssistant({ onTopic: true, reply: 'ok', actions: [
+    { ...chatAction, type: 'hours', jobId: 'smith', hours: 2 },
+    { ...chatAction, type: 'work', jobId: 'smith', itemId: 'trip', cents: 2000 },
+    { ...chatAction, type: 'work', jobId: 'smith', description: 'Extra cleanup', cents: 450 },
+    { ...chatAction, type: 'cashPaid', jobId: 'smith', cents: 45000 },
+    { ...chatAction, type: 'invoice', jobId: 'smith', send: true },
+  ] }, crew, true);
+  assertEquals(out.actions, [
+    { type: 'hours', jobId: 'smith', hundredths: 200, note: '' },
+    { type: 'work', jobId: 'smith', description: 'Trip fee', qtyHundredths: 100, unitCents: null, itemId: 'trip', kind: 'labor' },
+  ]);
 });

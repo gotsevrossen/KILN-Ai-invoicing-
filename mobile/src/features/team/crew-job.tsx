@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -11,22 +12,41 @@ import { onLiveRefresh } from '@/data/live-events';
 import { priceOnly } from '@/data/trades';
 import type { Unit } from '@/data/types';
 import { useLang } from '@/i18n';
+import { assistantCopy } from '@/i18n/assistant';
+import { FlameIcon } from '@/components/flame-icon';
 import { callNumber, dialable, textNumber } from '@/lib/contact';
 import { useFormat } from '@/lib/format';
 import { pickJobPhotos, type NewPhoto } from '@/lib/job-photos';
 import { removeFromPhone } from '@/lib/photo-file';
 import { userError } from '@/lib/user-errors';
+import { radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
-import { PhotoThumb } from './person-screen';
 import { crewRead } from './crew-cache';
 import { CrewSyncStatus, useCrewOutbox } from './crew-outbox';
 import { fill, teamText } from './text';
 
-const UNITS: Unit[] = ['flat', 'each', 'hour', 'sq_ft', 'linear_ft', 'board', 'cu_yd'];
+// no 'hour': hours go through the Hours button and are billed at the job's rate
+const UNITS: Unit[] = ['flat', 'each', 'sq_ft', 'linear_ft', 'board', 'cu_yd'];
 type SheetName = 'work' | 'hours' | 'note' | 'photo' | 'change' | null;
 
 const parseHundredths = (text: string) => (/^\d{1,6}([.,]\d{1,2})?$/.test(text.trim()) ? Math.round(Number(text.trim().replace(',', '.')) * 100) : null);
+
+function PhotoThumb({ path }: { path: string }) {
+  const p = usePalette();
+  const { t } = useLang();
+  const [uri, setUri] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void api.photoLink(path).then((url) => { if (live) setUri(url); }, () => undefined);
+    return () => { live = false; };
+  }, [path]);
+  return (
+    <View style={{ width: 92, height: 92, borderRadius: radius.xs, overflow: 'hidden', backgroundColor: p.placeholder }}>
+      {uri ? <Image source={{ uri, cacheKey: path }} style={{ flex: 1 }} accessibilityLabel={t('photos.photo')} accessibilityIgnoresInvertColors /> : null}
+    </View>
+  );
+}
 
 /** A crew member's view of one assigned job: what to do, what's agreed, and adding their work. */
 export function CrewJobScreen() {
@@ -81,9 +101,12 @@ export function CrewJobScreen() {
   const openSheet = (name: SheetName) => { pendingId.current = ''; setError(''); setStatus(''); setOpened((n) => n + 1); setOpen(name); };
 
   const header = <PageHeader title={data?.job.title ?? c.jobs} sub={data?.job.address} back={() => router.back()}
-    right={data && dialable(data.job.customer_phone) ? <>
-      <IconButton icon="phone" label={c.call} onPress={() => callNumber(data.job.customer_phone)} />
-      <IconButton icon="message-square" label={c.text} onPress={() => textNumber(data.job.customer_phone)} />
+    right={data ? <>
+      <IconButton icon="zap" glyph={(color) => <FlameIcon color={color} />} label={assistantCopy[lang].open} onPress={() => router.push(`/crew/assistant?job=${data.job.id}`)} />
+      {dialable(data.job.customer_phone) ? <>
+        <IconButton icon="phone" label={c.call} onPress={() => callNumber(data.job.customer_phone)} />
+        <IconButton icon="message-square" label={c.text} onPress={() => textNumber(data.job.customer_phone)} />
+      </> : null}
     </> : undefined} />;
   if (!data) return <Screen header={header}><CrewSyncStatus />
     {loadError ? <><Notice text={loadError} tone="danger" icon="alert-circle" /><Button label={c.retry} variant="outline" onPress={reload} /></> : <T muted>{c.loading}</T>}
@@ -255,7 +278,7 @@ function WorkSheet({ open, onClose, prices, busy, error, onAdd, onNewItem, cache
         {listError ? <Notice text={listError} tone="danger" icon="alert-circle" /> : null}
         {!items && !listError ? <T muted>{c.loading}</T> : null}
         <T v="label">{c.pickItem}</T>
-        {items?.map((item) => <ListRow key={item.id} title={item.name}
+        {items?.filter((item) => item.unit !== 'hour').map((item) => <ListRow key={item.id} title={item.name}
           sub={!item.priced ? c.needsPrice : prices && item.unit_cents !== null ? `${f.money(item.unit_cents)}${item.unit === 'flat' ? '' : ` / ${unitName(item.unit)}`}` : unitName(item.unit)}
           onPress={item.priced ? () => { setPicked(item); setBad(''); } : undefined} />)}
         <Button label={c.addItem} icon="plus" variant="outline" onPress={() => { setAdding(true); setName(''); setPrice(''); setBad(''); }} />
@@ -318,7 +341,7 @@ function PhotoSheet({ open, onClose, jobId, onSaved }: { open: boolean; onClose:
     try {
       let photos = waiting;
       if (camera !== 'retry') {
-        const picked = await pickJobPhotos(camera, false);
+        const picked = await pickJobPhotos(camera);
         if (picked.problem) { setError(c.cameraDenied); return; }
         if (!picked.photos.length) return;
         photos = picked.photos;

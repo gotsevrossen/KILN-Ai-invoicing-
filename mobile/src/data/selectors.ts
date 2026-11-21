@@ -1,4 +1,5 @@
-import { applyMarkup, documentTotals, percentOf, splitByWeights, type Cents, type Totals } from '../lib/money.ts';
+import { applyMarkup, documentTotals, lineTotal, percentOf, splitByWeights, type Cents, type Totals } from '../lib/money.ts';
+import { jobEarnings, type Earnings } from '../lib/profit.ts';
 import { composeInvoiceLines, defaultBilling, estimateLines, receiptShares, workLines } from '../lib/billing.ts';
 import { businessDate, invoiceDaysPastDue } from '../lib/invoice-aging.ts';
 
@@ -160,23 +161,62 @@ export function invoiceLines(state: State, invoice: Invoice): DocLine[] {
   if (issued) return issued.lines;
   const job = jobById(invoice.jobId);
   const draft = state.estimates[job.id];
-  const changes: DocLine[] = changeOrdersForJob(job.id).filter((co) => state.signed[co.id])
-    .map((co) => ({ id: co.id, kind: 'labor', description: co.description, qtyHundredths: 100, unitCents: co.amountCents }));
+  const changes = changeLines(state, job.id);
   const materialIds = invoice.materialItemIds
     ? [...invoice.materialItemIds]
     : receiptsOnJob(state, job.id).flatMap((r) => r.items.map((i) => i.id));
   if (invoice.suggestion && state.acceptedSuggestions.includes(invoice.suggestion.id)) {
     materialIds.push(invoice.suggestion.receiptItemId);
   }
-  const materials: DocLine[] = [];
-  for (const id of new Set(materialIds)) {
-    const item = receiptItemById(id);
-    const name = item.qtyLabel && item.qtyLabel !== '× 1' ? `${item.name} ${item.qtyLabel}` : item.name;
-    materials.push({ id, kind: 'material', description: state.fixedNames[id] ?? name, qtyHundredths: 100, unitCents: billedPrice(state, item, job.id) });
-  }
   return composeInvoiceLines({ job, estimate: draft, billing: invoiceBilling(state, invoice),
     hours: hoursFor(state, job.id), laborDescription: invoice.laborDescription, fees: invoice.fees, changes,
-    work: workLines(workItemsFor(state, job.id)), materials });
+    work: workLines(workItemsFor(state, job.id)), materials: materialLines(state, job.id, materialIds) });
+}
+
+/** Signed change orders as invoice lines. */
+function changeLines(state: State, jobId: string): DocLine[] {
+  return changeOrdersForJob(jobId).filter((co) => state.signed[co.id])
+    .map((co) => ({ id: co.id, kind: 'labor', description: co.description, qtyHundredths: 100, unitCents: co.amountCents }));
+}
+
+/** Receipt items as invoice lines, at cost plus markup. */
+function materialLines(state: State, jobId: string, itemIds: string[]): DocLine[] {
+  const materials: DocLine[] = [];
+  for (const id of new Set(itemIds)) {
+    const item = receiptItemById(id);
+    const name = item.qtyLabel && item.qtyLabel !== '× 1' ? `${item.name} ${item.qtyLabel}` : item.name;
+    materials.push({ id, kind: 'material', description: state.fixedNames[id] ?? name, qtyHundredths: 100, unitCents: billedPrice(state, item, jobId) });
+  }
+  return materials;
+}
+
+/**
+ * Job profitability from data KILN already has: the invoice's lines once there is one; before
+ * that, the same lines the invoice would get (logged hours x the job's rate, the signed estimate,
+ * signed changes, work done, receipts with markup). Costs are the receipts sorted to the job.
+ */
+export function jobProfit(state: State, jobId: string): Earnings & { fromInvoice: boolean } {
+  const job = jobById(jobId);
+  const invoice = invoiceForJob(jobId);
+  const receiptIds = receiptsOnJob(state, jobId).flatMap((r) => r.items.map((i) => i.id));
+  const lines = invoice ? invoiceLines(state, invoice) : composeInvoiceLines({
+    job, estimate: state.estimates[jobId], billing: defaultBilling(!!state.estimates[jobId]?.signed),
+    hours: hoursFor(state, jobId), laborDescription: '', fees: [], changes: changeLines(state, jobId),
+    work: workLines(workItemsFor(state, jobId)), materials: materialLines(state, jobId, receiptIds),
+  });
+  const changeIds = new Set(changeOrdersForJob(jobId).map((co) => co.id));
+  const sum = (pick: (line: DocLine) => boolean) => lines.filter(pick).reduce((a, l) => a + lineTotal(l.qtyHundredths, l.unitCents), 0);
+  // Issued invoice lines get new IDs in the database. A negative labor line is a credit.
+  const isWork = (l: DocLine) => l.unitCents < 0 || l.id.startsWith('work-') || changeIds.has(l.id);
+  return {
+    ...jobEarnings({
+      laborCents: sum((l) => l.kind !== 'material' && !isWork(l)),
+      workCents: sum((l) => l.kind !== 'material' && isWork(l)),
+      materialCostCents: partsCost(state, jobId),
+      materialBilledCents: sum((l) => l.kind === 'material'),
+    }),
+    fromInvoice: !!invoice,
+  };
 }
 
 export function invoiceBilling(state: State, invoice: Invoice) {

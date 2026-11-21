@@ -12,11 +12,15 @@ import { useLang } from '@/i18n';
 export default function NewJob() {
   const { t } = useLang();
   const { actions } = useStore();
-  const { item } = useLocalSearchParams<{ item?: string }>();
+  const { item, customer, address, title, pricing } = useLocalSearchParams<{ item?: string; customer?: string; address?: string; title?: string; pricing?: string }>();
+  // filled in by the KILN chat
+  const chatPricing: 'hourly' | 'flat' | undefined = pricing === 'hourly' ? 'hourly' : pricing === 'flat' ? 'flat' : undefined;
+  const initial = customer || address || title ? { customer, address, title, pricing: chatPricing } : undefined;
 
   return (
     <Screen header={<PageHeader title={t('newJob.title')} back={() => router.back()} />}>
       <NewJobForm
+        initial={initial}
         onCreated={(id) => {
           if (item) {
             actions.assign(item, { type: 'jobs', jobIds: [id] });

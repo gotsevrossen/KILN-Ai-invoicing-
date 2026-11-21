@@ -42,7 +42,7 @@ export function cleanCode(text: string): string | null {
 
 export interface TeamMember {
   user_id: string; name: string; email: string; role: TeamRole; status: 'pending' | 'active';
-  joined_at: string; last_active: string | null; open_jobs: number;
+  joined_at: string; open_jobs: number;
 }
 export interface TeamAssignment { user_id: string; job_id: string }
 export interface TeamInvite { id: string; name: string; role: 'manager' | 'crew'; expires_at: string; requested_user_id: string | null; revoked_at: string | null }
@@ -99,22 +99,19 @@ export async function clearPriceReview(id: string) {
 }
 
 /** What one person added, newest first, for their page on the Team tab. */
-export interface Activity { kind: 'photo' | 'note' | 'hours' | 'work' | 'receipt'; id: string; jobId: string; at: string; text: string; amount?: number; storagePath?: string }
+export interface Activity { kind: 'note' | 'hours' | 'work' | 'receipt'; id: string; jobId: string; at: string; text: string; amount?: number }
 export async function loadActivity(businessId: string, userId: string): Promise<Activity[]> {
-  const [photos, notes, hours, work, receipts] = await Promise.all([
-    db().from('photos').select('id, job_id, storage_path, tag, created_at').eq('business_id', businessId).eq('created_by', userId).order('created_at', { ascending: false }).limit(60),
+  const [notes, hours, work, receipts] = await Promise.all([
     db().from('notes').select('id, job_id, body, created_at').eq('business_id', businessId).eq('created_by', userId).order('created_at', { ascending: false }).limit(60),
     db().from('time_entries').select('id, job_id, hundredths, note, created_at').eq('business_id', businessId).eq('created_by', userId).order('created_at', { ascending: false }).limit(60),
     db().from('work_items').select('id, job_id, description, qty_hundredths, created_at').eq('business_id', businessId).eq('created_by', userId).order('created_at', { ascending: false }).limit(60),
     db().from('receipts').select('id,store,created_at,receipt_items(receipt_item_jobs(job_id))').eq('business_id', businessId).eq('created_by', userId).order('created_at', { ascending: false }).limit(60),
   ]);
-  type P = { id: string; job_id: string; storage_path: string; tag: string | null; created_at: string };
   type N = { id: string; job_id: string; body: string; created_at: string };
   type H = { id: string; job_id: string; hundredths: number; note: string; created_at: string };
   type W = { id: string; job_id: string; description: string; qty_hundredths: number; created_at: string };
   type R = { id: string; store: string; created_at: string; receipt_items: { receipt_item_jobs: { job_id: string }[] }[] };
   return [
-    ...(ok(photos) as P[]).map((r): Activity => ({ kind: 'photo', id: r.id, jobId: r.job_id, at: r.created_at, text: r.tag ?? '', storagePath: r.storage_path })),
     ...(ok(notes) as N[]).map((r): Activity => ({ kind: 'note', id: r.id, jobId: r.job_id, at: r.created_at, text: r.body })),
     ...(ok(hours) as H[]).map((r): Activity => ({ kind: 'hours', id: r.id, jobId: r.job_id, at: r.created_at, text: r.note, amount: r.hundredths })),
     ...(ok(work) as W[]).map((r): Activity => ({ kind: 'work', id: r.id, jobId: r.job_id, at: r.created_at, text: r.description, amount: r.qty_hundredths })),

@@ -1,1 +1,1 @@
-export { SavedDocumentsScreen as default } from '@/features/cleanup/saved-documents';
+export { DocumentHistoryScreen as default } from '@/features/cleanup/document-history';

@@ -84,7 +84,7 @@ export default function Jobs() {
       <OfflineStatus />
       <ButtonMenu open={menuOpen} onClose={() => setMenuOpen(false)} from={filterButton} to={addButton} icon="sliders"
         tone={filtersOn(filters) ? 'dark' : 'plain'} title={cleanupText(lang).menu} onVisible={setMenuShown}>
-        <JobsMenu filters={filters} onChange={setFilters} onLeave={() => setMenuOpen(false)}
+        <JobsMenu filters={filters} onChange={setFilters}
           shown={grouped.active.length + grouped.done.length + grouped.paid.length} total={sample.jobs.length} />
       </ButtonMenu>
       <Field value={query} onChangeText={setQuery} placeholder={t('jobs.search')} accessibilityLabel={t('jobs.search')} returnKeyType="search" />

@@ -62,6 +62,23 @@ export function composeInvoiceLines(input: {
   return lines;
 }
 
+/**
+ * The business's hourly labor rate, from one place: the price list's hourly Labor item.
+ * Falls back to the rate typed during setup only while that item has no price.
+ * Each job copies this when it's created and keeps its own copy after that.
+ */
+export function laborRateCents(priceList: Pick<PriceItem, 'id' | 'unit' | 'unitCents'>[], setupRate: Cents | null | undefined): Cents | null {
+  const labor = priceList.find((item) => item.id === 'labor' && item.unit === 'hour');
+  if (labor && labor.unitCents !== null && labor.unitCents > 0) return labor.unitCents;
+  return setupRate && setupRate > 0 ? setupRate : null;
+}
+
+/**
+ * Hours are logged with Log hours and billed at the job's rate. Hourly items are left out of
+ * Work done, so the same hours can't be billed twice at a different price.
+ */
+export const billsAsHours = (item: Pick<PriceItem, 'unit'>): boolean => item.unit === 'hour';
+
 /** A work item can be saved: a description, a quantity above zero, and a price (zero is fine). */
 export function workItemValid(item: Pick<WorkItem, 'description' | 'qtyHundredths' | 'unitCents'>): boolean {
   const { description, qtyHundredths: qty, unitCents: cents } = item;

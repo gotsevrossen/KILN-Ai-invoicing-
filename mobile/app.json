@@ -48,12 +48,6 @@
         }
       ],
       [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "KILN saves where job photos are taken, as proof of work. Customers see it only if you choose."
-        }
-      ],
-      [
         "expo-speech-recognition",
         {
           "microphonePermission": "KILN listens while you record a voice note, to turn it into text.",

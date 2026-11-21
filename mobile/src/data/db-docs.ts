@@ -385,9 +385,9 @@ export async function insertInvoice(businessId: string, invoice: Invoice): Promi
   await audit(businessId, 'invoice.created', 'invoice', invoice.id);
 }
 
-/** Draft changes: billing check, materials display, location, summary. */
+/** Draft changes to billing, materials display, due date, summary or proof photos. */
 export async function updateInvoice(invoiceId: string, patch: {
-  billing?: InvoiceBilling; materialsMode?: 'items' | 'total'; showLocation?: boolean; summary?: string; dueDays?: number | null; proofPhotoIds?: string[];
+  billing?: InvoiceBilling; materialsMode?: 'items' | 'total'; summary?: string; dueDays?: number | null; proofPhotoIds?: string[];
 }): Promise<void> {
   const row: Record<string, unknown> = {};
   if (patch.billing) {
@@ -398,13 +398,14 @@ export async function updateInvoice(invoiceId: string, patch: {
   if (patch.dueDays !== undefined) row.due_days = patch.dueDays;
   if (patch.proofPhotoIds !== undefined) row.proof_photo_ids = patch.proofPhotoIds;
   if (patch.materialsMode) row.materials_mode = patch.materialsMode;
-  if (patch.showLocation !== undefined) row.show_location = patch.showLocation;
   if (patch.summary !== undefined) row.summary = patch.summary.slice(0, 4000);
+  // Older builds may have left a location-only edit in the offline queue.
+  if (!Object.keys(row).length) return;
   ok(await db().from('invoices').update(row).eq('id', invoiceId));
 }
 
 /** Sends it in one step: the lines exactly as sent, and the frozen copy of tax, scope, and due date. */
-export async function sendInvoice(invoiceId: string, s: InvoiceSnapshot, showLocation: boolean): Promise<void> {
+export async function sendInvoice(invoiceId: string, s: InvoiceSnapshot): Promise<void> {
   ok(await db().rpc('send_invoice', {
     p_invoice_id: invoiceId,
     p_lines: s.lines.map((l) => ({
@@ -413,7 +414,7 @@ export async function sendInvoice(invoiceId: string, s: InvoiceSnapshot, showLoc
     p_issued: {
       summary: s.summary.slice(0, 4000),
       materials_mode: s.materialsMode,
-      show_location: showLocation,
+      show_location: false,
       tax_rate_bps: s.tax.rateBps,
       tax_labor: s.tax.labor,
       tax_materials: s.tax.materials,

@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 
-import { AiError, checkInput, isTask, runTask } from './tasks.ts';
+import { AiError, checkInput, crewOnly, isTask, runTask } from './tasks.ts';
 
 // POST /functions/v1/ai  { task, input }  ->  the task's checked answer, or { error: code }.
 // The Claude key lives only here (supabase/.env locally, project secrets when hosted).
@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: auth } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    // crew members may only read and check receipts; owners and managers may use every task
+    // crew members may only read and check receipts and use the chat; owners and managers may use every task
     const quota = await supabase.rpc('use_ai_quota_for', { p_task: body.task });
     if (quota.error) {
       if (quota.error.code === 'KL429') throw new AiError(429, 'limit');
@@ -55,8 +55,21 @@ Deno.serve(async (req) => {
       throw new AiError(401, 'signed_out');
     }
 
+    // the chat asks the database who is calling: crew only ever talk about their assigned jobs, with no money
+    let task = input;
+    let crew = false;
+    if (body.task === 'assistant') {
+      const scope = await supabase.rpc('ai_chat_scope');
+      if (scope.error) throw new AiError(403, 'owner_only');
+      const who = scope.data as { role?: string; jobIds?: string[] | null };
+      if (who.role === 'crew') {
+        crew = true;
+        task = crewOnly(input as Parameters<typeof crewOnly>[0], Array.isArray(who.jobIds) ? who.jobIds : []);
+      }
+    }
+
     const client = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 1 });
-    return reply(200, await runTask(client, body.task, input));
+    return reply(200, await runTask(client, body.task, task, crew));
   } catch (e) {
     if (e instanceof AiError) return reply(e.status, { error: e.code });
     if (e instanceof Anthropic.RateLimitError) return reply(429, { error: 'busy' });

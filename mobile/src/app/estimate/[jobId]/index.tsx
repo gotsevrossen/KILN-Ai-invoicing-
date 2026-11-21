@@ -11,11 +11,12 @@ import { FixList } from '@/components/fix-list';
 import { PriceItemPicker } from '@/components/price-item-picker';
 import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
-import { Button, ButtonRow, Card, Field, Hair, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
+import { Button, ButtonRow, Card, Chip, Field, Hair, Icon, ListCard, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
 import { aiReady } from '@/data/ai';
 import { hasJob } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { assistantCopy, fillIn } from '@/i18n/assistant';
 import { estimateReady } from '@/lib/billing';
 import { useFormat } from '@/lib/format';
 import { font } from '@/theme/tokens';
@@ -40,6 +41,9 @@ function EstimateBuilder() {
   const { unitLabel, fromItem, priceItem } = useLineMaker(customer.lang);
 
   const [sendOpen, setSendOpen] = useState(false);
+  // opened by the KILN chat: check the estimate, then send it
+  const chat = useLocalSearchParams<{ review?: string; send?: string }>();
+  const [reviewOpen, setReviewOpen] = useState(chat.review === '1');
   const [listOpen, setListOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customDesc, setCustomDesc] = useState('');
@@ -97,11 +101,20 @@ function EstimateBuilder() {
 
       <SendEstimateSheet open={sendOpen} onClose={() => setSendOpen(false)} jobId={job.id} customer={customer} />
       <OfflineStatus />
-      <Card style={{ paddingVertical: 6 }}>
+      {reviewOpen ? (
+        <Card tone="accent" style={{ gap: 10 }}>
+          <Row gap={8}><Icon name="zap" color={p.onAccent} /><T v="h3" color={p.onAccent} style={{ flex: 1 }}>{assistantCopy[lang].review}</T></Row>
+          {!ready ? <T v="small" color={p.onAccent}>{assistantCopy[lang].reviewFix}</T> : null}
+          <ButtonRow gap={10}>
+            <Button label={assistantCopy[lang].reviewEdit} variant="outline" onPress={() => setReviewOpen(false)} />
+            {chat.send === '1' ? <Button label={fillIn(assistantCopy[lang].reviewSend, { name: customer.firstName })} icon="send" variant="dark" flex disabled={!ready}
+              onPress={() => { setReviewOpen(false); if (state.mode === 'connected') setSendOpen(true); else void actions.sendEstimate(job.id).catch(() => {}); }} /> : null}
+          </ButtonRow>
+        </Card>
+      ) : null}
+      <ListCard>
         <ListRow icon="clipboard" iconTone={draft.scope?.jobTypeId ? 'soft' : 'accent'} title={t('estimate.details')} sub={detailsSub} onPress={openDetails} />
-        <Hair />
-        <ListRow icon="package" iconTone="soft" title={t('packages.title')} sub={t('packages.row')} onPress={() => router.push(`/estimate/${job.id}/packages`)} />
-      </Card>
+      </ListCard>
 
       <T v="eyebrow" style={{ marginTop: 8 }}>{t('estimate.fromList')}</T>
       {draft.lines.length === 0 ? (
@@ -121,29 +134,32 @@ function EstimateBuilder() {
       {aiReady(state.mode) ? (
         <MissedItems jobId={job.id} leaveOut={optionalFees} onAdd={(id) => actions.addLines(job.id, [fromItem(priceItem(id))])} />
       ) : null}
-      {optionalFees.length ? <Card style={{ gap: 10 }}>
+      {/* optional fees: one compact row of chips, not a stack of full-width buttons */}
+      {optionalFees.length ? <View style={{ gap: 8 }}>
         <T v="eyebrow">{t('review.optionalFees')}</T>
-        {optionalFees.map((id) =>
-          <Button key={id} label={t('review.addFee', { item: t(`items.${id}` as 'items.trip') })} variant="outline"
-            onPress={() => {
-              const existing = draft.lines.find((line) => line.priceItemId === id && line.excluded);
-              if (existing) actions.updateLine(job.id, existing.id, { excluded: false });
-              else actions.addLines(job.id, [fromItem(priceItem(id))]);
-            }} />)}
-      </Card> : null}
+        <Row gap={8} style={{ flexWrap: 'wrap' }}>
+          {optionalFees.map((id) =>
+            <Chip key={id} selected={false} label={`+ ${t(`items.${id}` as 'items.trip')}`}
+              onPress={() => {
+                const existing = draft.lines.find((line) => line.priceItemId === id && line.excluded);
+                if (existing) actions.updateLine(job.id, existing.id, { excluded: false });
+                else actions.addLines(job.id, [fromItem(priceItem(id))]);
+              }} />)}
+        </Row>
+      </View> : null}
       <ButtonRow>
         <Button label={t('estimate.addFromList')} icon="list" variant="soft" flex style={{ backgroundColor: p.card }} onPress={() => setListOpen(true)} />
         <Button label={t('estimate.addCustom')} icon="plus" variant="soft" flex style={{ backgroundColor: p.card }} onPress={() => setCustomOpen(true)} />
       </ButtonRow>
 
-      <Card style={{ gap: 4, marginTop: 8 }}>
+      <ListCard style={{ marginTop: 8 }}>
         <ListRow icon="file-text" title={t('estimate.customerSees')} sub={notes ? clip(notes) : t('estimate.customerSeesEmpty')}
           onPress={() => router.push(`/estimate/${job.id}/scope`)} />
         <Hair />
         <ListRow icon="percent" title={t('estimate.deposit')}
           sub={draft.depositOn ? `${f.pct(draft.depositBps)}% · ${f.money(totals.deposit)}` : t('estimate.depositOff')}
           onPress={() => router.push(`/estimate/${job.id}/deposit`)} />
-      </Card>
+      </ListCard>
 
       <Sheet open={listOpen} onClose={() => setListOpen(false)} title={t('estimate.addFromList')} scroll={false}>
         <PriceItemPicker items={state.priceList} onPick={(item) => {

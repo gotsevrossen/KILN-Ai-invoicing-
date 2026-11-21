@@ -6,7 +6,7 @@ import { useLang } from '@/i18n';
 import { font, radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
-import { Pill, Row, T } from './ui';
+import { IconButton, Pill, Row, T } from './ui';
 
 /** "45" or "$45.50" -> cents. Empty -> null (no price yet). Anything else -> undefined (invalid). */
 function parsePrice(text: string): number | null | undefined {
@@ -16,7 +16,11 @@ function parsePrice(text: string): number | null | undefined {
   return Math.round(Number(s) * 100);
 }
 
-function PriceRow({ item, onChange, first }: { item: PriceItem; onChange: (cents: number | null) => void; first: boolean }) {
+function PriceRow({ item, onChange, onRemove, first }: {
+  item: PriceItem; onChange: (cents: number | null) => void; first: boolean;
+  /** Edit mode: a remove button (left out for items that can't be removed). */
+  onRemove?: () => void;
+}) {
   const p = usePalette();
   const { t } = useLang();
   const [text, setText] = useState(item.unitCents === null ? '' : (item.unitCents / 100).toFixed(2));
@@ -47,6 +51,7 @@ function PriceRow({ item, onChange, first }: { item: PriceItem; onChange: (cents
             style={{ width: 92, minHeight: tap.min, borderRadius: radius.xs, backgroundColor: p.ground, textAlign: 'right', paddingHorizontal: 12, fontFamily: font.bold, fontSize: 17, color: p.ink }}
           />
           <T v="small" muted style={{ width: 52 }}>{unit ? `/ ${unit}` : ''}</T>
+          {onRemove ? <IconButton icon="trash-2" label={t('settings.priceRemove', { name: item.name })} onPress={onRemove} /> : null}
         </Row>
       </Row>
       {parsed === undefined ? <T v="small" color={p.danger}>{t('estimate.priceBad')}</T> : null}
@@ -55,11 +60,17 @@ function PriceRow({ item, onChange, first }: { item: PriceItem; onChange: (cents
 }
 
 /** Edit prices in place. Blank = no price yet; KILN flags it instead of guessing. */
-export function PriceListEditor({ items, onChange }: { items: PriceItem[]; onChange: (itemId: string, cents: number | null) => void }) {
+export function PriceListEditor({ items, onChange, onRemove, canRemove }: {
+  items: PriceItem[]; onChange: (itemId: string, cents: number | null) => void;
+  /** Edit mode only. */
+  onRemove?: (item: PriceItem) => void;
+  canRemove?: (item: PriceItem) => boolean;
+}) {
   return (
     <View style={{ gap: 10 }}>
       {items.map((item, i) => (
-        <PriceRow key={item.id} item={item} first={i === 0} onChange={(cents) => onChange(item.id, cents)} />
+        <PriceRow key={item.id} item={item} first={i === 0} onChange={(cents) => onChange(item.id, cents)}
+          onRemove={onRemove && (canRemove?.(item) ?? true) ? () => onRemove(item) : undefined} />
       ))}
     </View>
   );

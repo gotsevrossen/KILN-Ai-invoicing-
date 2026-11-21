@@ -15,7 +15,7 @@ export interface OnlineCheckout {
 
 export const invoicePaymentCopy = {
   en: {
-    wallet: 'Apple Pay / Google Pay', stripe: 'Stripe', alternative: 'Alternative', unavailable: 'Unavailable',
+    wallet: 'Apple Pay / Google Pay', stripe: 'Stripe', alternative: 'Alternate payment', unavailable: 'Unavailable', bankOrCard: 'Bank transfer or card',
     settingsTitle: 'Alternative payment methods', settingsHelp: 'Enable at least one method to send invoices. Instructions appear on the customer invoice.',
     instructions: 'Payment instructions (optional)', needsMethods: 'Set up at least one alternative payment method before sending an invoice.',
     openSettings: 'Open payment settings', askOwner: 'Ask the owner to set up an alternative payment method.',
@@ -29,7 +29,7 @@ export const invoicePaymentCopy = {
     card: 'Debit or credit card', bank: 'Bank transfer', pay: 'Pay with Stripe', preview: 'Preview only.',
   },
   es: {
-    wallet: 'Apple Pay / Google Pay', stripe: 'Stripe', alternative: 'Otra forma de pago', unavailable: 'No disponible',
+    wallet: 'Apple Pay / Google Pay', stripe: 'Stripe', alternative: 'Otra forma de pago', unavailable: 'No disponible', bankOrCard: 'Transferencia bancaria o tarjeta',
     settingsTitle: 'Formas de pago alternativas', settingsHelp: 'Activa al menos una forma para enviar facturas. Las instrucciones se muestran al cliente.',
     instructions: 'Instrucciones de pago (opcional)', needsMethods: 'Configura al menos una forma de pago alternativa antes de enviar una factura.',
     openSettings: 'Abrir ajustes de pago', askOwner: 'Pide al propietario que configure una forma de pago alternativa.',

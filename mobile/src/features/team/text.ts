@@ -19,7 +19,7 @@ const en = {
 
   // team tab
   teamTitle: 'Team', invite: 'Invite someone', needsApproval: 'Waiting for your approval', approve: 'Approve', decline: 'Decline',
-  people: 'People', lastActive: 'Last upload %{when}', noActivity: 'Nothing uploaded yet', openJobs: '%{count} open jobs',
+  people: 'People', openJobs: '%{count} open jobs',
   invites: 'Codes not used yet', cancelInvite: 'Cancel code', expires: 'Expires %{date}',
   workerCosts: 'Worker costs', savedOnDevice: 'Saved on this device.', noPeople: 'Nobody has joined yet. Invite your crew with a code.',
   review: 'To check', newItem: 'New price item from %{name}', noPrice: 'No price', looksGood: 'Looks good', editPrices: 'Edit prices',
@@ -90,7 +90,7 @@ const es: Record<keyof typeof en, string> = {
   checkAgain: 'Revisar de nuevo', cancelRequest: 'Cancelar mi solicitud',
 
   teamTitle: 'Equipo', invite: 'Invitar a alguien', needsApproval: 'Esperan tu aprobación', approve: 'Aprobar', decline: 'Rechazar',
-  people: 'Personas', lastActive: 'Último envío %{when}', noActivity: 'Todavía no ha subido nada', openJobs: '%{count} trabajos abiertos',
+  people: 'Personas', openJobs: '%{count} trabajos abiertos',
   invites: 'Códigos sin usar', cancelInvite: 'Cancelar código', expires: 'Vence %{date}',
   workerCosts: 'Costos de trabajadores', savedOnDevice: 'Guardado en este dispositivo.', noPeople: 'Nadie se ha unido todavía. Invita a tu equipo con un código.',
   review: 'Para revisar', newItem: 'Artículo nuevo de %{name}', noPrice: 'Sin precio', looksGood: 'Está bien', editPrices: 'Editar precios',

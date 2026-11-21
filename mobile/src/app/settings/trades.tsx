@@ -9,6 +9,7 @@ import { itemsOnlyIn, starterItemsToAdd, type TradeId } from '@/data/trades';
 import type { PriceItem } from '@/data/types';
 import { useLang } from '@/i18n';
 import { usePalette } from '@/theme/use-palette';
+import { laborRateCents } from '@/lib/billing';
 
 /**
  * Change the work you do, e.g. a handyman who switches to carpentry. Saves on each tap.
@@ -26,7 +27,7 @@ export default function TradeSettings() {
   const [confirm, setConfirm] = useState<{ id: TradeId; items: PriceItem[] } | null>(null);
 
   const turnOn = (id: TradeId) => {
-    const newItems = starterItemsToAdd(id, state.priceList, state.profile.pricing, state.profile.rateCents,
+    const newItems = starterItemsToAdd(id, state.priceList, state.profile.pricing, laborRateCents(state.priceList, state.profile.rateCents),
       (itemId) => t(`items.${itemId}` as 'items.trip'));
     actions.setTrades([...trades, id], newItems);
     setResult({ added: newItems.length });

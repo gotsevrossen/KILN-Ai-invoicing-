@@ -4,7 +4,7 @@ import * as Sharing from 'expo-sharing';
 import { useCallback, useMemo, useState } from 'react';
 import { Platform, View } from 'react-native';
 
-import { Button, Card, Field, Hair, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
+import { Button, Card, Hair, ListRow, Notice, PageHeader, Row, Screen, T } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import * as api from '@/data/job-cleanup';
 import { onLiveRefresh } from '@/data/live-events';
@@ -17,29 +17,26 @@ import { cleanupText, type CleanupText } from './text';
 
 const typeName = (c: CleanupText, type: api.SavedDocType) => (type === 'estimate' ? c.estimate : type === 'invoice' ? c.invoice : c.changeOrder);
 
-/** Documents kept from removed jobs, grouped by job, newest first. Owners and managers. */
-export function SavedDocumentsScreen() {
-  const { lang, t } = useLang();
+/** Documents kept from removed jobs, grouped by job, newest first. */
+export function ArchivedDocuments({ businessId, query, includeInvoices }: { businessId: string; query: string; includeInvoices: boolean }) {
+  const { lang } = useLang();
   const c = cleanupText(lang);
   const f = useFormat();
-  const auth = useAuth();
   const [docs, setDocs] = useState<api.SavedDocument[] | null>(null);
-  const [error, setError] = useState('');
-  const [query, setQuery] = useState('');
-  const businessId = auth.businessId;
-
-  const load = useCallback(() => {
-    if (!businessId) return () => {};
-    let live = true;
-    api.loadSavedDocuments(businessId).then((d) => { if (live) { setDocs(d); setError(''); } }, (e: unknown) => { if (live) setError(userError(t, e)); });
-    return () => { live = false; };
-  }, [businessId, t]);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useFocusEffect(useCallback(() => {
+    void attempt;
+    const load = () => {
+      let live = true;
+      void api.loadSavedDocuments(businessId, includeInvoices)
+        .then((d) => { if (live) { setDocs(d); setError(false); } }, () => { if (live) setError(true); });
+      return () => { live = false; };
+    };
     let stop = load();
-    // pull down (or a change elsewhere) reloads the list
     const unsubscribe = onLiveRefresh(() => { stop(); stop = load(); });
     return () => { stop(); unsubscribe(); };
-  }, [load]));
+  }, [businessId, includeInvoices, attempt]));
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -50,12 +47,11 @@ export function SavedDocumentsScreen() {
   }, [docs, query]);
 
   return (
-    <Screen header={<PageHeader title={c.savedTitle} back={() => router.back()} />}>
-      {!businessId ? <Notice text={c.failed} tone="soft" /> : null}
-      {error ? <><Notice text={c.failed} tone="danger" icon="alert-circle" /><Button label={c.retry} variant="outline" onPress={() => load()} /></> : null}
-      {!docs && !error && businessId ? <T muted>{c.loading}</T> : null}
-      {docs && docs.length ? <Field value={query} onChangeText={setQuery} placeholder={c.search} accessibilityLabel={c.search} returnKeyType="search" /> : null}
+    <>
+      {error ? <><Notice text={c.failed} tone="danger" icon="alert-circle" /><Button label={c.retry} variant="outline" onPress={() => setAttempt((value) => value + 1)} /></> : null}
+      {!docs && !error ? <T muted>{c.loading}</T> : null}
       {docs && !docs.length ? <Notice text={c.savedEmpty} tone="soft" icon="archive" /> : null}
+      {docs?.length && !groups.length ? <T muted>{c.noDocumentsMatch}</T> : null}
       {groups.map((group) => {
         const first = group[0];
         return <Card key={first.jobId} style={{ paddingVertical: 6, gap: 2 }}>
@@ -68,7 +64,7 @@ export function SavedDocumentsScreen() {
           </View>)}
         </Card>;
       })}
-    </Screen>
+    </>
   );
 }
 

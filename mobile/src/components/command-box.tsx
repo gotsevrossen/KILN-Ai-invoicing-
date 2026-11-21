@@ -6,6 +6,7 @@ import * as sample from '@/data/sample';
 import { customerOf, jobById, workLocked } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { hoursNotWork } from '@/lib/ai-check';
 import { useFormat } from '@/lib/format';
 import { lineTotal } from '@/lib/money';
 import { radius } from '@/theme/tokens';
@@ -56,7 +57,7 @@ export function CommandBox({ voiceOpen = false, onVoiceClose }: {
       items: state.priceList.slice(0, 400).map((i) => ({ id: i.id, name: i.name.slice(0, 160), unit: i.unit })),
     })
       // a price the owner said wins; otherwise their own price list price
-      .then((found) => setRows(found.map((c, key) => (c.type === 'work' ? { ...c, key, unitCents: c.unitCents ?? priceOf(c.itemId) } : { ...c, key }))),
+      .then((found) => setRows(hoursNotWork(found, state.priceList).map((c, key) => (c.type === 'work' ? { ...c, key, unitCents: c.unitCents ?? priceOf(c.itemId) } : { ...c, key }))),
         (e: unknown) => setError(aiErrorText(t, e)))
       .finally(() => setReading(false));
   };

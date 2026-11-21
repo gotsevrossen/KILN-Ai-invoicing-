@@ -77,7 +77,45 @@ export async function merchantWalletDomain(key: string, account: string, host: s
     (domain.apple_pay?.status !== 'active' || domain.google_pay?.status !== 'active')) {
     domain = await stripe<PaymentDomain>(key, { method: 'POST', path: `${path}/${domain.id}/validate`, account });
   }
-  return walletState(domain, host, live);
+  const state = walletState(domain, host, live);
+  // A registered domain is not enough: the wallet must also be switched on in the merchant's
+  // payment method settings, or Stripe never shows its button (Google Pay was off by default).
+  if (!state.enabled) return state;
+  const methods = await merchantWalletMethods(key, account, operation !== 'inspect');
+  return { ...state, applePay: state.applePay && methods.applePay, googlePay: state.googlePay && methods.googlePay };
+}
+
+interface MethodSetting { display_preference?: { overridable?: boolean | null; preference?: string; value?: string } }
+interface MethodConfiguration { id: string; active: boolean; is_default?: boolean; parent?: string | null; apple_pay?: MethodSetting; google_pay?: MethodSetting }
+
+/** Read-only: which wallets a configuration turns on. */
+export function walletsOn(config: Pick<MethodConfiguration, 'apple_pay' | 'google_pay'> | undefined) {
+  return { applePay: config?.apple_pay?.display_preference?.value === 'on', googlePay: config?.google_pay?.display_preference?.value === 'on' };
+}
+
+/**
+ * The merchant's default payment method settings. Stripe can list two defaults for a connected
+ * account (its own and the platform-managed copy); a wallet counts as on only when every default
+ * has it on. With `turnOn`, a wallet that is off is switched on wherever Stripe lets the platform.
+ */
+async function merchantWalletMethods(key: string, account: string, turnOn: boolean) {
+  const listed = await stripe<{ data: MethodConfiguration[] }>(key, { method: 'GET', path: '/v1/payment_method_configurations', account });
+  const defaults = listed.data.filter((c) => c.active && c.is_default);
+  if (!defaults.length) return { applePay: false, googlePay: false };
+  const result = { applePay: true, googlePay: true };
+  for (let config of defaults) {
+    const off = (['apple_pay', 'google_pay'] as const).filter((m) => config[m]?.display_preference?.value !== 'on'
+      && config[m]?.display_preference?.overridable !== false);
+    if (turnOn && off.length) {
+      const body: Record<string, unknown> = {};
+      for (const m of off) body[m] = { display_preference: { preference: 'on' } };
+      config = await stripe<MethodConfiguration>(key, { method: 'POST', path: `/v1/payment_method_configurations/${config.id}`, account, body });
+    }
+    const on = walletsOn(config);
+    result.applePay &&= on.applePay;
+    result.googlePay &&= on.googlePay;
+  }
+  return result;
 }
 
 export async function walletAvailable(key: string, account: string, wallet: WalletKind | undefined) {

@@ -117,6 +117,13 @@ function ScopedOutbox({ user, business, children }: { user: string; business: st
   return <Context.Provider value={{ save, pending, error, retry: () => void flush() }}>{children}</Context.Provider>;
 }
 
+/** The crew save queue, or null outside the crew screens (the shared KILN chat uses this). */
+export function useCrewOutboxIfCrew() {
+  return useContext(Context);
+}
+
+export type CrewCommand = Command;
+
 export function useCrewOutbox() {
   const outbox = useContext(Context);
   if (!outbox) throw new Error('Crew outbox provider is missing');

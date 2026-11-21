@@ -6,7 +6,7 @@ import { savedTotals } from '@/lib/saved-doc';
 
 export interface ExportInvoice {
   number: string; customer: string; job: string; issuedOn: string | null; dueOn: string | null;
-  status: string; total: number; paid: number;
+  status: string; total: number; paid: number; address?: string | null;
 }
 interface ExportPayment { number: string | null; customer: string; job: string; jobId: string | null; date: string | null; amount: number; method: string }
 type ArchivedInvoice = SavedSnapshot & { archivedJobId: string };
@@ -30,7 +30,7 @@ export async function loadInvoiceRegister(businessId: string) {
     const totals = savedTotals(data);
     const issuedOn = data.document.issued_on ?? data.document.sent_at?.slice(0, 10) ?? null;
     const dueOn = issuedOn && data.document.due_days != null ? addDays(issuedOn, data.document.due_days) : null;
-    return { record_id, archived: true, data: { number: data.document.number ?? '', customer: data.customer.name, job: data.job.title,
+    return { record_id, archived: true, data: { number: data.document.number ?? '', customer: data.customer.name, job: data.job.title, address: data.job.address,
       issuedOn, dueOn, status: totals.due ? 'issued' : 'paid', total: totals.total, paid: totals.paid } };
   })].sort((a, b) => (b.data.issuedOn ?? '').localeCompare(a.data.issuedOn ?? ''));
 }

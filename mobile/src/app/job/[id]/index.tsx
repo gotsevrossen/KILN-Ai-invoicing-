@@ -13,12 +13,15 @@ import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { Stepper } from '@/components/stepper';
 import { WorkSheet } from '@/components/work-sheet';
-import { Button, Card, Field, Hair, Icon, IconButton, ListRow, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
+import { canReadNoteForWork, NoteWorkSheet } from '@/components/note-work';
+import { Button, Card, Field, Hair, Icon, IconButton, ListCard, ListRow, Notice, PageHeader, Row, Screen, T, type IconName } from '@/components/ui';
 import { aiReady, draftChange, type ChangeDraft } from '@/data/ai';
 import * as sample from '@/data/sample';
 import { canDeleteJob, changeOrdersForJob, customerOf, hasJob, hoursFor, invoiceForJob, jobById, jobStage, partsCost, type Stage, workTotal } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { assistantCopy } from '@/i18n/assistant';
+import { FlameIcon } from '@/components/flame-icon';
 import { priceChange } from '@/lib/ai-check';
 import { callNumber, dialable, textNumber } from '@/lib/contact';
 import { useFormat } from '@/lib/format';
@@ -32,7 +35,7 @@ function parseHours(text: string): number | null {
 
 function JobDetail() {
   const p = usePalette();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const f = useFormat();
   const { state, actions } = useStore();
   useEffect(() => { const timer = setInterval(() => { void actions.refreshDocuments().catch(() => {}); }, 15000); return () => clearInterval(timer); }, [actions]);
@@ -57,6 +60,7 @@ function JobDetail() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [noteText, setNoteText] = useState('');
+  const [noteWork, setNoteWork] = useState<string | null>(null);
   const [photoAdded, setPhotoAdded] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
   const [workOpen, setWorkOpen] = useState(false);
@@ -186,12 +190,16 @@ function JobDetail() {
             title={job.title}
             back={() => router.back()}
             right={
-              dialable(customer.phone) ? (
+              <>
+                {/* the KILN chat, already knowing this job */}
+                {aiReady(state.mode) ? <IconButton icon="zap" glyph={(color) => <FlameIcon color={color} />} label={assistantCopy[lang].open} onPress={() => router.push(`/assistant?job=${job.id}`)} /> : null}
+                {dialable(customer.phone) ? (
                 <>
                   <IconButton icon="phone" label={t('job.call', { name: customer.firstName })} onPress={() => callNumber(customer.phone)} />
                   <IconButton icon="message-square" label={t('job.text', { name: customer.firstName })} onPress={() => textNumber(customer.phone)} />
                 </>
-              ) : undefined
+                ) : null}
+              </>
             }
           />
           <Stepper stage={stage} onStep={onStep} />
@@ -200,7 +208,7 @@ function JobDetail() {
       footer={next.action ? <Button label={next.action.label} icon={next.action.icon} big onPress={next.action.onPress} /> : undefined}>
       <OfflineStatus />
       {state.estimates[job.id]?.signed ? <JobPayments jobId={job.id} /> : null}
-      <Card style={{ paddingVertical: 6, gap: 0 }}>
+      <ListCard>
         <ListRow
           icon="user"
           title={customer.name}
@@ -215,7 +223,7 @@ function JobDetail() {
             </View>
           </Row>
         ) : null}
-      </Card>
+      </ListCard>
       <JobTeam jobId={job.id} />
 
       <Card tone={stage === 'paid' ? 'inverse' : 'plain'} style={{ gap: 6 }}>
@@ -236,30 +244,23 @@ function JobDetail() {
           </> : null}
           <Button label={t('flow.photo')} icon="camera" variant="soft" stacked style={{ backgroundColor: p.card, flexBasis: '30%' }} onPress={() => setPhotoOpen(true)} />
           <Button label={t('flow.note')} icon="edit-3" variant="soft" stacked style={{ backgroundColor: p.card, flexBasis: '30%' }} onPress={() => setNoteOpen(true)} />
-          {stage === 'work' || detail === 'invoiceDraft' ? (
+          {/* change orders belong to the Work step only, never the invoice */}
+          {stage === 'work' ? (
             <Button label={t('job.changeOrder')} icon="plus" variant="soft" stacked style={{ backgroundColor: p.card, flexBasis: '30%' }}
               onPress={() => pendingChange ? router.push(`/change-order/${pendingChange.id}`) : setChangeOpen(true)} />
           ) : null}
         </Row>
       ) : null}
       {photoAdded ? <Notice text={t('flow.photoAdded')} icon="camera" /> : null}
-      {!canCapture && detail === 'invoiceDraft' ? <Button label={t('review.newChange')} variant="outline" icon="plus"
-        onPress={() => pendingChange ? router.push(`/change-order/${pendingChange.id}`) : setChangeOpen(true)} /> : null}
 
-      <Card style={{ gap: 4 }}>
+      <ListCard>
         <ListRow icon="folder" iconTone={pendingChange ? 'flag' : 'soft'} title={t('job.documents')} sub={docsSub}
           onPress={() => router.push(`/job/${job.id}/documents`)} />
         <Hair />
         <ListRow icon="dollar-sign" title={t('job.costs')} sub={costSub} onPress={() => router.push(`/job/${job.id}/costs`)} />
-        {canLogWork && !state.estimates[job.id]?.signed ? <>
-          <Hair />
-          <ListRow icon="package" title={t('packages.title')} onPress={() => router.push(`/job/${job.id}/packages`)} />
-        </> : null}
         <Hair />
         <ListRow icon="clipboard" title={t('improvements.tradeTools')} onPress={() => router.push(`/job/${job.id}/trade-tools`)} />
-        <Hair />
-        <ListRow icon="bar-chart-2" title={t('improvements.profitability')} onPress={() => router.push(`/job/${job.id}/profitability`)} />
-      </Card>
+      </ListCard>
 
       {activity.length === 0 ? <T v="body" muted>{t('job.noTimeline')}</T> : <ActivityDays items={activity.slice(0, 3)} />}
       {activity.length > 3 ? (
@@ -324,6 +325,8 @@ function JobDetail() {
         if (actions.addPhotos(job.id, photos)) setPhotoAdded(true);
       }} />
 
+      {/* a fresh review for each note */}
+      <NoteWorkSheet key={noteWork ?? ''} jobId={job.id} text={noteWork} onClose={() => setNoteWork(null)} />
       <WorkSheet jobId={job.id} open={workOpen} onClose={() => setWorkOpen(false)} onEstimate={!!draft?.signed} />
 
       <Sheet open={hoursOpen} onClose={() => setHoursOpen(false)} title={t('logHours.title')}>
@@ -352,6 +355,8 @@ function JobDetail() {
           disabled={!noteText.trim()}
           onPress={() => {
             actions.addCapture(job.id, 'note', noteText.trim());
+            // the note may describe work done: KILN offers to add it, charged or just listed
+            if (canReadNoteForWork(state.mode, job.id)) setTimeout(() => setNoteWork(noteText.trim()), 350);
             setNoteText('');
             setNoteOpen(false);
           }}

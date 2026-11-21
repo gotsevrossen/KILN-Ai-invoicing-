@@ -2,7 +2,7 @@ import { DeliveryStatus } from '@/components/delivery-status';
 import { OfflineStatus } from '@/components/offline-status';
 import { InvoiceSignature } from '@/components/invoice-payment-choices';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { FixList } from '@/components/fix-list';
 import { parseDollars } from '@/components/estimate-parts';
@@ -12,11 +12,12 @@ import { useInvoice } from '@/components/invoice-parts';
 import { RecordGate } from '@/components/record-gate';
 import { Sheet } from '@/components/sheet';
 import { SendInvoiceSheet } from '@/components/send-invoice';
-import { Button, ButtonRow, Card, Field, Hair, Icon, IconButton, LineRow, ListRow, Notice, PageHeader, Pill, Row, Screen, T } from '@/components/ui';
+import { Button, ButtonRow, Card, Field, Hair, Icon, IconButton, LineRow, ListCard, ListRow, Notice, PageHeader, Pill, Row, Screen, T } from '@/components/ui';
 import { billedPrice, hasInvoice, hoursFor, invoiceSources, invoiceSummary, invoiceTax, invoiceTotals, paidOnline, receiptItemById, suggestionOpen, taxScope } from '@/data/selectors';
 import { useStore } from '@/data/store';
 import { useInvoiceAcceptance } from '@/data/use-invoice-acceptance';
 import { useLang } from '@/i18n';
+import { assistantCopy, fillIn } from '@/i18n/assistant';
 import { useFormat } from '@/lib/format';
 import { alternativeMethods, invoicePaymentCopy, type AlternativeMethod } from '@/lib/invoice-payment';
 import { localDate } from '@/lib/invoice-aging';
@@ -38,9 +39,13 @@ function InvoiceDraft() {
   const p = usePalette();
   const { t, lang } = useLang();
   const c = invoicePaymentCopy[lang];
+  const ac = assistantCopy[lang];
   const f = useFormat();
   const { state, actions } = useStore();
   const { invoice, job, customer, sent, paid, billing, agreed, lines, fixes, mode, dueDays, dueDate } = useInvoice();
+  // opened by the KILN chat: review it first, then send; or record a payment / send a reminder
+  const chat = useLocalSearchParams<{ review?: string; send?: string; cash?: string; remind?: string }>();
+  const [reviewOpen, setReviewOpen] = useState(chat.review === '1');
   const sources = invoiceSources(state, invoice);
   const [sendOpen, setSendOpen] = useState(false);
   const [reminder, setReminder] = useState(false);
@@ -78,6 +83,24 @@ function InvoiceDraft() {
   }, [waiting, refreshPay, invoice.id, setCheckout]));
 
   const totals = invoiceTotals(state, invoice);
+  // from the chat: "Smith paid $450 cash" opens the payment sheet filled in; the owner confirms it there
+  const chatCash = useRef(false);
+  useEffect(() => {
+    if (chatCash.current || !sent || paid) return;
+    const cents = Number(chat.cash);
+    const wantsCash = !!chat.cash && Number.isSafeInteger(cents) && cents > 0;
+    if (!wantsCash && chat.remind !== '1') return;
+    chatCash.current = true;
+    // once the page has finished sliding in, so the sheet opens over it. Not cancelled on re-render:
+    // the ref above makes this run once, and the page re-renders often while it loads.
+    setTimeout(() => {
+      if (wantsCash) {
+        setMethod(receivedMethods.includes('cash') ? 'cash' : receivedMethods.length === 1 ? receivedMethods[0] : null);
+        setReceived((Math.min(cents, totals.due) / 100).toFixed(2));
+        setCashFailed(false); setCashOpen(true);
+      } else { setReminder(true); setSendOpen(true); }
+    }, 350);
+  }, [chat.cash, chat.remind, sent, paid, receivedMethods, totals.due]);
   const receivedCents = parseDollars(received);
   const checkoutActive = waiting && checkout?.id === invoice.id && checkout.active;
   const labor = lines.filter((l) => l.kind !== 'material');
@@ -138,18 +161,29 @@ function InvoiceDraft() {
         )
       }>
       <OfflineStatus />
+      {reviewOpen && !sent ? (
+        <Card tone="accent" style={{ gap: 10 }}>
+          <Row gap={8}><Icon name="zap" color={p.onAccent} /><T v="h3" color={p.onAccent} style={{ flex: 1 }}>{ac.review}</T></Row>
+          {fixes.length ? <T v="small" color={p.onAccent}>{ac.reviewFix}</T> : null}
+          <ButtonRow gap={10}>
+            <Button label={ac.reviewEdit} variant="outline" onPress={() => setReviewOpen(false)} />
+            {chat.send === '1' ? <Button label={fillIn(ac.reviewSend, { name: customer.firstName })} icon="send" variant="dark" flex disabled={fixes.length > 0}
+              onPress={() => { setReviewOpen(false); setReminder(false); setSendOpen(true); }} /> : null}
+          </ButtonRow>
+        </Card>
+      ) : null}
       {sent ? <DeliveryStatus invoiceId={invoice.id} refresh={sendOpen} /> : null}
-      {online.refunded > 0 ? <Notice tone="flag" text={es ? `Reembolso de Stripe: ${f.money(online.refunded)}` : `Stripe refund: ${f.money(online.refunded)}`} /> : null}
-      {online.chargedBack > 0 ? <Notice tone="flag" text={es ? `Contracargo de Stripe: ${f.money(online.chargedBack)}` : `Stripe chargeback: ${f.money(online.chargedBack)}`} /> : null}
-      {online.disputeOpen ? <Notice tone="flag" text={es ? 'Hay una disputa abierta en Stripe.' : 'This payment has an open dispute in Stripe.'} /> : null}
+      {/* Stripe problems in one notice instead of up to three */}
+      {online.refunded > 0 || online.chargedBack > 0 || online.disputeOpen ? <Notice tone="flag" text={[
+        online.refunded > 0 ? (es ? `Reembolso de Stripe: ${f.money(online.refunded)}` : `Stripe refund: ${f.money(online.refunded)}`) : null,
+        online.chargedBack > 0 ? (es ? `Contracargo de Stripe: ${f.money(online.chargedBack)}` : `Stripe chargeback: ${f.money(online.chargedBack)}`) : null,
+        online.disputeOpen ? (es ? 'Hay una disputa abierta en Stripe.' : 'This payment has an open dispute in Stripe.') : null,
+      ].filter(Boolean).join(' ')} /> : null}
       {waiting && !checkoutActive && !online.pending && totals.due > 0 ? <Button label={es ? 'Enviar recordatorio' : 'Send payment reminder'} icon="mail" variant="outline"
         onPress={() => { setReminder(true); setSendOpen(true); }} /> : null}
       {checkoutActive ? <Button label={es ? 'Cancelar intento de pago en línea' : 'Cancel online checkout'} variant="outline"
         disabled={!checkout?.canCancel} onPress={() => { setCancelFailed(false); setCancelOpen(true); }} /> : null}
       {acceptance ? <InvoiceSignature value={acceptance} lang={lang} /> : null}
-      <T v="small" muted>
-        {t('invoice.builtFrom', { photos: sources.photos, voice: sources.voice, receipts: sources.receipts, hours: f.qty(hoursFor(state, job.id)) })}
-      </T>
 
       <FixList items={fixes} />
 
@@ -194,7 +228,7 @@ function InvoiceDraft() {
         </Row>
       </Card>
 
-      <Card style={{ gap: 4 }}>
+      <ListCard>
         {/* billing choices only matter before sending, and only with an agreed price */}
         {!sent && agreed ? (
           <>
@@ -203,13 +237,14 @@ function InvoiceDraft() {
             <Hair />
           </>
         ) : null}
-        <ListRow icon="camera" title={t('invoice.proof')} sub={summary ? clip(summary) : t('invoice.noSummary')}
+        {/* what KILN built it from lives here, not as its own line on the page */}
+        <ListRow icon="camera" title={t('invoice.proof')} sub={`${summary ? clip(summary) : t('invoice.noSummary')} · ${t('invoice.builtFrom', { photos: sources.photos, voice: sources.voice, receipts: sources.receipts, hours: f.qty(hoursFor(state, job.id)) })}`}
           onPress={() => router.push(`/invoice/${invoice.id}/proof`)} />
         <Hair />
         <ListRow icon="settings" title={t('invoice.options')}
           sub={`${mode === 'items' ? t('invoice.itemized') : t('invoice.oneTotal')} · ${dueText} (${f.date(dueDate)})`}
           onPress={() => router.push(`/invoice/${invoice.id}/options`)} />
-      </Card>
+      </ListCard>
 
       <Sheet open={cashOpen} onClose={() => { if (!cashBusy) setCashOpen(false); }} title={lang === 'es' ? 'Confirmar pago recibido' : 'Confirm payment received'}>
         <T>{es ? `Saldo pendiente ${f.money(totals.due)}.` : `Remaining balance ${f.money(totals.due)}.`}</T>

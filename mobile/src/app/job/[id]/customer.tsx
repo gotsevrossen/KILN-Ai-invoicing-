@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { RecordGate } from '@/components/record-gate';
-import { Button, ButtonRow, Card, Field, Hair, Icon, ListRow, PageHeader, Screen, T } from '@/components/ui';
+import { Button, ButtonRow, Card, Field, Hair, Icon, ListCard, ListRow, PageHeader, Screen, T } from '@/components/ui';
 import * as sample from '@/data/sample';
 import { customerOf, hasJob, jobById } from '@/data/selectors';
 import { useStore } from '@/data/store';
@@ -59,14 +59,14 @@ function JobCustomer() {
       {others.length ? (
         <>
           <T v="eyebrow" style={{ marginTop: 8 }}>{t('job.otherJobs', { name: customer.firstName })}</T>
-          <Card style={{ gap: 4 }}>
+          <ListCard>
             {others.map((j, i) => (
               <View key={j.id}>
                 {i ? <Hair /> : null}
                 <ListRow icon="briefcase" title={j.title} sub={j.address} onPress={() => router.push(`/job/${j.id}`)} />
               </View>
             ))}
-          </Card>
+          </ListCard>
         </>
       ) : null}
     </Screen>

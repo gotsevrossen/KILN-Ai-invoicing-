@@ -8,6 +8,7 @@ import { Button } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import { useStore } from '@/data/store';
 import { useLang } from '@/i18n';
+import { assistantCopy } from '@/i18n/assistant';
 import { userError } from '@/lib/user-errors';
 import { font } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -40,7 +41,7 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{ headerShown: false }}
-      tabBar={(props) => <FloatingTabBar {...props} icons={team.showTab ? { index: 'home', jobs: 'briefcase', team: 'users' } : { index: 'home', jobs: 'briefcase' }} capture={{ route: 'capture', label: t('tabs.capture') }} />}>
+      tabBar={(props) => <FloatingTabBar {...props} icons={team.showTab ? { index: 'home', jobs: 'briefcase', team: 'users' } : { index: 'home', jobs: 'briefcase' }} capture={{ route: 'capture', label: t('tabs.capture'), path: '/capture' }} assistant={{ label: assistantCopy[lang].open, href: '/assistant' }} />}>
       <Tabs.Screen name="index" options={{ title: t('tabs.home') }} />
       <Tabs.Screen name="jobs" options={{ title: t('tabs.jobs') }} />
       <Tabs.Screen name="team" options={{ title: teamText(lang).teamTitle }} />

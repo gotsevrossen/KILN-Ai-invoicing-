@@ -4,6 +4,7 @@ import { Pressable, View } from 'react-native';
 import * as sample from '@/data/sample';
 import { useStore } from '@/data/store';
 import { useLang, type Lang } from '@/i18n';
+import { laborRateCents } from '@/lib/billing';
 import { validEmailAddress } from '@/lib/email-address';
 import { radius, tap } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -17,22 +18,29 @@ function parseDollars(text: string): number | null {
 }
 
 /** New job: customer and address, what the job is, how you charge. Optional extras stay folded away. */
-export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }) {
+export function NewJobForm({ onCreated, initial }: {
+  onCreated: (jobId: string) => void;
+  /** Filled in by the KILN chat ("new job for Ana Lopez at 12 Oak St"); the owner checks and taps Create. */
+  initial?: { customer?: string; address?: string; title?: string; pricing?: 'hourly' | 'flat' };
+}) {
   const p = usePalette();
   const { t, lang: appLang } = useLang();
   const { state, actions } = useStore();
-  const DEFAULT_RATE = state.profile.rateCents;
+  // the Labor price on the price list (the setup rate until that has a price)
+  const DEFAULT_RATE = laborRateCents(state.priceList, state.profile.rateCents);
 
-  const [mode, setMode] = useState<'existing' | 'new'>('existing');
-  const [customerId, setCustomerId] = useState<string | null>(null);
-  const [name, setName] = useState('');
+  // a customer the chat named who already exists is picked; anyone else is a new customer
+  const known = initial?.customer ? sample.customers.find((x) => x.name.trim().toLowerCase() === initial.customer!.trim().toLowerCase()) : undefined;
+  const [mode, setMode] = useState<'existing' | 'new'>(initial?.customer && !known ? 'new' : 'existing');
+  const [customerId, setCustomerId] = useState<string | null>(known?.id ?? null);
+  const [name, setName] = useState(known ? '' : initial?.customer ?? '');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [lang, setLang] = useState<Lang>('en');
-  const [title, setTitle] = useState('');
-  const [address, setAddress] = useState('');
-  const [pricing, setPricing] = useState<'flat' | 'hourly'>(state.profile.pricing);
-  const [rateText, setRateText] = useState(String(DEFAULT_RATE / 100));
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [address, setAddress] = useState(initial?.address ?? '');
+  const [pricing, setPricing] = useState<'flat' | 'hourly'>(initial?.pricing ?? state.profile.pricing);
+  const [rateText, setRateText] = useState(DEFAULT_RATE === null ? '' : (DEFAULT_RATE / 100).toFixed(2));
   const [more, setMore] = useState(false);
   const [workOrder, setWorkOrder] = useState('');
   const [note, setNote] = useState('');
@@ -67,7 +75,7 @@ export function NewJobForm({ onCreated }: { onCreated: (jobId: string) => void }
       title,
       address,
       pricing,
-      rateCents: pricing === 'hourly' ? (rateCents ?? DEFAULT_RATE) : undefined,
+      rateCents: pricing === 'hourly' ? (rateCents ?? DEFAULT_RATE ?? undefined) : undefined,
       workOrder,
       privateNote: note,
       customer: mode === 'existing' && customerId ? { id: customerId } : { name, phone, email, lang },

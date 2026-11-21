@@ -254,12 +254,12 @@ export default function SignIn() {
       )}
       {/* reset needs a server to email the code; the sign-in screen only shows when one is set up, but check anyway */}
       {mode === 'in' && auth.configured ? (
-        <Button label={t('auth.forgot')} variant="ghost" style={{ alignSelf: 'flex-start' }} onPress={() => switchMode('reset')} />
+        <Button label={t('auth.forgot')} icon="key" variant="outline" onPress={() => switchMode('reset')} />
       ) : null}
       {error ? <Notice text={error} tone="danger" icon="alert-circle" /> : null}
       {/* invited workers make their own account here, then enter the code on the next page */}
       {join ? <Notice text={teamText(lang).signInFirst} tone="soft" icon="users" />
-        : <Button label={teamText(lang).invited} icon="users" variant="ghost" style={{ alignSelf: 'flex-start' }} onPress={() => router.setParams({ join: '1' })} />}
+        : <Button label={teamText(lang).invited} icon="users" variant="outline" onPress={() => router.setParams({ join: '1' })} />}
     </Screen>
   );
 }
