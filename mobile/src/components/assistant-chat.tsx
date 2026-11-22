@@ -2,8 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { router, type Href } from 'expo-router';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
-import Animated, { KeyboardState, useAnimatedKeyboard, useAnimatedReaction, useAnimatedStyle } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/data/auth';
@@ -77,16 +76,13 @@ export function AssistantChat({ focusJobId: openedFrom, crew = false }: {
   // to add later; this one is already installed and works in Expo Go.)
   const keyboard = useAnimatedKeyboard();
   const bottomEdge = Math.max(insets.bottom, space.sm);
-  // The chat slides up with the keyboard instead of shrinking: a slide is drawn on the same frame,
-  // while shrinking makes every message re-measure each frame, which is what made the box lag behind.
-  const keyboardLift = useAnimatedStyle(() => ({ transform: [{ translateY: -Math.max(keyboard.height.get() - bottomEdge + space.sm, 0) }] }));
-  // Sliding up hides the top of the chat under the header, so once the keyboard is fully open the
-  // chat gets that much room at the top, to scroll back to its first message.
-  const [topRoom, setTopRoom] = useState(0);
-  useAnimatedReaction(
-    () => (keyboard.state.get() === KeyboardState.OPEN ? Math.max(keyboard.height.get() - bottomEdge + space.sm, 0) : 0),
-    (now, before) => { if (now !== before) scheduleOnRN(setTopRoom, Math.round(now)); },
-  );
+  // The text box slides up with the keyboard (drawn on the same frame, so it never lags behind),
+  // and the message list gets shorter by the same amount, so its messages stay where they are:
+  // a short chat keeps its first message at the top, a long one keeps its newest above the box.
+  const barLift = useAnimatedStyle(() => ({ transform: [{ translateY: -Math.max(keyboard.height.get() - bottomEdge + space.sm, 0) }] }));
+  const listRoom = useAnimatedStyle(() => ({ paddingBottom: Math.max(keyboard.height.get() - bottomEdge + space.sm, 0) }));
+  // reading the newest messages: stay on them while the list gets shorter or taller
+  const atBottom = useRef(true);
   const ready = aiReady(state.mode);
   const allowed = crew || can(auth.role, 'useAi');
   // crew: their assigned jobs and the price items they may use, from the crew server functions
@@ -262,14 +258,15 @@ export function AssistantChat({ focusJobId: openedFrom, crew = false }: {
           ) : undefined}
           right={messages.length ? <IconButton icon="edit" label={c.clear} onPress={() => setMessages(() => [])} /> : undefined} />
       </SafeAreaView>
-      {/* moves with the keyboard frame by frame, so the text box rides up with it instead of catching up after;
-          the clip keeps the raised chat from drawing over the header */}
-      <View style={{ flex: 1, overflow: 'hidden' }}>
-      <Animated.View style={[{ flex: 1 }, keyboardLift]}>
-        <ScrollView ref={scroll} contentContainerStyle={{ padding: space.lg, paddingTop: space.lg + topRoom, gap: 12 }}
-          keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive"
-          // the room added at the top doesn't move what's on screen
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}>
+      <View style={{ flex: 1 }}>
+      <Animated.View style={[{ flex: 1 }, listRoom]}>
+        <ScrollView ref={scroll} contentContainerStyle={{ padding: space.lg, gap: 12 }}
+          keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" scrollEventThrottle={64}
+          onScroll={(e) => {
+            const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+            atBottom.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 40;
+          }}
+          onLayout={() => { if (atBottom.current) scroll.current?.scrollToEnd({ animated: false }); }}>
           <Bubble kiln text={focusJobId && jobTitle(focusJobId) ? fillIn(c.helloJob, { job: jobTitle(focusJobId) }) : c.hello} />
           {messages.map((m) => (
             <View key={m.id} style={{ gap: 8 }}>
@@ -327,11 +324,12 @@ export function AssistantChat({ focusJobId: openedFrom, crew = false }: {
           ))}
           {thinking ? <Bubble kiln text={c.thinking} /> : null}
         </ScrollView>
+      </Animated.View>
 
         {/* the input bar, like a messaging app: type, or tap the mic inside the box and talk */}
         {blocked ? <View style={{ padding: space.lg, paddingBottom: Math.max(insets.bottom, space.md) }}><Notice text={blocked} icon="info" tone="soft" /></View> : (
           // a rounded text box across the screen, with the mic and Send inside it on the right
-          <View style={{ paddingHorizontal: space.sm, paddingTop: 6, paddingBottom: Math.max(insets.bottom, space.sm), gap: 6, backgroundColor: p.ground }}>
+          <Animated.View style={[{ paddingHorizontal: space.sm, paddingTop: 6, paddingBottom: Math.max(insets.bottom, space.sm), gap: 6, backgroundColor: p.ground }, barLift]}>
             {dictation.error ? <T v="small" color={p.danger} style={{ paddingHorizontal: 12 }}>{dictation.error}</T> : null}
             {/* one line: 48 buttons + 2 × 4 padding + 2 × 2 border = 60, so a radius of 30 makes the ends fully round */}
             <Row gap={4} style={{ alignItems: 'flex-end', backgroundColor: p.card, borderRadius: 30, padding: 4, paddingLeft: 18,
@@ -356,9 +354,8 @@ export function AssistantChat({ focusJobId: openedFrom, crew = false }: {
                 <Icon name="arrow-up" size={22} color={!text.trim() || thinking ? p.muted : p.onInverse} />
               </Pressable>
             </Row>
-          </View>
+          </Animated.View>
         )}
-      </Animated.View>
       </View>
 
       {crew ? (
