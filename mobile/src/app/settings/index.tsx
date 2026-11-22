@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { AppLockSetting } from '@/components/app-lock';
@@ -130,6 +130,12 @@ export default function Settings() {
           options={[{ key: 'light', label: t('settings.themeLight') }, { key: 'dark', label: t('settings.themeDark') }, { key: 'system', label: t('settings.themeSystem') }]} />
         <AppLockSetting />
       </Card>
+
+      <ListCard>
+        <ListRow icon="shield" title={t('legal.privacy')} chevron onPress={() => router.push('/privacy' as Href)} />
+        <ListRow icon="file-text" title={t('legal.terms')} chevron onPress={() => router.push('/terms' as Href)} />
+        {auth.configured && auth.session ? <ListRow icon="trash-2" title={t('deleteAccount.title')} chevron onPress={() => router.push('/delete-account' as Href)} /> : null}
+      </ListCard>
 
       <Card style={{ gap: 8 }}>
         {auth.configured ? (

@@ -278,6 +278,11 @@ export default function SignIn() {
       {/* invited workers make their own account here, then enter the code on the next page */}
       {join ? <Notice text={teamText(lang).signInFirst} tone="soft" icon="users" />
         : <Button label={teamText(lang).invited} icon="users" variant="outline" onPress={() => router.setParams({ join: '1' })} />}
+      <T v="small" muted style={{ textAlign: 'center' }}>{t('legal.agree')}</T>
+      <Row gap={8} style={{ justifyContent: 'center' }}>
+        <Button label={t('legal.terms')} variant="ghost" onPress={() => router.push('/terms' as Href)} />
+        <Button label={t('legal.privacy')} variant="ghost" onPress={() => router.push('/privacy' as Href)} />
+      </Row>
     </Screen>
   );
 }

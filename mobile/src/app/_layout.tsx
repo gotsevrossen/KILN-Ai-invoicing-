@@ -14,6 +14,7 @@ import { Button, Notice, Screen, T } from '@/components/ui';
 import { userError } from '@/lib/user-errors';
 import { AppLock } from '@/components/app-lock';
 import { ErrorScreen } from '@/components/error-screen';
+import { AccountDeletionProvider, useAccountDeletion } from '@/data/account-deletion';
 import { AuthProvider, useAuth } from '@/data/auth';
 import { LiveUpdates } from '@/data/live-updates';
 import { StoreProvider } from '@/data/store';
@@ -50,7 +51,9 @@ export default function RootLayout() {
             <AuthProvider>
               <LiveUpdates />
               <AppLock>
-                <Screens />
+                <AccountDeletionProvider>
+                  <Screens />
+                </AccountDeletionProvider>
               </AppLock>
             </AuthProvider>
           </StoreProvider>
@@ -64,7 +67,9 @@ export default function RootLayout() {
 function AccessGate({ route, children }: { route: string; children: ReactNode }) {
   const auth = useAuth();
   const { t } = useLang();
-  const open = ['sign-in', 'reset-password', 'stripe-done', 'waiting', 'join/index', '+not-found'].includes(route)
+  const deletion = useAccountDeletion();
+  // the policies and the account deletion page are public web pages too (store listings link to them)
+  const open = ['sign-in', 'reset-password', 'stripe-done', 'waiting', 'join/index', '+not-found', 'privacy', 'terms', 'delete-account'].includes(route)
     || ['pay/', 'quote/', 'collect/', 'change/', 'join/'].some((prefix) => route.startsWith(prefix));
   if (open) return children;
   if (auth.configured) {
@@ -74,6 +79,8 @@ function AccessGate({ route, children }: { route: string; children: ReactNode })
       <Button label={t('auth.retry')} onPress={auth.retryLoad} />
     </Screen>;
     if (!auth.session) return <Redirect href="/sign-in" />;
+    // signed back in during the 30 days before deletion: keep the account, or leave
+    if (deletion.due) return <Redirect href="/delete-account" />;
     if (auth.pending) return <Redirect href="/waiting" />;
   }
   const crew = route === 'crew' || route.startsWith('crew/');

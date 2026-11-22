@@ -2,6 +2,37 @@
 // %{name} marks a value filled in at runtime. one/other pairs are plurals (pass count).
 
 const en = {
+  legal: {
+    privacy: 'Privacy policy',
+    terms: 'Terms of use',
+    updated: 'Last updated %{date}',
+    agree: 'By using KILN you agree to the Terms of Use and Privacy Policy.',
+  },
+  deleteAccount: {
+    title: 'Delete my account',
+    ownerWhat: 'This deletes your whole business from KILN: jobs, customers, estimates, invoices, photos, receipts, payment records, and your team’s access.',
+    memberWhat: 'This deletes only your own login. The work you did stays with your business.',
+    when: 'Your account is deleted 30 days after you ask. Until then, you can sign in and keep it.',
+    saveFirst: 'First, save copies of any estimates and invoices you need for your records.',
+    store: 'Deleting your account doesn’t cancel an App Store or Google Play subscription. Cancel it in your store’s settings.',
+    stripe: 'Your Stripe account stays yours. KILN only disconnects from it.',
+    password: 'Your password',
+    confirmLabel: 'Type DELETE to confirm',
+    confirmWord: 'DELETE',
+    button: 'Delete my account',
+    wrongPassword: 'That password isn’t right. Try again.',
+    scheduled: 'Your account will be deleted on %{date}.',
+    scheduledHelp: 'You’ve been signed out on all your devices. To keep your account, sign in before then and tap Keep my account.',
+    pendingTitle: 'Your account is set to be deleted',
+    pendingBody: 'It will be deleted on %{date}. Keep it to stop the deletion and go back to KILN.',
+    keep: 'Keep my account',
+    signInFirst: 'Sign in to delete your account.',
+    email: 'Email',
+    signIn: 'Sign in',
+    otherSignIn: 'Signed up with Apple or Google? Sign in to the KILN app with it, then go to Settings → Delete my account. Or email %{email}.',
+    signOut: 'Sign out',
+    working: 'Working…',
+  },
   lock: {
     title: 'KILN is locked',
     body: 'Use Face ID, your fingerprint or your phone passcode to open your jobs.',

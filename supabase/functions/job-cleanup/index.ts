@@ -46,6 +46,20 @@ Deno.serve(async (req) => {
       saved += out.saved;
       for (const bucket of BUCKETS) files.set(bucket, [...(files.get(bucket) ?? []), ...(out.files[bucket] ?? [])]);
     }
+    // Accounts whose 30 days are up (Delete my account): an owner's business rows go now and its
+    // files join the queue removed just below; then the login itself. A failure is retried next hour.
+    let accounts = 0;
+    if (scheduled) {
+      const dueAccounts = await db.rpc('account_deletions_due');
+      if (dueAccounts.error) { failed++; console.error('job-cleanup: account list failed', dueAccounts.error.code); }
+      for (const userId of (dueAccounts.data ?? []) as string[]) {
+        const purged = await db.rpc('purge_account', { p_user: userId });
+        if (purged.error) { failed++; console.error('job-cleanup: account purge failed', purged.error.code); continue; }
+        const gone = await db.auth.admin.deleteUser(userId);
+        if (gone.error) { failed++; console.error('job-cleanup: login removal failed'); continue; }
+        accounts++;
+      }
+    }
     for (const bucket of BUCKETS) {
       let paths = files.get(bucket) ?? [];
       if (scheduled) {
@@ -61,7 +75,7 @@ Deno.serve(async (req) => {
         if (acknowledged.error) failed++;
       }
     }
-    return reply(failed && scheduled ? 500 : 200, { removed, saved, failed });
+    return reply(failed && scheduled ? 500 : 200, { removed, saved, accounts, failed });
   } catch (e) {
     if (e instanceof Refused) return reply(e.status, { error: e.code });
     console.error('job-cleanup: unexpected error', e instanceof Error ? e.name : typeof e);

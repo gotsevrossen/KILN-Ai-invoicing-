@@ -3,6 +3,37 @@ import type { Dict } from './en';
 // Spanish text. Same keys as en.ts.
 
 const es: Dict = {
+  legal: {
+    privacy: 'Política de privacidad',
+    terms: 'Términos de uso',
+    updated: 'Última actualización: %{date}',
+    agree: 'Al usar KILN aceptas los Términos de uso y la Política de privacidad.',
+  },
+  deleteAccount: {
+    title: 'Borrar mi cuenta',
+    ownerWhat: 'Esto borra todo tu negocio de KILN: trabajos, clientes, presupuestos, facturas, fotos, recibos, registros de pagos y el acceso de tu equipo.',
+    memberWhat: 'Esto borra solo tu propio inicio de sesión. El trabajo que hiciste queda con tu negocio.',
+    when: 'Tu cuenta se borra 30 días después de pedirlo. Hasta entonces, puedes iniciar sesión y conservarla.',
+    saveFirst: 'Primero, guarda copias de los presupuestos y facturas que necesites para tus registros.',
+    store: 'Borrar tu cuenta no cancela una suscripción del App Store o Google Play. Cancélala en los ajustes de tu tienda.',
+    stripe: 'Tu cuenta de Stripe sigue siendo tuya. KILN solo se desconecta de ella.',
+    password: 'Tu contraseña',
+    confirmLabel: 'Escribe BORRAR para confirmar',
+    confirmWord: 'BORRAR',
+    button: 'Borrar mi cuenta',
+    wrongPassword: 'Esa contraseña no es correcta. Intenta de nuevo.',
+    scheduled: 'Tu cuenta se borrará el %{date}.',
+    scheduledHelp: 'Cerramos tu sesión en todos tus dispositivos. Para conservar tu cuenta, inicia sesión antes de esa fecha y toca Conservar mi cuenta.',
+    pendingTitle: 'Tu cuenta está programada para borrarse',
+    pendingBody: 'Se borrará el %{date}. Consérvala para detener el borrado y volver a KILN.',
+    keep: 'Conservar mi cuenta',
+    signInFirst: 'Inicia sesión para borrar tu cuenta.',
+    email: 'Correo',
+    signIn: 'Iniciar sesión',
+    otherSignIn: '¿Te registraste con Apple o Google? Inicia sesión en la app de KILN con eso y ve a Ajustes → Borrar mi cuenta. O escribe a %{email}.',
+    signOut: 'Cerrar sesión',
+    working: 'Procesando…',
+  },
   lock: {
     title: 'KILN está bloqueado',
     body: 'Usa Face ID, tu huella o el código de tu teléfono para abrir tus trabajos.',
