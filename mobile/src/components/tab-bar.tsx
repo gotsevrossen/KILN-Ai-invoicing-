@@ -5,7 +5,7 @@ import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { Easing, interpolateColor, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { useLang } from '@/i18n';
@@ -190,9 +190,13 @@ function FloatingBar({ children, bottomInset }: { children: ReactNode; bottomIns
   );
 }
 
+const MENU_IN = { duration: 240, easing: Easing.out(Easing.cubic) };
+const MENU_OUT = { duration: 180, easing: Easing.in(Easing.cubic) };
+
 /**
  * The round + button and the two choices it opens: Talk to KILN (the chat) and Capture (the
- * Capture page). While open, the page dims and the + turns into an X in the same spot.
+ * Capture page). Opening, the + turns a quarter-and-a-half turn into an X in the same spot while
+ * the page dims and the choices rise in; closing turns it back.
  */
 function CaptureMenu({ capture, assistant, active, bottomInset }: { capture: Capture; assistant?: Assistant; active: boolean; bottomInset: number }) {
   const p = usePalette();
@@ -200,16 +204,40 @@ function CaptureMenu({ capture, assistant, active, bottomInset }: { capture: Cap
   const c = assistantCopy[lang];
   const [open, setOpen] = useState(false);
   const bottom = Math.max(bottomInset, 12);
+  // 0 closed, 1 open: drives the turn, the dimming and the choices together
+  const progress = useSharedValue(0);
+  const closing = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (closing.current) clearTimeout(closing.current); }, []);
 
+  const show = () => {
+    if (closing.current) clearTimeout(closing.current);
+    setOpen(true);
+    progress.set(withTiming(1, MENU_IN));
+  };
+  /** Turns back into a + first, then takes the menu away. */
+  const hide = () => {
+    progress.set(withTiming(0, MENU_OUT));
+    if (closing.current) clearTimeout(closing.current);
+    closing.current = setTimeout(() => setOpen(false), MENU_OUT.duration);
+  };
   const toggle = () => {
     void Haptics.selectionAsync().catch(() => {});
-    setOpen((o) => !o);
+    if (open) hide(); else show();
   };
   const go = (href: Href) => {
     void Haptics.selectionAsync().catch(() => {});
+    progress.set(0);
     setOpen(false);
     router.navigate(href);
   };
+  const from = active ? p.accent : p.inverse;
+  const turn = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${progress.get() * 135}deg` }],
+  }));
+  const button = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(progress.get(), [0, 1], [from, p.inverse]) }));
+  const fromIcon = useAnimatedStyle(() => ({ opacity: 1 - progress.get() }));
+  const dim = useAnimatedStyle(() => ({ opacity: progress.get() }));
+  const rise = useAnimatedStyle(() => ({ opacity: progress.get(), transform: [{ translateY: (1 - progress.get()) * 16 }] }));
   const items: { key: string; label: string; icon: ReactNode; chat?: boolean; onPress: () => void }[] = [
     ...(assistant ? [{ key: 'chat', label: c.talk, chat: true, icon: <FlameIcon size={20} color={p.accent} />, onPress: () => go(assistant.href as Href) }] : []),
     { key: 'capture', label: capture.label, icon: <Feather name="camera" size={19} color={p.ink} />, onPress: () => go(capture.path as Href) },
@@ -217,10 +245,13 @@ function CaptureMenu({ capture, assistant, active, bottomInset }: { capture: Cap
 
   return (
     <>
-      <PlusButton label={assistant ? c.addMenu : capture.label} active={active} open={false} onPress={toggle} />
-      <Modal visible={open} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setOpen(false)}>
-        <Pressable accessibilityLabel={c.closeMenu} onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.42)' }} />
-        <View pointerEvents="box-none" style={{ position: 'absolute', right: 16, bottom: bottom + TAB_BAR_HEIGHT + 14, alignItems: 'flex-end', gap: 10 }}>
+      <PlusButton label={assistant ? c.addMenu : capture.label} active={active} onPress={toggle} />
+      {/* no built-in fade: the menu draws its own, so the button can turn in place over the one below */}
+      <Modal visible={open} transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={hide}>
+        <Animated.View style={[{ flex: 1, backgroundColor: 'rgba(0,0,0,0.42)' }, dim]}>
+          <Pressable accessibilityLabel={c.closeMenu} onPress={hide} style={{ flex: 1 }} />
+        </Animated.View>
+        <Animated.View pointerEvents="box-none" style={[{ position: 'absolute', right: 16, bottom: bottom + TAB_BAR_HEIGHT + 14, alignItems: 'flex-end', gap: 10 }, rise]}>
           {items.map((item) => (
             <Pressable key={item.key} onPress={item.onPress} accessibilityRole="button" accessibilityLabel={item.label}
               style={({ pressed }) => ({
@@ -233,25 +264,32 @@ function CaptureMenu({ capture, assistant, active, bottomInset }: { capture: Cap
               <Text style={{ includeFontPadding: false, fontFamily: font.bold, fontSize: 17, color: p.ink }}>{item.label}</Text>
             </Pressable>
           ))}
-        </View>
-        {/* the X sits exactly where the + was */}
-        <View style={{ position: 'absolute', right: 16, bottom }}>
-          <PlusButton label={c.closeMenu} active={false} open onPress={toggle} />
-        </View>
+        </Animated.View>
+        {/* sits exactly on the + below and turns into an X (a + turned 135° is an X) */}
+        <Pressable onPress={hide} accessibilityRole="button" accessibilityLabel={c.closeMenu} accessibilityState={{ expanded: true }}
+          style={({ pressed }) => ({ position: 'absolute', right: 16, bottom, transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+          <Animated.View style={[{ width: TAB_BAR_HEIGHT, height: TAB_BAR_HEIGHT, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', ...lift }, button]}>
+            <Animated.View style={turn}>
+              {/* on the Capture page the + starts black on orange: its color fades to the X's as it turns */}
+              <Feather name="plus" size={30} color={p.onInverse} />
+              {active ? <Animated.View style={[{ position: 'absolute' }, fromIcon]}><Feather name="plus" size={30} color={p.onAccent} /></Animated.View> : null}
+            </Animated.View>
+          </Animated.View>
+        </Pressable>
       </Modal>
     </>
   );
 }
 
-function PlusButton({ label, active, open, onPress }: { label: string; active: boolean; open: boolean; onPress: () => void }) {
+function PlusButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   const p = usePalette();
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active, expanded: open }}
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active, expanded: false }}
       style={({ pressed }) => ({
         width: TAB_BAR_HEIGHT, height: TAB_BAR_HEIGHT, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center',
-        backgroundColor: active && !open ? p.accent : p.inverse, transform: [{ scale: pressed ? 0.94 : 1 }], ...lift,
+        backgroundColor: active ? p.accent : p.inverse, transform: [{ scale: pressed ? 0.94 : 1 }], ...lift,
       })}>
-      <Feather name={open ? 'x' : 'plus'} size={30} color={active && !open ? p.onAccent : p.onInverse} />
+      <Feather name="plus" size={30} color={active ? p.onAccent : p.onInverse} />
     </Pressable>
   );
 }

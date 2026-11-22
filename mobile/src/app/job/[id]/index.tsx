@@ -192,7 +192,7 @@ function JobDetail() {
             right={
               <>
                 {/* the KILN chat, already knowing this job */}
-                {aiReady(state.mode) ? <IconButton icon="zap" glyph={(color) => <FlameIcon color={color} />} label={assistantCopy[lang].open} onPress={() => router.push(`/assistant?job=${job.id}`)} /> : null}
+                {aiReady(state.mode) ? <IconButton icon="zap" tone="accent" glyph={(color) => <FlameIcon color={color} />} label={assistantCopy[lang].open} onPress={() => router.push(`/assistant?job=${job.id}`)} /> : null}
                 {dialable(customer.phone) ? (
                 <>
                   <IconButton icon="phone" label={t('job.call', { name: customer.firstName })} onPress={() => callNumber(customer.phone)} />

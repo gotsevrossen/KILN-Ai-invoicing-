@@ -10,6 +10,12 @@
         "buildType": "apk"
       }
     },
+    "ios-personal-test": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      }
+    },
     "samsung-preview": {
       "extends": "preview",
       "environment": "preview",

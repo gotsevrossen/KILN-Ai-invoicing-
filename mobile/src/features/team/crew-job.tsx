@@ -102,7 +102,7 @@ export function CrewJobScreen() {
 
   const header = <PageHeader title={data?.job.title ?? c.jobs} sub={data?.job.address} back={() => router.back()}
     right={data ? <>
-      <IconButton icon="zap" glyph={(color) => <FlameIcon color={color} />} label={assistantCopy[lang].open} onPress={() => router.push(`/crew/assistant?job=${data.job.id}`)} />
+      <IconButton icon="zap" tone="accent" glyph={(color) => <FlameIcon color={color} />} label={assistantCopy[lang].open} onPress={() => router.push(`/crew/assistant?job=${data.job.id}`)} />
       {dialable(data.job.customer_phone) ? <>
         <IconButton icon="phone" label={c.call} onPress={() => callNumber(data.job.customer_phone)} />
         <IconButton icon="message-square" label={c.text} onPress={() => textNumber(data.job.customer_phone)} />
