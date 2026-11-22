@@ -228,9 +228,9 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
-secure_password_change = false
+secure_password_change = true
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1m"
 # Number of characters used in the email OTP.
@@ -248,8 +248,11 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Password reset email: carries only the 6-digit code ({{ .Token }}, length from otp_length), no link,
-# so the owner types it into the app and never leaves it.
+[auth.email.template.confirmation]
+subject = "Confirm your KILN email"
+content_path = "./supabase/templates/confirmation.html"
+
+# The owner enters the emailed recovery code in the app.
 [auth.email.template.recovery]
 subject = "Your KILN password reset code"
 content_path = "./supabase/templates/recovery.html"

@@ -90,22 +90,22 @@ select throws_ok(
      select business_id, id, 'Extra', 'flat', 100, 100 from public.estimates $$,
   'P0001', 'this document is signed or sent and can''t be changed', 'no lines can be added to a sent estimate');
 select throws_ok($$ update public.estimates set deposit_bps = 1 $$, 'P0001', 'this document is signed or sent and can''t be changed', 'a sent estimate''s deposit can''t change');
-select lives_ok($$ update public.estimates set signed_at = now() $$, 'a sent estimate can be signed');
+select lives_ok($$ select public.sign_estimate((select id from public.jobs),'Pat Doe','test','[[[0,0],[1,1]]]') $$, 'a sent estimate can be signed');
 select throws_ok($$ update public.estimates set signed_at = null $$, 'P0001', 'this document is signed or sent and can''t be changed', 'a signature time can''t be undone');
 
 -- signatures: same business only, and never changed or removed
 select throws_ok(
   $$ insert into public.signatures (business_id, document_type, document_id, signer_name, document_hash)
      select b, 'estimate', (select id from public.estimates), 'Pat Doe', repeat('a', 64) from ids $$,
-  'P0001', 'a signature must belong to a document of the same business', 'A can''t file a signature under B''s business');
-select lives_ok(
+  '42501', null, 'A can''t file a signature under B''s business');
+select throws_ok(
   $$ insert into public.signatures (business_id, document_type, document_id, signer_name, document_hash)
      select a, 'estimate', (select id from public.estimates), 'Pat Doe', repeat('a', 64) from ids $$,
-  'A records the customer''s signature');
+  '42501', null, 'a client cannot insert its own signature record');
 select throws_ok(
   $$ insert into public.signatures (business_id, document_type, document_id, signer_name, document_hash)
      select a, 'estimate', (select id from public.estimates), 'Pat Doe', 'not-a-hash' from ids $$,
-  'P0001', 'a signature needs the SHA-256 of the signed document', 'a signature needs the document''s fingerprint');
+  '42501', null, 'a signature needs the document''s fingerprint');
 select lives_ok($$ update public.signatures set signer_name = 'Someone else' $$, 'editing a signature runs but touches nothing');
 select lives_ok($$ delete from public.signatures $$, 'deleting a signature runs but touches nothing');
 select is((select signer_name from public.signatures), 'Pat Doe', 'the signature is unchanged');
@@ -137,7 +137,7 @@ insert into public.invoice_lines (business_id, invoice_id, kind, description, qt
 update public.invoices set sent_at = now(), tax_rate_bps = 0, tax_labor = false, tax_materials = false, issued_on = current_date, due_days = 15;
 select throws_ok($$ update public.invoice_lines set unit_cents = 1 $$, 'P0001', 'this document is signed or sent and can''t be changed', 'sent invoice lines are frozen');
 select throws_ok($$ update public.invoices set summary = 'changed' $$, 'P0001', 'this document is signed or sent and can''t be changed', 'a sent invoice can''t be edited');
-select lives_ok($$ update public.invoices set paid_at = now() $$, 'a sent invoice can be marked paid');
+select throws_ok($$ update public.invoices set paid_at = now() $$, '42501', null, 'a sent invoice requires a recorded payment');
 select throws_ok(
   $$ insert into public.work_items (business_id, job_id, description, qty_hundredths, unit_cents)
      select business_id, id, 'Late extra', 100, 100 from public.jobs $$,
@@ -148,7 +148,7 @@ select throws_ok($$ delete from public.work_items $$, 'P0001', 'this job''s invo
 select lives_ok($$ insert into public.time_entries (business_id, job_id, hundredths) select business_id, id, 250 from public.jobs $$, 'A logs hours on its job');
 select lives_ok($$ insert into public.notes (business_id, job_id, body) select business_id, id, 'Gate code 1234' from public.jobs $$, 'A adds a note to its job');
 select throws_ok($$ insert into public.payments (business_id, invoice_id, amount_cents, method) select business_id, id, 19000, 'cash' from public.invoices $$, '42501', null, 'cash records require the validated RPC');
--- This legacy fixture has already been marked paid above. Seed its immutable historical ledger as the service for the later append-only assertions.
+-- Seed the historical ledger as the service for later append-only assertions.
 reset role;
 insert into public.payments(business_id,invoice_id,amount_cents,method) select business_id,id,19000,'cash' from public.invoices;
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
@@ -181,7 +181,7 @@ reset role;
 insert into public.audit_log (business_id, actor, action, entity) select a, '00000000-0000-0000-0000-00000000000a', 'invoice.sent', 'invoice' from ids;
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 select lives_ok($$ update public.audit_log set action = 'edited' $$, 'updating the log runs but touches nothing');
-select is((select action from public.audit_log), 'invoice.sent', 'the activity log entry is unchanged');
+select is((select action from public.audit_log where entity_id is null), 'invoice.sent', 'the activity log entry is unchanged');
 
 -- photos: a row points only at its own file, only the tag changes, and a sent invoice's photos stay
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
@@ -307,11 +307,11 @@ select throws_ok(
 select throws_ok(
   $$ insert into public.signatures (business_id, document_type, document_id, signer_name, document_hash)
      select business_id, 'estimate', id, 'Pat Doe', repeat('a', 64) from public.estimates where number = 'E-2' $$,
-  'P0001', 'only a signed document gets a signature', 'a draft estimate can''t get a signature');
+  '42501', null, 'a draft estimate can''t get a signature');
 select throws_ok(
   $$ insert into public.signatures (business_id, document_type, document_id, signer_name, document_hash)
      select business_id, 'estimate', id, 'Pat Doe', repeat('b', 64) from public.estimates where number = 'E-1' $$,
-  '23505', null, 'a document has one signature');
+  '42501', null, 'clients cannot add a second signature');
 insert into public.estimate_lines (business_id, estimate_id, description, unit, qty_hundredths, unit_cents)
   select business_id, id, 'Drywall patch', 'each', 100, 12500 from public.estimates where number = 'E-2';
 update public.estimates set sent_at = now(), tax_rate_bps = 700, tax_labor = false, tax_materials = true where number = 'E-2';
@@ -321,7 +321,7 @@ select throws_ok(
        set constraints public.estimates_signature immediate;
      end $d$ $$,
   'P0001', 'a signed document needs its signature', 'an estimate can''t be marked signed without its signature');
-select lives_ok($$ select public.sign_estimate((select id from public.jobs where title = 'Second job'), 'Pat Doe', 'test phone') $$,
+select lives_ok($$ select public.sign_estimate((select id from public.jobs where title = 'Second job'), 'Pat Doe', 'test phone', '[[[0,0],[1,1]]]') $$,
   'signing an estimate files the signature in the same step');
 select lives_ok($$ set constraints public.estimates_signature immediate $$, 'every signed estimate has its signature');
 select is((select document_hash from public.signatures s join public.estimates e on e.id = s.document_id where e.number = 'E-2'),
@@ -331,7 +331,7 @@ select is((select public.signature_matches(s.id) from public.signatures s join p
   true, 'the signature can be checked against the saved estimate');
 insert into public.change_orders (business_id, job_id, number, description, amount_cents, base_cents)
   select business_id, id, 1, 'Add a towel bar', 4000, 12500 from public.jobs where title = 'Second job';
-select lives_ok($$ select public.sign_change_order((select c.id from public.change_orders c where c.description = 'Add a towel bar'), 'Pat Doe', 'test phone') $$,
+select lives_ok($$ select public.sign_change_order((select c.id from public.change_orders c where c.description = 'Add a towel bar'), 'Pat Doe', 'test phone', '[[[0,0],[1,1]]]') $$,
   'signing a change order files the signature in the same step');
 select is((select public.signature_matches(s.id) from public.signatures s join public.change_orders c on c.id = s.document_id where c.description = 'Add a towel bar'),
   true, 'the change order signature can be checked');
@@ -357,14 +357,14 @@ reset role;
 create temp table a_change as select id from public.change_orders where description = 'Replace shutoff valve';
 grant select on a_change to authenticated;
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
-select throws_ok($$ select public.sign_change_order((select id from a_change), 'Sneaky', '') $$,
-  'P0001', 'The record was not found on the server', 'B can''t sign a document it can''t see');
+select throws_ok($$ select public.sign_change_order((select id from a_change), 'Sneaky', '', '[[[0,0],[1,1]]]') $$,
+  'P0001', 'not allowed', 'B can''t sign a document it can''t see');
 select is((select count(*)::int from public.signatures), 0, 'B still sees none of A''s signatures');
 
 -- one person with many accounts still stops at KILN's daily limit
 reset role;
 update public.ai_usage set requests = 0;
-insert into public.ai_usage (business_id, requests) select b, 2000 from ids;
+insert into public.ai_usage (business_id, requests) select b, 10000 from ids;
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 select throws_ok($$ select public.use_ai_quota() $$, 'KL429', 'KILN''s daily AI limit reached', 'all businesses together have a daily limit');
 reset role;

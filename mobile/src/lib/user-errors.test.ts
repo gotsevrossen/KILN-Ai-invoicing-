@@ -22,6 +22,8 @@ describe('plain-language error notices', () => {
 
   it('recognizes connection failures, expired sessions and failed permissions', () => {
     assert.equal(userErrorKey(new TypeError('Failed to fetch')), 'errors.connection');
+    assert.equal(userErrorKey({ code: '42501', message: 'Load failed' }), 'errors.permission');
+    assert.equal(userErrorKey({ status: 404, message: 'Load failed' }), 'errors.missing');
     assert.equal(userErrorKey({ code: 'PGRST301', status: 401, message: 'JWT expired' }), 'errors.signIn');
     assert.equal(userErrorKey({ code: '42501', message: 'violates row-level security policy for table invoices' }), 'errors.permission');
     assert.equal(userErrorKey({ status: 503, message: '<html>upstream service error</html>' }), 'errors.server');

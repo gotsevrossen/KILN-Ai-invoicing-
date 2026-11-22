@@ -1,6 +1,7 @@
+import { BodyTooLarge, readBody } from '../_shared/request.ts';
 import { serviceClient, setting, totalsOf, type LineRow } from '../_shared/invoice.ts';
 import { validPaymentProof } from '../_shared/payment-proof.ts';
-import { stripeCheckoutEnabled, stripeConfigured, stripeTestMode, verifyWebhook } from '../_shared/stripe.ts';
+import { stripeTestMode, verifyWebhook } from '../_shared/stripe.ts';
 import { reconcileAdjustment } from './adjustments.ts';
 
 // POST /functions/v1/stripe-webhook — Stripe telling KILN a payment changed: on its way (bank
@@ -26,8 +27,12 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('no', { status: 405 });
-  const payload = await req.text();
-  if (payload.length > 200_000) return new Response('too big', { status: 413 });
+  let payload: string;
+  try {
+    payload = await readBody(req, 200_000);
+  } catch (error) {
+    return new Response('invalid body', { status: error instanceof BodyTooLarge ? 413 : 400 });
+  }
   if (!(await verifyWebhook(payload, req.headers.get('Stripe-Signature'), setting('STRIPE_WEBHOOK_SECRET')))) {
     return new Response('bad signature', { status: 400 });
   }
@@ -38,10 +43,12 @@ Deno.serve(async (req) => {
   } catch {
     return new Response('bad payload', { status: 400 });
   }
-  if (!stripeConfigured() || event.livemode !== !stripeTestMode()) return new Response('ok');
+  // Disabling new checkouts must not acknowledge and discard settlement on an existing intent.
+  // The recording procedures verify its durable binding, account, amount and payment method.
+  if (!/^sk_(test|live)_/.test(setting('STRIPE_SECRET_KEY'))) return new Response('try again', { status: 503 });
+  if (event.livemode !== !stripeTestMode()) return new Response('ok');
   const correction = await reconcileAdjustment(event);
   if (correction) return correction;
-  if (!stripeCheckoutEnabled()) return new Response('ok');
   const status = STATUS[event.type ?? ''];
   const intent = event.data?.object;
   // anything else (or a payment KILN didn't start) is acknowledged and ignored

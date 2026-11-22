@@ -30,6 +30,24 @@ test('admin keys are refused, user keys pass', () => {
   assert.ok(!keyAllowed('anything-else'));
 });
 
+test('routing and identity are set by the local gateway', async () => {
+  const backend = http.createServer((req, res) => res.end(JSON.stringify(req.headers))).listen(0, '127.0.0.1');
+  await new Promise((resolve) => backend.once('listening', resolve));
+  const gate = startGate(0, backend.address().port);
+  await new Promise((resolve) => gate.once('listening', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${gate.address().port}/rest/v1/jobs`, {
+      headers: { 'x-forwarded-for': '192.0.2.1', 'cf-connecting-ip': '192.0.2.1', 'x-forwarded-host': 'example.test' },
+    });
+    const headers = await response.json();
+    assert.equal(headers.host, `127.0.0.1:${backend.address().port}`);
+    for (const field of ['x-forwarded-for', 'x-forwarded-host', 'cf-connecting-ip']) assert.equal(headers[field], undefined);
+  } finally {
+    gate.close();
+    backend.close();
+  }
+});
+
 test('admin keys are refused in any header or the query', () => {
   const req = (url, headers = {}) => ({ url, headers });
   assert.ok(requestAllowed(req('/rest/v1/jobs', { apikey: 'sb_publishable_x', authorization: `Bearer ${user}` })));

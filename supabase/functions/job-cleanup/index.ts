@@ -4,12 +4,22 @@ import { cors, Refused, reply, serviceClient, setting } from '../_shared/invoice
 const BUCKETS = ['job-photos', 'voice-notes', 'receipts'] as const;
 const PER_CALL = 25;
 
+/** Compares two secrets in time that doesn't depend on where they differ, so the token can't be guessed piece by piece. */
+function sameSecret(supplied: string | null, expected: string): boolean {
+  if (supplied === null) return false;
+  const a = new TextEncoder().encode(supplied);
+  const b = new TextEncoder().encode(expected);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < b.length; i++) diff |= (a[i] ?? 0) ^ b[i];
+  return diff === 0;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return reply(405, { error: 'bad_request' });
   const suppliedToken = req.headers.get('X-Kiln-Cleanup-Token');
   const configuredToken = setting('KILN_CLEANUP_TOKEN');
-  const scheduled = configuredToken.length >= 32 && suppliedToken === configuredToken;
+  const scheduled = configuredToken.length >= 32 && sameSecret(suppliedToken, configuredToken);
   const auth = req.headers.get('Authorization');
   if (!scheduled && !auth) return reply(401, { error: 'signed_out' });
   try {

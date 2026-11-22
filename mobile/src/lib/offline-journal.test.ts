@@ -15,6 +15,20 @@ type Command = { id: string; value: string };
 const entry = (id: string) => ({ id, command: { id, value: id } });
 
 describe('durable account outbox and local cache', () => {
+  it('migrates pending edits only to the business that owns the old snapshot', async () => {
+    const { disk } = storage();
+    const journal = new OfflineJournal<string, Command>(disk);
+    journal.open('member');
+    journal.append([entry('old-edit')], 'first');
+    const businessOf = (snapshot: string) => snapshot;
+    assert.equal(journal.openBusiness('member', 'second', businessOf), null);
+    assert.equal(journal.pending, 0);
+    assert.equal(journal.openBusiness('member', 'first', businessOf), 'first');
+    assert.equal(journal.pending, 1);
+    await journal.flush(async () => {});
+    assert.equal(journal.openBusiness('member', 'first', businessOf), 'first');
+    assert.equal(journal.pending, 0);
+  });
   it('rescues edits kept open after initial storage failure without restoring an older view', async () => {
     const backing = storage();
     const old = new OfflineJournal<string, Command>(backing.disk);

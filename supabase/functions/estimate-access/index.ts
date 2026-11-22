@@ -1,3 +1,4 @@
+import { BodyTooLarge, readObject } from '../_shared/request.ts';
 import { createClient } from '@supabase/supabase-js';
 import { cors, hashToken, newToken, reply, serviceClient, setting, tokenShape } from '../_shared/invoice.ts';
 import { validAcceptance } from './input.ts';
@@ -8,11 +9,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
   if (req.method !== 'POST') return reply(405, { error: 'failed' });
   try {
-    if (Number(req.headers.get('content-length') ?? 0) > 10000) return reply(413, { error: 'failed' });
-    const raw = await req.text();
-    if (raw.length > 10000) return reply(413, { error: 'failed' });
-    const body = JSON.parse(raw) as Record<string, unknown>;
-    if (!body || typeof body !== 'object' || Array.isArray(body)) return reply(400, { error: 'failed' });
+    const body = await readObject(req, 10_000);
     if (body.action === 'prepare') {
       if (typeof body.jobId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.jobId)) return reply(400, { error: 'failed' });
       const auth = req.headers.get('authorization') ?? '';
@@ -71,7 +68,8 @@ Deno.serve(async (req: Request) => {
       return result.error ? reply(409, { error: 'not_ready' }) : reply(200, { declinedAt: result.data });
     }
     return reply(400, { error: 'failed' });
-  } catch {
+  } catch (e) {
+    if (e instanceof BodyTooLarge) return reply(413, { error: 'bad_request' });
     return reply(400, { error: 'failed' });
   }
 });

@@ -20,7 +20,7 @@ create function pg_temp.quote_owner(uid uuid) returns void language sql as $$
 $$;
 select pg_temp.quote_owner('10000000-0000-0000-0000-000000000001');
 select throws_ok($$select public.prepare_estimate_access('40000000-0000-0000-0000-000000000001',repeat('a',64))$$,'P0001','not allowed','draft quote cannot get a public link');
-update public.estimates set sent_at=now(),tax_rate_bps=0,tax_labor=false,tax_materials=false;
+update public.estimates set sent_at=now(),tax_rate_bps=0,tax_labor=false,tax_materials=false where business_id='20000000-0000-0000-0000-000000000001';
 select lives_ok($$select public.prepare_estimate_access('40000000-0000-0000-0000-000000000001',repeat('a',64))$$,'owner prepares issued quote');
 select is((select count(*)::int from public.document_delivery_events where stage='link_prepared'),1,'preparing records link preparation');
 select is((select count(*)::int from public.document_delivery_events where stage='owner_confirmed_shared'),0,'preparing never records delivery');
@@ -43,7 +43,7 @@ select lives_ok($$select public.accept_estimate_access(repeat('a',64),(select sn
 select is((select signature_method from public.signatures where document_id='50000000-0000-0000-0000-000000000001'),'typed_name','approval records actual signing method');
 select is((select approval_snapshot from public.signatures where document_id='50000000-0000-0000-0000-000000000001'),(select snapshot from public.estimate_access_links limit 1),'approval retains exact snapshot displayed');
 select ok((select public.signature_matches(id) from public.signatures where document_id='50000000-0000-0000-0000-000000000001'),'signature document hash matches frozen quote rows');
-select is((select count(*)::int from public.payments),0,'acceptance never records a payment');
+select is((select count(*)::int from public.payments where business_id='20000000-0000-0000-0000-000000000001'),0,'acceptance never records a payment');
 select lives_ok($$select public.accept_estimate_access(repeat('a',64),(select snapshot_hash from public.estimate_access_links limit 1),'Other Name','test device','127.0.0.1','I accept this exact estimate and use my typed name as my electronic signature.')$$,'acceptance retry is idempotent');
 select is((select signer_name from public.signatures where document_id='50000000-0000-0000-0000-000000000001'),'Home Owner','retry cannot replace signer');
 select throws_ok($$update public.signatures set signer_name='Changed'$$,'P0001','Approval evidence cannot be changed or removed','evidence cannot be edited');
@@ -51,10 +51,10 @@ select throws_ok($$delete from public.signatures$$,'P0001','Approval evidence ca
 select ok(not has_function_privilege('authenticated','public.deposit_for_estimate_access(text,uuid,text)','execute'),'app cannot invoke customer deposit RPC directly');
 select lives_ok($$select public.deposit_for_estimate_access(repeat('a',64),'60000000-0000-0000-0000-000000000001',repeat('d',64))$$,'accepted quote can open exact deposit');
 select is((select amount_cents from public.job_payment_requests limit 1),15000,'remote deposit is exactly thirty percent of frozen total');
-select is((select count(*)::int from public.payments),0,'opening deposit payment never counts as money received');
+select is((select count(*)::int from public.payments where business_id='20000000-0000-0000-0000-000000000001'),0,'opening deposit payment never counts as money received');
 select lives_ok($$select public.deposit_for_estimate_access(repeat('a',64),'60000000-0000-0000-0000-000000000002',repeat('e',64))$$,'reopening deposit reuses the same request');
 select is((select count(*)::int from public.job_payment_requests),1,'reopening never duplicates requested amount');
-update public.estimate_access_links set expires_at=now()-interval '1 second';
+update public.estimate_access_links set expires_at=now()-interval '1 second' where business_id='20000000-0000-0000-0000-000000000001';
 select throws_ok($$select public.view_estimate_access(repeat('a',64))$$,'P0001','not found','expired links cannot view quote');
 select throws_ok($$select public.accept_estimate_access(repeat('a',64),(select snapshot_hash from public.estimate_access_links limit 1),'Home Owner','test device','127.0.0.1','I accept this exact estimate and use my typed name as my electronic signature.')$$,'P0001','not allowed','expired links cannot accept quote');
 select pg_temp.quote_owner('10000000-0000-0000-0000-000000000001');
@@ -68,7 +68,7 @@ select ok(not public.valid_signature_ink('[[[-0.1,0.2],[0.3,0.4]]]'::jsonb),'out
 select ok(not public.valid_signature_ink('[[[0.1,0.2]]]'::jsonb),'single dot is insufficient signature evidence');
 select is((select count(*)::int from public.signatures where document_id='50000000-0000-0000-0000-000000000002'),1,'signing retries retain one immutable evidence row');
 reset role;
-update public.estimate_access_links set expires_at=now()+interval '1 day',revoked_at=now();
+update public.estimate_access_links set expires_at=now()+interval '1 day',revoked_at=now() where business_id='20000000-0000-0000-0000-000000000001';
 select throws_ok($$select public.view_estimate_access(repeat('a',64))$$,'P0001','not found','revoked links cannot view quote');
 select throws_ok($$select public.accept_estimate_access(repeat('a',64),(select snapshot_hash from public.estimate_access_links limit 1),'Home Owner','test device','127.0.0.1','I accept this exact estimate and use my typed name as my electronic signature.')$$,'P0001','not allowed','revoked links cannot approve quote');
 

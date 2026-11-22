@@ -186,6 +186,7 @@ export function PageHeader({
   back,
   right,
   beside,
+  inline,
 }: {
   title: string;
   sub?: string;
@@ -193,6 +194,8 @@ export function PageHeader({
   right?: ReactNode;
   /** Shown on the title's line, right after it (e.g. the job the KILN chat is about). */
   beside?: ReactNode;
+  /** The title on the back button's line instead of below it (the KILN chat). */
+  inline?: boolean;
 }) {
   const { t } = useLang();
   const titleText = (
@@ -203,7 +206,13 @@ export function PageHeader({
   const heading = beside ? <Row gap={12} style={{ alignItems: 'center', flexShrink: 1 }}>{titleText}{beside}</Row> : titleText;
   return (
     <View style={{ gap: 12, marginBottom: 4 }}>
-      {back ? (
+      {back && inline ? (
+        <Row gap={8}>
+          <IconButton icon="chevron-left" label={t('common.back')} onPress={back} />
+          <View style={{ flex: 1, minWidth: 0 }}>{heading}</View>
+          {right ? <Row>{right}</Row> : null}
+        </Row>
+      ) : back ? (
         <>
           <Row style={{ justifyContent: 'space-between' }}>
             <IconButton icon="chevron-left" label={t('common.back')} onPress={back} />

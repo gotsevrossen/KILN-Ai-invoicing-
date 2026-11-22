@@ -3,18 +3,21 @@ import { Archivo_600SemiBold } from '@expo-google-fonts/archivo/600SemiBold';
 import { Archivo_700Bold } from '@expo-google-fonts/archivo/700Bold';
 import { Archivo_800ExtraBold } from '@expo-google-fonts/archivo/800ExtraBold';
 import { useFonts } from '@expo-google-fonts/archivo/useFonts';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type ErrorBoundaryProps, Redirect, usePathname } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type ErrorBoundaryProps, Redirect } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, type ReactNode } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { Button, Notice, Screen, T } from '@/components/ui';
+import { userError } from '@/lib/user-errors';
+import { AppLock } from '@/components/app-lock';
 import { ErrorScreen } from '@/components/error-screen';
 import { AuthProvider, useAuth } from '@/data/auth';
 import { LiveUpdates } from '@/data/live-updates';
 import { StoreProvider } from '@/data/store';
-import { LanguageProvider } from '@/i18n';
+import { LanguageProvider, useLang } from '@/i18n';
 import { ThemeModeProvider, useScheme } from '@/theme/theme-mode';
 import { dark, light } from '@/theme/tokens';
 
@@ -46,7 +49,9 @@ export default function RootLayout() {
           <StoreProvider>
             <AuthProvider>
               <LiveUpdates />
-              <Screens />
+              <AppLock>
+                <Screens />
+              </AppLock>
             </AuthProvider>
           </StoreProvider>
         </LanguageProvider>
@@ -56,26 +61,39 @@ export default function RootLayout() {
   );
 }
 
+function AccessGate({ route, children }: { route: string; children: ReactNode }) {
+  const auth = useAuth();
+  const { t } = useLang();
+  const open = ['sign-in', 'reset-password', 'stripe-done', 'waiting', 'join/index', '+not-found'].includes(route)
+    || ['pay/', 'quote/', 'collect/', 'change/', 'join/'].some((prefix) => route.startsWith(prefix));
+  if (open) return children;
+  if (auth.configured) {
+    if (!auth.ready) return <Screen><T>{t('auth.loading')}</T></Screen>;
+    if (auth.loadError) return <Screen>
+      <Notice text={t('auth.loadFailed', { reason: userError(t, auth.loadError) })} tone="danger" />
+      <Button label={t('auth.retry')} onPress={auth.retryLoad} />
+    </Screen>;
+    if (!auth.session) return <Redirect href="/sign-in" />;
+    if (auth.pending) return <Redirect href="/waiting" />;
+  }
+  const crew = route === 'crew' || route.startsWith('crew/');
+  if (auth.role === 'crew' && !crew) return <Redirect href="/crew" />;
+  if (auth.role !== 'crew' && crew) return <Redirect href="/" />;
+  return children;
+}
+
 /** Light or dark (the owner's choice in Settings) for the navigation and the screens. */
 function Screens(): ReactNode {
-  const auth = useAuth();
-  const pathname = usePathname();
   const scheme = useScheme();
   const p = scheme === 'dark' ? dark : light;
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
   const theme = { ...base, colors: { ...base.colors, background: p.ground, card: p.card, text: p.ink, border: p.line, primary: p.accent } };
 
-  // pages anyone may open: signing in, joining a team, and the customer pages
-  const open = ['/sign-in', '/reset-password', '/join', '/waiting'].includes(pathname) || ['/pay/', '/quote/', '/collect/', '/change/', '/join/'].some((prefix) => pathname.startsWith(prefix));
-  // waiting for approval: nothing else until an owner or manager approves
-  if (auth.ready && auth.pending && !open) return <Redirect href="/waiting" />;
-  // crew members only ever see their own screens
-  if (auth.ready && auth.role === 'crew' && !open && !pathname.startsWith('/crew')) return <Redirect href="/crew" />;
-  if (auth.ready && auth.role !== 'crew' && pathname.startsWith('/crew')) return <Redirect href="/" />;
   return (
     <ThemeProvider value={theme}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: p.ground } }}>
+      <Stack screenLayout={({ route, children }) => <AccessGate route={route.name}>{children}</AccessGate>}
+        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: p.ground } }}>
         <Stack.Screen name="(tabs)" />
         {/* signing screens: no swipe-back, or a left-to-right signature stroke leaves the screen */}
         <Stack.Screen name="change-order/[id]" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />

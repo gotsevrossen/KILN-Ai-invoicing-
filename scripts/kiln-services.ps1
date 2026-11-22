@@ -186,6 +186,38 @@ function Get-ServerChoice {
     return 'Laptop'
 }
 
+function Test-KilnPortBindings($PortBindings, [string]$NetworkDefault) {
+    foreach ($port in $PortBindings.PSObject.Properties) {
+        foreach ($binding in $port.Value) {
+            $address = $binding.HostIp
+            if (!$address) { $address = $NetworkDefault }
+            $ip = $null
+            if (![Net.IPAddress]::TryParse($address, [ref]$ip) -or ![Net.IPAddress]::IsLoopback($ip)) { return $false }
+        }
+    }
+    return $true
+}
+
+function Assert-LocalBackendPorts([string[]]$Containers) {
+    $defaults = @{}
+    $format = '{{.Name}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.PublishAllPorts}}|{{json .HostConfig.PortBindings}}'
+    $settings = @(& docker.exe inspect --format $format @Containers)
+    if ($LASTEXITCODE -ne 0) { throw 'Could not verify the local backend port settings.' }
+    foreach ($row in $settings) {
+        $name, $network, $publishAll, $bindings = $row -split '\|', 4
+        if ($network -eq 'host' -or $publishAll -eq 'true') { throw "Unrestricted Docker networking for $name. See docs/local-services.md." }
+        if ($bindings -in @('{}', 'null')) { continue }
+        if (!$defaults.ContainsKey($network)) {
+            $options = & docker.exe network inspect --format '{{json .Options}}' $network
+            if ($LASTEXITCODE -ne 0) { throw "Could not verify Docker network $network." }
+            $defaults[$network] = ($options | ConvertFrom-Json).'com.docker.network.bridge.host_binding_ipv4'
+        }
+        if (!(Test-KilnPortBindings ($bindings | ConvertFrom-Json) $defaults[$network])) {
+            throw "$name publishes a backend port beyond localhost. Use the loopback network in docs/local-services.md before starting the laptop backend."
+        }
+    }
+}
+
 function Assert-PrivateServerKeys {
     # The phone address is public, so refuse to open it while the server uses Supabase's published keys.
     $secrets = Join-Path $RepoRoot 'supabase\.env'
@@ -198,7 +230,7 @@ function Assert-PrivateServerKeys {
     if ($LASTEXITCODE -ne 0) { throw 'Could not check the server keys.' }
     foreach ($key in $PublicDefaultKeys) {
         if (@($settings | Where-Object { $_.Contains($key) }).Count -gt 0) {
-            throw 'The local server still uses Supabase''s public built-in keys. Run npx supabase stop, then npx supabase start, once from the repository.'
+            throw 'The local server still uses Supabase''s public built-in keys. Follow the private-key and loopback-network setup in docs/local-services.md.'
         }
     }
 }
@@ -321,10 +353,11 @@ function Start-Kiln {
             }
             $all = @(Get-KilnContainers -All)
             if ($all -notcontains 'supabase_db_kiln') {
-                throw 'Existing KILN containers were not found. Initialize them once with npx supabase start from the repository, then use this launcher.'
+                throw 'Existing KILN containers were not found. Initialize the loopback network and backend as described in docs/local-services.md.'
             }
             # The unused analytics stack consumed considerable RAM and its log collector was restarting.
             $wanted = @($all | Where-Object { $_ -notmatch '^supabase_(analytics|vector)_kiln$' })
+            Assert-LocalBackendPorts $wanted
             $running = @(Get-KilnContainers)
             $newContainers = @($wanted | Where-Object { $_ -notin $running })
             if ($running -notcontains 'supabase_db_kiln') {

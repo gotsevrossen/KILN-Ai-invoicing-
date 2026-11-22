@@ -37,6 +37,18 @@ export class OfflineJournal<S, C> {
     return this.envelope.snapshot;
   }
 
+  /** Older app versions used one journal per user. Import it only for its recorded business. */
+  openBusiness(userId: string, businessId: string, businessOf: (snapshot: S) => string | null): S | null {
+    const scope = userId + ':' + businessId;
+    if (this.storage.getItem(this.prefix + scope) !== null) return this.open(scope);
+    const legacy = this.open(userId);
+    const entries = legacy !== null && businessOf(legacy) === businessId ? this.commands() : null;
+    this.open(scope);
+    if (!entries || legacy === null) return null;
+    this.append([...entries], legacy);
+    return legacy;
+  }
+
   close(): void { this.generation++; this.envelope = null; this.running = null; }
   get pending(): number { return this.envelope?.entries.length ?? 0; }
   commands(): readonly JournalEntry<C>[] { return JSON.parse(JSON.stringify(this.envelope?.entries ?? [])) as JournalEntry<C>[]; }

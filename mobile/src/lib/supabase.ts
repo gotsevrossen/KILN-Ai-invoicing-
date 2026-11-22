@@ -1,5 +1,5 @@
 import 'react-native-url-polyfill/auto';
-import './storage-install';
+import { authStorage } from './storage-install';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AppState } from 'react-native';
@@ -26,13 +26,13 @@ export function recoveryClient(): SupabaseClient | null {
  */
 // The web build also renders pages once on the computer (no browser there, so no
 // localStorage). Sessions are only kept where storage exists: phones and browsers.
-const hasStorage = typeof localStorage !== 'undefined';
+const hasStorage = !!authStorage;
 
 export const supabase: SupabaseClient | null =
   url && key
     ? createClient(url, key, {
         auth: {
-          storage: hasStorage ? localStorage : undefined,
+          storage: authStorage,
           autoRefreshToken: hasStorage,
           persistSession: hasStorage,
           detectSessionInUrl: false,

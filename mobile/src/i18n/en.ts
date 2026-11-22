@@ -2,6 +2,20 @@
 // %{name} marks a value filled in at runtime. one/other pairs are plurals (pass count).
 
 const en = {
+  lock: {
+    title: 'KILN is locked',
+    body: 'Use Face ID, your fingerprint or your phone passcode to open your jobs.',
+    prompt: 'Open KILN',
+    unlock: 'Unlock',
+    cancel: 'Cancel',
+    passcode: 'Use passcode',
+    failed: "That didn't work. Tap Unlock to try again, or sign out and sign back in with your password.",
+    signOut: 'Sign out',
+    setting: 'Lock with Face ID or fingerprint',
+    settingHelp: 'Asks when KILN opens and after 5 minutes away. Your phone passcode also works.',
+    noScreenLock: "To lock KILN with Face ID or a fingerprint, first set up a screen lock in your phone's settings.",
+    notChanged: 'Not changed. Confirm with Face ID, your fingerprint or your passcode to change this.',
+  },
   offlineSave: {
     confirmed: 'Saved to your account',
     waiting: 'Saved on this phone — %{count} changes waiting to sync.',
@@ -390,6 +404,8 @@ const en = {
     screenBody: 'Something went wrong while opening this page. Try again. If it keeps happening, close KILN and open it again.',
   },
   auth: {
+    verifyEmail: 'Verify email',
+    confirmSignup: 'Check your email. Enter the confirmation code here, or follow the confirmation link and sign in.',
     signInTitle: 'Sign in',
     signUpTitle: 'Create your account',
     body: 'Your jobs, estimates, and invoices are saved to your account.',
@@ -826,6 +842,7 @@ const en = {
       not_set_up: 'This KILN feature is temporarily unavailable. You can keep working by hand. Try again later.',
       key_refused: 'This KILN feature is temporarily unavailable. You can keep working by hand. Try again later.',
       limit: 'You’ve reached today’s AI limit. It resets tomorrow.',
+      person_limit: 'You’ve used today’s limit for this KILN helper. It resets tomorrow.',
       busy: 'KILN is busy. Try again in a minute.',
       signed_out: 'Sign in again to use this.',
       too_big: 'Those photos are too large. Try fewer or closer photos.',

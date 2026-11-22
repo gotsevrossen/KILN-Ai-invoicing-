@@ -15,7 +15,14 @@ export function pathAllowed(rawUrl) {
   const path = String(rawUrl).split('?')[0];
   // Refuse anything the server might read differently than this check: encoded or doubled slashes, dots, backslashes.
   if (!path.startsWith('/') || /%2e|%2f|%5c|\\|\/\/|\/\.\.?(\/|$)/i.test(path)) return false;
-  const lower = path.toLowerCase();
+  let decoded;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    return false;
+  }
+  if (/[%;?#\u0000-\u001f\u007f]/.test(decoded)) return false;
+  const lower = decoded.toLowerCase();
   if (BLOCKED_PREFIXES.some((p) => lower.startsWith(p))) return false;
   return ALLOWED_PREFIXES.some((p) => path.startsWith(p));
 }
@@ -39,7 +46,7 @@ export function keyAllowed(value) {
 
 export function requestAllowed(req) {
   if (!pathAllowed(req.url)) return false;
-  const query = new URLSearchParams(String(req.url).split('?')[1] ?? '');
+  const query = new URL(req.url, 'http://localhost').searchParams;
   const keys = [req.headers.apikey, req.headers.authorization, ...query.getAll('apikey')];
   return keys.every((k) => (Array.isArray(k) ? k.every(keyAllowed) : keyAllowed(k)));
 }
@@ -51,8 +58,13 @@ export function startGate(listenPort, targetPort) {
   };
   const server = http.createServer((req, res) => {
     if (!requestAllowed(req)) return refuse(res);
-    // Not behind Cloudflare, so this header can only be faked; signatures record the signer's address from it.
-    const { 'cf-connecting-ip': _faked, ...headers } = req.headers;
+    // Only the local proxy may assert routing and client identity to the upstream services.
+    const headers = { ...req.headers, host: `127.0.0.1:${targetPort}` };
+    for (const name of Object.keys(headers)) {
+      if (/^(?:forwarded$|x-forwarded-|x-real-ip$|cf-connecting-ip$|x-consumer-|x-credential-|x-original-|x-rewrite-|x-kong-)/.test(name)) {
+        delete headers[name];
+      }
+    }
     const upstream = http.request(
       { host: '127.0.0.1', port: targetPort, method: req.method, path: req.url, headers },
       (up) => {

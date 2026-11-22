@@ -32,8 +32,8 @@ select pg_temp.as_user('d1111111-1111-1111-1111-11111111111c');
 select throws_ok($$select public.update_my_name('')$$,'23514',null,'a name can''t be empty');
 
 reset role;
-select is((select email from public.businesses),'office@mikes.test','only the owner changed the business');
-select is((select string_agg(name, ',' order by name) from public.business_members),'Carlos,Maria Lopez,Owner','only the person''s own name changed');
+select is((select email from public.businesses where id = 'd2222222-2222-2222-2222-22222222222a'),'office@mikes.test','only the owner changed the business');
+select is((select string_agg(name, ',' order by name) from public.business_members where business_id = 'd2222222-2222-2222-2222-22222222222a'),'Carlos,Maria Lopez,Owner','only the person''s own name changed');
 
 select * from finish();
 rollback;

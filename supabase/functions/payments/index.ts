@@ -1,3 +1,4 @@
+import { BodyTooLarge, InvalidBody, readObject } from '../_shared/request.ts';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import { cors, hashToken, newToken, Refused, reply, serviceClient, setting } from '../_shared/invoice.ts';
@@ -36,7 +37,7 @@ async function whoIs(auth: string): Promise<Owner> {
 /** The pay page's web address (Expo hosting, or the laptop while testing). */
 function payUrl(): string {
   const url = setting('KILN_PAY_URL');
-  if (!/^https?:\/\/[^/\s]+$/.test(url)) throw new Refused(503, 'not_set_up');
+  if (!/^https:\/\/[^/\s]+$/.test(url) && !/^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(url)) throw new Refused(503, 'not_set_up');
   return url;
 }
 
@@ -217,12 +218,7 @@ Deno.serve(async (req) => {
   const auth = req.headers.get('Authorization');
   if (!auth) return reply(401, { error: 'signed_out' });
   try {
-    let body: { action?: unknown; invoiceId?: unknown; requestId?: unknown; attemptId?: unknown; recipient?: unknown; reminder?: unknown; recheck?: unknown };
-    try {
-      body = JSON.parse(await req.text());
-    } catch {
-      throw new Refused(400, 'bad_request');
-    }
+    const body = await readObject(req, 16_384);
     const who = await whoIs(auth);
     const db = serviceClient();
     if (body.action === 'requestLink') {
@@ -254,6 +250,8 @@ Deno.serve(async (req) => {
     if (body.action === 'status') return reply(200, await status(db, who, body.recheck === true));
     throw new Refused(400, 'bad_request');
   } catch (e) {
+    if (e instanceof BodyTooLarge) return reply(413, { error: 'bad_request' });
+    if (e instanceof InvalidBody) return reply(400, { error: 'bad_request' });
     if (e instanceof Refused) return reply(e.status, { error: e.code });
     if (e instanceof StripeError) {
       console.error(`payments: Stripe said ${e.status} ${e.code}`);

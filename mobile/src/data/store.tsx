@@ -343,7 +343,8 @@ async function retryOffline(): Promise<void> {
       if (!accountId) throw new Error('offline_storage_unavailable');
       // Reopen only this session's journal. Preserve edits currently shown on
       // screen; importing an older cached snapshot here would overwrite them.
-      journal.resume(accountId, volatileCommands.map((c) => ({ id: newId(), command: c })), localSnapshot());
+      journal.openBusiness(accountId, get().businessId!, (snapshot) => snapshot.state.businessId);
+      journal.append(volatileCommands.map((c) => ({ id: newId(), command: c })), localSnapshot());
       journalReady = true;
       volatileCommands = [];
     } else if (volatileCommands.length) {
@@ -1085,6 +1086,14 @@ function makeActions() {
         const loaded = await dbApi.loadAll();
         if (!active()) throw Object.assign(new Error('signed_out'), { code: 'signed_out' });
         if (!loaded) throw new Error('Setup was saved but could not be loaded');
+        if (accountId) {
+          try {
+            journal.openBusiness(accountId, loaded.businessId, (snapshot) => snapshot.state.businessId);
+            journalReady = true;
+          } catch (error) {
+            set((s) => ({ ...s, localSave: 'failed', syncError: errorDetails(error) }));
+          }
+        }
         applyLoaded(loaded);
         cacheCurrent();
         return;
@@ -1165,13 +1174,14 @@ function makeActions() {
       sample.setToday(docsApi.localDate());
       set((s) => ({ ...connectedState(s), businessId, profile: { ...s.profile, onboarded: true }, version: s.version + 1 }));
     },
-    startConnected(userId: string) {
+    startConnected(userId: string, businessId: string | null) {
       saveQueue.reset();
       journal.close(); journalReady = false; volatileCommands = []; accountId = userId;
       clearExampleData();
       set((s) => ({ ...connectedState(s), businessId: null, version: s.version + 1 }));
+      if (!businessId) return;
       try {
-        const cached = journal.open(userId);
+        const cached = journal.openBusiness(userId, businessId, (snapshot) => snapshot.state.businessId);
         journalReady = true;
         if (cached) {
           sample.jobs.push(...cached.lists.jobs); sample.customers.push(...cached.lists.customers);

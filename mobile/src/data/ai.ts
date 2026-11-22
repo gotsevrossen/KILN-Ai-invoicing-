@@ -17,7 +17,7 @@ import type { PhotoTag, Unit } from './types';
 // Every answer is checked again here (lib/ai-check) before a screen uses it.
 
 /** Why an AI helper didn't answer. Screens show `ai.errors.<code>`. */
-export type AiErrorCode = 'not_set_up' | 'key_refused' | 'limit' | 'busy' | 'signed_out' | 'too_big' | 'offline' | 'failed';
+export type AiErrorCode = 'not_set_up' | 'key_refused' | 'limit' | 'person_limit' | 'busy' | 'signed_out' | 'too_big' | 'offline' | 'failed';
 
 export class AiFailed extends Error {
   constructor(readonly code: AiErrorCode) {
@@ -25,7 +25,7 @@ export class AiFailed extends Error {
   }
 }
 
-const CODES: Record<string, AiErrorCode> = { not_set_up: 'not_set_up', key_refused: 'key_refused', limit: 'limit', busy: 'busy', signed_out: 'signed_out', too_big: 'too_big' };
+const CODES: Record<string, AiErrorCode> = { not_set_up: 'not_set_up', key_refused: 'key_refused', limit: 'limit', person_limit: 'person_limit', busy: 'busy', signed_out: 'signed_out', too_big: 'too_big' };
 
 /** AI needs the server: signed in (connected mode), not the example build. */
 export function aiReady(mode: 'example' | 'connected'): boolean {

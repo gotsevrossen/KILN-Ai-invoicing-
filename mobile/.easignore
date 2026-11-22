@@ -30,8 +30,10 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-# .env.local is uploaded: it holds only the server address and the public key, both built into the app anyway
+# The build uses .env.local for its public server address and publishable key.
+.env
+.env.*
+!.env.local
 
 # typescript
 *.tsbuildinfo

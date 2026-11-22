@@ -21,7 +21,6 @@ export function errorDetails(error: unknown): ErrorDetails {
 export function userErrorKey(error: unknown): TKey {
   const { code = '', status, message, type } = errorDetails(error);
   const text = message.toLowerCase();
-  if (code === 'offline' || /failed to fetch|network request failed|networkerror|load failed|connection refused|timeout|timed out/.test(text)) return 'errors.connection';
   if (status === 429 || /rate_limit|too_many/.test(code)) return 'errors.tooMany';
   if (code === 'invalid_credentials' || /invalid login credentials/.test(text)) return 'errors.credentials';
   if (code === 'email_not_confirmed' || /email not confirmed/.test(text)) return 'errors.confirmEmail';
@@ -33,6 +32,7 @@ export function userErrorKey(error: unknown): TKey {
   if (status === 401 || code === 'signed_out' || /jwt|refresh_token|session_not_found|session_expired/.test(code.toLowerCase()) || /jwt expired|invalid refresh token/.test(text)) return 'errors.signIn';
   if (code === 'owner_only' || status === 403 || code === '42501' || /row.level security|permission denied/.test(text)) return 'errors.permission';
   if (code === 'not_found' || status === 404 || code === 'PGRST116' || /record was not found/.test(text)) return 'errors.missing';
+  if (code === 'offline' || /failed to fetch|network request failed|networkerror|load failed|connection refused|timeout|timed out/.test(text)) return 'errors.connection';
   if (code === '23505') return 'errors.duplicate';
   if (code === '23503' || code === '23514' || code === '22P02') return 'errors.checkDetails';
   if (/already (sent|signed)|signed or sent|sent or signed|was answered|locked|cannot (edit|change|delete).*sent/.test(text)) return 'errors.locked';

@@ -17,7 +17,7 @@ insert into public.estimate_lines(business_id,estimate_id,description,unit,qty_h
 update public.estimates set sent_at=now(),tax_rate_bps=0,tax_labor=false,tax_materials=false where id='30000000-0000-0000-0000-000000000005';
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"30000000-0000-0000-0000-000000000001","role":"authenticated"}',true);
-select public.sign_estimate(job,'Customer','test') from payment_fixture;
+select public.sign_estimate(job,'Customer','test','[[[0,0],[1,1]]]') from payment_fixture;
 select lives_ok($$select public.create_job_payment_request('30000000-0000-0000-0000-000000000006',job,'deposit',1,'Deposit') from payment_fixture$$,'owner can request signed deposit');
 select is((select amount_cents from public.job_payment_requests),30000,'deposit amount is derived on server, ignoring supplied amount');
 select is((select count(*)::int from public.payments),0,'request is not a payment');
@@ -28,7 +28,7 @@ select lives_ok($$select public.record_job_cash('30000000-0000-0000-0000-0000000
 select is((select count(*)::int from public.payments),1,'retry does not duplicate money');
 select is((select sum(amount_cents)::int from public.payments where status='succeeded'),30000,'only confirmed deposit is credited');
 select lives_ok($$insert into public.change_orders(id,business_id,job_id,number,description,amount_cents,base_cents,sent_at) select '30000000-0000-0000-0000-000000000008',bid,job,1,'Credit for removed fixture',-10000,100000,now() from payment_fixture$$,'credit variation can reduce unpaid agreed balance');
-select lives_ok($$select public.sign_change_order('30000000-0000-0000-0000-000000000008','Customer','test')$$,'credit can be approved');
+select lives_ok($$select public.sign_change_order('30000000-0000-0000-0000-000000000008','Customer','test','[[[0,0],[1,1]]]')$$,'credit can be approved');
 reset role;
 select is(public.job_agreed_total((select job from payment_fixture)),90000,'approved credit reduces agreed total');
 set local role authenticated;

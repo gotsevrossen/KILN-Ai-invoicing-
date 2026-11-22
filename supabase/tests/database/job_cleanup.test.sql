@@ -4,7 +4,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path to "$user", public, extensions;
-select plan(32);
+select plan(40);
 
 insert into auth.users(id,email) values
  ('c1111111-1111-1111-1111-11111111111a','owner@cleanup.test'),
@@ -41,8 +41,8 @@ insert into public.invoice_lines(business_id,invoice_id,kind,description,qty_hun
  select 'c2222222-2222-2222-2222-22222222222a', id::uuid, 'labor', 'Replace trap', 100, 12000, 0
  from unnest(array['c6666666-6666-6666-6666-66666666666a','c6666666-6666-6666-6666-66666666666b','c6666666-6666-6666-6666-66666666666c','c6666666-6666-6666-6666-66666666666d','c6666666-6666-6666-6666-66666666666e']) id;
 -- what sending saves
-update public.invoices set tax_rate_bps = 0, tax_labor = false, tax_materials = false, issued_on = current_date - 35, due_days = 14;
-update public.estimates set tax_rate_bps = 0, tax_labor = false, tax_materials = false;
+update public.invoices set tax_rate_bps = 0, tax_labor = false, tax_materials = false, issued_on = current_date - 35, due_days = 14 where business_id='c2222222-2222-2222-2222-22222222222a';
+update public.estimates set tax_rate_bps = 0, tax_labor = false, tax_materials = false where business_id='c2222222-2222-2222-2222-22222222222a';
 insert into public.photos(id,business_id,job_id,storage_path) values('c7777777-7777-7777-7777-77777777777a','c2222222-2222-2222-2222-22222222222a','c4444444-4444-4444-4444-44444444444a','c2222222-2222-2222-2222-22222222222a/c4444444-4444-4444-4444-44444444444a/c7777777-7777-7777-7777-77777777777a.jpg');
 insert into public.notes(business_id,job_id,body) values('c2222222-2222-2222-2222-22222222222a','c4444444-4444-4444-4444-44444444444a','Gate code 1234');
 insert into public.receipts(id,business_id,store) values('c8888888-8888-8888-8888-88888888888a','c2222222-2222-2222-2222-22222222222a','Hardware');
@@ -96,16 +96,37 @@ select throws_ok($$select public.choose_job_documents('c4444444-4444-4444-4444-4
 select pg_temp.as_user('c1111111-1111-1111-1111-11111111111e');
 select is((select count(*)::int from public.jobs_due_for_removal()),0,'another business sees nothing due');
 
+-- Managers cannot substitute a cleanup decision through ordinary job writes.
+select pg_temp.as_user('c1111111-1111-1111-1111-11111111111b');
+select throws_ok($$update public.jobs set documents_choice='discard' where id='c4444444-4444-4444-4444-44444444444a'$$,
+  '42501',null,'cleanup choices require the owner procedure');
+select throws_ok($$update public.jobs set removal_warned_at=now() - interval '2 days' where id='c4444444-4444-4444-4444-44444444444a'$$,
+  '42501',null,'the warning clock cannot be edited directly');
+select throws_ok($$insert into public.audit_log(business_id,actor,action,entity) values
+  ('c2222222-2222-2222-2222-22222222222a',auth.uid(),'invoice.paid','invoice')$$,
+  '42501',null,'app clients cannot manufacture audit entries');
+select ok(not has_table_privilege('anon','public.invoices','truncate') and
+  not has_table_privilege('authenticated','public.invoices','truncate'),'client roles cannot truncate billing records');
+select ok(not has_function_privilege('authenticated','public.sign_estimate(uuid,text,text)','execute'),
+  'finger signing requires the evidence-aware procedure');
+select ok(not public.owned_storage_path('c2222222-2222-2222-2222-22222222222a','c2222222-2222-2222-2222-22222222222a/../other')
+  and not public.owned_storage_path('c2222222-2222-2222-2222-22222222222a','c2222222-2222-2222-2222-22222222222b/file'),
+  'cleanup accepts only canonical keys in the source business');
+
 -- the server removes it
 reset role;
 set local role service_role;
-select is((public.purge_job('c4444444-4444-4444-4444-44444444444a')->>'saved')::int,2,'the signed estimate and the paid invoice are saved');
+select is((public.purge_job_and_queue_files('c4444444-4444-4444-4444-44444444444a')->>'saved')::int,2,'the signed estimate and the paid invoice are saved');
 reset role;
+select is((select count(*)::int from public.job_cleanup_files where bucket='job-photos'
+  and business_id='c2222222-2222-2222-2222-22222222222a'),1,'authorized cleanup queues its own photo');
+select ok(not has_table_privilege('service_role','public.job_cleanup_files_unverified','select'),
+  'the worker cannot process unverified legacy entries');
 select is((select count(*)::int from public.jobs where id='c4444444-4444-4444-4444-44444444444a'),0,'the job is gone');
 select is((select count(*)::int from public.notes where job_id='c4444444-4444-4444-4444-44444444444a'),0,'its notes are gone');
-select is((select count(*)::int from public.signatures),0,'its signature record is gone');
-select is((select count(*)::int from public.payments),0,'its payments are gone');
-select is((select array_agg(id order by id) from public.receipt_items),array['c9999999-9999-9999-9999-99999999999b'::uuid],'a receipt item shared with another job stays; one only for this job goes');
+select is((select count(*)::int from public.signatures where business_id='c2222222-2222-2222-2222-22222222222a'),0,'its signature record is gone');
+select is((select count(*)::int from public.payments where business_id='c2222222-2222-2222-2222-22222222222a'),0,'its payments are gone');
+select is((select array_agg(id order by id) from public.receipt_items where business_id='c2222222-2222-2222-2222-22222222222a'),array['c9999999-9999-9999-9999-99999999999b'::uuid],'a receipt item shared with another job stays; one only for this job goes');
 select is((select snapshot->'signatures'->0->>'name' from public.saved_documents where document_type='estimate'),'Lee Park','the saved estimate keeps who signed');
 select is((select (snapshot->'payments'->0->>'amountCents')::int from public.saved_documents where document_type='invoice'),12000,'the saved invoice keeps its payment');
 

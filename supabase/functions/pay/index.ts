@@ -1,3 +1,4 @@
+import { BodyTooLarge, InvalidBody, readObject } from '../_shared/request.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { balance, cors, hashToken, type LineRow, Refused, reply, serviceClient, setting, tokenShape, totalsOf } from '../_shared/invoice.ts';
@@ -85,15 +86,18 @@ async function view(db: SupabaseClient, link: Link) {
 
   const byId = new Map(photos.data.map((photo) => [photo.id, photo]));
   const shown = invoice.proof_photo_ids?.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []) ?? photos.data.slice(0, 12);
+  const secondsLeft = Math.floor((Date.parse(link.expires_at) - Date.now()) / 1000);
+  if (secondsLeft <= 0) throw new Refused(404, 'not_found');
   const signed = shown.length
-    ? await db.storage.from('job-photos').createSignedUrls(shown.map((p) => p.storage_path), PHOTO_URL_SECONDS)
+    ? await db.storage.from('job-photos').createSignedUrls(shown.map((p) => p.storage_path), Math.min(PHOTO_URL_SECONDS, secondsLeft))
     : { data: [], error: null };
   if (signed.error) throw new Error('load failed');
 
   // the first time it's opened, the owner sees it in the app
   if (!link.opened_at) {
-    await db.from('share_links').update({ opened_at: new Date().toISOString() }).eq('id', link.id);
-    await db.from('audit_log').insert({ business_id: invoice.business_id, actor: null, action: 'invoice.opened', entity: 'invoice', entity_id: invoice.id });
+    const opened = await db.from('share_links').update({ opened_at: new Date().toISOString() })
+      .eq('id', link.id).is('opened_at', null);
+    if (opened.error) throw new Error('invoice view recording failed');
   }
 
   const walletAvailableForInvoice = !reservation || reservation.collection_method === 'wallet';
@@ -207,14 +211,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return reply(405, { error: 'bad_request' });
   try {
-    const raw = await req.text();
-    if (raw.length > 145_000) throw new Refused(413, 'bad_request');
-    let body: { action?: unknown; token?: unknown; method?: unknown; intent?: unknown; hash?: unknown; name?: unknown; ink?: unknown; agreed?: unknown; amountCents?: unknown; wallet?: unknown };
-    try {
-      body = JSON.parse(raw);
-    } catch {
-      throw new Refused(400, 'bad_request');
-    }
+    const body = await readObject(req, 145_000);
     const db = serviceClient();
     const request = await requestByToken(db, body.token);
     if (request) return reply(200, await jobRequestAction(db, request, body));
@@ -233,6 +230,8 @@ Deno.serve(async (req) => {
     }
     throw new Refused(400, 'bad_request');
   } catch (e) {
+    if (e instanceof BodyTooLarge) return reply(413, { error: 'bad_request' });
+    if (e instanceof InvalidBody) return reply(400, { error: 'bad_request' });
     if (e instanceof Refused) return reply(e.status, { error: e.code });
     if (e instanceof StripeError) {
       console.error(`pay: Stripe said ${e.status} ${e.code}`);

@@ -22,6 +22,13 @@ Assert-Check (!(Test-KilnTunnelProcess (Fake-Process 'cloudflared.exe' 'cloudfla
 Assert-Check (!(Test-KilnTunnelProcess (Fake-Process 'node.exe' 'node --url http://localhost:54321'))) 'Only cloudflared owns a tunnel.'
 Assert-Check ('supabase_db_kiln' -match $ContainerPattern) 'Should match KILN container.'
 Assert-Check ('supabase_db_other' -notmatch $ContainerPattern) 'Must preserve another Supabase project.'
+$defaultBinding = '{"5432/tcp":[{"HostIp":"","HostPort":"54322"}]}' | ConvertFrom-Json
+Assert-Check (Test-KilnPortBindings $defaultBinding '127.0.0.1') 'Accept a loopback network default.'
+Assert-Check (!(Test-KilnPortBindings $defaultBinding '')) 'An unspecified default exposes the port.'
+$mixedBindings = '{"5432/tcp":[{"HostIp":"127.0.0.1"},{"HostIp":"::"}]}' | ConvertFrom-Json
+Assert-Check (!(Test-KilnPortBindings $mixedBindings '127.0.0.1')) 'Reject a public IPv6 binding even with a private IPv4 binding.'
+$loopback = '{"5432/tcp":[{"HostIp":"::1"},{"HostIp":"127.0.0.1"}]}' | ConvertFrom-Json
+Assert-Check (Test-KilnPortBindings $loopback '') 'Accept explicit loopback bindings.'
 Assert-Check ('supabase_db_kiln2' -notmatch $ContainerPattern) 'Must not match another project suffix.'
 
 $gate = 'node "' + $GateScript + '" 54330 54321'

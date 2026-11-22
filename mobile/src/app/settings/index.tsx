@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
+import { AppLockSetting } from '@/components/app-lock';
 import { Button, Card, Hair, ListCard, ListRow, Notice, PageHeader, Screen, Segmented, SwitchRow, T } from '@/components/ui';
 import { aiReady } from '@/data/ai';
 import { useAuth } from '@/data/auth';
@@ -127,6 +128,7 @@ export default function Settings() {
         <T v="label">{t('settings.theme')}</T>
         <Segmented label={t('settings.theme')} value={theme.mode} onChange={theme.setMode}
           options={[{ key: 'light', label: t('settings.themeLight') }, { key: 'dark', label: t('settings.themeDark') }, { key: 'system', label: t('settings.themeSystem') }]} />
+        <AppLockSetting />
       </Card>
 
       <Card style={{ gap: 8 }}>

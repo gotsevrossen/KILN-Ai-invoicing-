@@ -3,6 +3,20 @@ import type { Dict } from './en';
 // Spanish text. Same keys as en.ts.
 
 const es: Dict = {
+  lock: {
+    title: 'KILN está bloqueado',
+    body: 'Usa Face ID, tu huella o el código de tu teléfono para abrir tus trabajos.',
+    prompt: 'Abrir KILN',
+    unlock: 'Desbloquear',
+    cancel: 'Cancelar',
+    passcode: 'Usar código',
+    failed: 'No funcionó. Toca Desbloquear para intentar de nuevo, o cierra sesión y vuelve a entrar con tu contraseña.',
+    signOut: 'Cerrar sesión',
+    setting: 'Bloquear con Face ID o huella',
+    settingHelp: 'Lo pide al abrir KILN y después de 5 minutos fuera. El código de tu teléfono también sirve.',
+    noScreenLock: 'Para bloquear KILN con Face ID o tu huella, primero configura un bloqueo de pantalla en los ajustes de tu teléfono.',
+    notChanged: 'No se cambió. Confirma con Face ID, tu huella o tu código para cambiar esto.',
+  },
   offlineSave: {
     confirmed: 'Guardado en tu cuenta',
     waiting: 'Guardado en este teléfono — %{count} cambios pendientes de sincronizar.',
@@ -391,6 +405,8 @@ const es: Dict = {
     screenBody: 'Ocurrió un problema al abrir esta página. Intenta de nuevo. Si continúa, cierra KILN y vuelve a abrirlo.',
   },
   auth: {
+    verifyEmail: 'Verificar correo',
+    confirmSignup: 'Revisa tu correo. Escribe aquí el código de confirmación o abre el enlace de confirmación e inicia sesión.',
     signInTitle: 'Iniciar sesión',
     signUpTitle: 'Crea tu cuenta',
     body: 'Tus trabajos, presupuestos y facturas se guardan en tu cuenta.',
@@ -827,6 +843,7 @@ const es: Dict = {
       not_set_up: 'Esta función de KILN no está disponible por ahora. Puedes seguir trabajando a mano. Intenta más tarde.',
       key_refused: 'Esta función de KILN no está disponible por ahora. Puedes seguir trabajando a mano. Intenta más tarde.',
       limit: 'Llegaste al límite de IA de hoy. Se renueva mañana.',
+      person_limit: 'Usaste el límite de hoy para esta función de KILN. Se renueva mañana.',
       busy: 'KILN está ocupado. Intenta de nuevo en un minuto.',
       signed_out: 'Vuelve a iniciar sesión para usar esto.',
       too_big: 'Esas fotos son muy grandes. Prueba con menos fotos o más cercanas.',

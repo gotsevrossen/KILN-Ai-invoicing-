@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.rosseng.kiln",
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#F0844C",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -25,7 +26,18 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "headers": {
+            "X-Frame-Options": "DENY",
+            "Content-Security-Policy": "frame-ancestors 'none'",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+            "Strict-Transport-Security": "max-age=31536000"
+          }
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -54,7 +66,14 @@
           "speechRecognitionPermission": "KILN turns your voice notes into text with your phone's speech recognition."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "KILN uses Face ID so only you can open your jobs, customers and invoices."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

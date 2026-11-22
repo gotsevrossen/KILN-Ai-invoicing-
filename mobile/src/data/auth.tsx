@@ -42,7 +42,8 @@ type Auth = {
   /** Re-check role/access without tearing down an unchanged account view. */
   refreshMembership: () => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<ErrorDetails | null>;
-  signUp: (email: string, password: string) => Promise<ErrorDetails | null>;
+  signUp: (email: string, password: string) => Promise<{ error: ErrorDetails | null; confirmEmail: boolean }>;
+  confirmSignUp: (email: string, code: string) => Promise<ErrorDetails | null>;
   signOut: () => Promise<void>;
   /** Sends the project's recovery email and provides the callback for link-based templates. */
   sendPasswordReset: (email: string) => Promise<ResetProblem | null>;
@@ -118,15 +119,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLoaded({ userId, error: null });
           return;
         }
-        storeActions.startConnected(userId);
+        storeActions.startConnected(userId, member?.businessId ?? null);
+        if (!member) {
+          setLoaded({ userId, error: null });
+          return;
+        }
         await storeActions.retryOffline();
         const before = currentState();
         const data = await loadAll();
         if (cancelled) return;
-        if (data && currentState() === before) storeActions.hydrate(data);
+        if (data?.businessId !== member.businessId) throw Object.assign(new Error('Membership changed'), { code: 'owner_only' });
+        if (currentState() === before) storeActions.hydrate(data);
         setLoaded({ userId, error: null });
       } catch (e) {
         if (!cancelled) {
+          if (userErrorKey(e) !== 'errors.connection') storeActions.clearAccountView();
           storeActions.offlineLoadFailed(e);
           setLoaded({ userId, error: storeActions.hasOfflineCache() ? null : errorDetails(e) });
         }
@@ -179,8 +186,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return error ? errorDetails(error) : null;
       },
       async signUp(email, password) {
+        if (!supabase) return { error: { message: 'No server is set up' }, confirmEmail: false };
+        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+        return { error: error ? errorDetails(error) : null, confirmEmail: !error && !data.session };
+      },
+      async confirmSignUp(email, code) {
         if (!supabase) return { message: 'No server is set up' };
-        const { error } = await supabase.auth.signUp({ email: email.trim(), password });
+        const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'signup' });
         return error ? errorDetails(error) : null;
       },
       async signOut() {

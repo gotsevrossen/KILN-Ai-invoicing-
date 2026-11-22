@@ -2,7 +2,8 @@ import * as Haptics from 'expo-haptics';
 import { router, type Href } from 'expo-router';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
-import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import Animated, { KeyboardState, useAnimatedKeyboard, useAnimatedReaction, useAnimatedStyle } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/data/auth';
@@ -59,8 +60,6 @@ export function AssistantChat({ focusJobId: openedFrom, crew = false }: {
   const setMessages = (update: (m: Message[]) => Message[]) => setMessagesRaw((old) => { const next = update(old); chats.set(key, next); return next; });
   const [focusJobId, setFocusJobId] = useState(openedFrom);
   const [text, setText] = useState('');
-  // the empty text box's real height: Send matches it, so the two always line up
-  const [boxHeight, setBoxHeight] = useState<number>(tap.main);
   const [thinking, setThinking] = useState(false);
   // the mic in the text box: what's heard goes straight into the box, after anything already typed
   const typedBefore = useRef('');
@@ -77,8 +76,17 @@ export function AssistantChat({ focusJobId: openedFrom, crew = false }: {
   // (Reanimated marks this hook as replaced by react-native-keyboard-controller, a new package
   // to add later; this one is already installed and works in Expo Go.)
   const keyboard = useAnimatedKeyboard();
-  const bottomEdge = Math.max(insets.bottom, space.md);
-  const keyboardRoom = useAnimatedStyle(() => ({ paddingBottom: Math.max(keyboard.height.get() - bottomEdge + space.sm, 0) }));
+  const bottomEdge = Math.max(insets.bottom, space.sm);
+  // The chat slides up with the keyboard instead of shrinking: a slide is drawn on the same frame,
+  // while shrinking makes every message re-measure each frame, which is what made the box lag behind.
+  const keyboardLift = useAnimatedStyle(() => ({ transform: [{ translateY: -Math.max(keyboard.height.get() - bottomEdge + space.sm, 0) }] }));
+  // Sliding up hides the top of the chat under the header, so once the keyboard is fully open the
+  // chat gets that much room at the top, to scroll back to its first message.
+  const [topRoom, setTopRoom] = useState(0);
+  useAnimatedReaction(
+    () => (keyboard.state.get() === KeyboardState.OPEN ? Math.max(keyboard.height.get() - bottomEdge + space.sm, 0) : 0),
+    (now, before) => { if (now !== before) scheduleOnRN(setTopRoom, Math.round(now)); },
+  );
   const ready = aiReady(state.mode);
   const allowed = crew || can(auth.role, 'useAi');
   // crew: their assigned jobs and the price items they may use, from the crew server functions
@@ -239,7 +247,7 @@ export function AssistantChat({ focusJobId: openedFrom, crew = false }: {
   return (
     <View style={{ flex: 1, backgroundColor: p.ground }}>
       <SafeAreaView edges={['top']} style={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: 4 }}>
-        <PageHeader title={c.title} back={() => router.back()}
+        <PageHeader title={c.title} back={() => router.back()} inline
           // opened from a job: an orange pill with the job right next to "KILN"; × talks about all jobs instead
           beside={focusJobId && jobTitle(focusJobId) ? (
             <View accessible={false} aria-label={`${c.aboutJob}: ${jobTitle(focusJobId)}`}
@@ -254,9 +262,14 @@ export function AssistantChat({ focusJobId: openedFrom, crew = false }: {
           ) : undefined}
           right={messages.length ? <IconButton icon="edit" label={c.clear} onPress={() => setMessages(() => [])} /> : undefined} />
       </SafeAreaView>
-      {/* moves with the keyboard frame by frame, so the text box rides up with it instead of catching up after */}
-      <Animated.View style={[{ flex: 1 }, keyboardRoom]}>
-        <ScrollView ref={scroll} contentContainerStyle={{ padding: space.lg, gap: 12 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+      {/* moves with the keyboard frame by frame, so the text box rides up with it instead of catching up after;
+          the clip keeps the raised chat from drawing over the header */}
+      <View style={{ flex: 1, overflow: 'hidden' }}>
+      <Animated.View style={[{ flex: 1 }, keyboardLift]}>
+        <ScrollView ref={scroll} contentContainerStyle={{ padding: space.lg, paddingTop: space.lg + topRoom, gap: 12 }}
+          keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive"
+          // the room added at the top doesn't move what's on screen
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}>
           <Bubble kiln text={focusJobId && jobTitle(focusJobId) ? fillIn(c.helloJob, { job: jobTitle(focusJobId) }) : c.hello} />
           {messages.map((m) => (
             <View key={m.id} style={{ gap: 8 }}>
@@ -317,32 +330,36 @@ export function AssistantChat({ focusJobId: openedFrom, crew = false }: {
 
         {/* the input bar, like a messaging app: type, or tap the mic inside the box and talk */}
         {blocked ? <View style={{ padding: space.lg, paddingBottom: Math.max(insets.bottom, space.md) }}><Notice text={blocked} icon="info" tone="soft" /></View> : (
-          <View style={{ paddingHorizontal: space.md, paddingTop: 8, paddingBottom: Math.max(insets.bottom, space.md), gap: 6, backgroundColor: p.ground }}>
-            {dictation.error ? <T v="small" color={p.danger} style={{ paddingHorizontal: 8 }}>{dictation.error}</T> : null}
-            <Row gap={8} style={{ alignItems: 'flex-end' }}>
-              <View onLayout={(e) => { if (!text) setBoxHeight(Math.round(e.nativeEvent.layout.height)); }} style={{ flex: 1, flexDirection: 'row', gap: 4, minHeight: tap.main,
-                borderRadius: radius.md, backgroundColor: p.card, paddingLeft: 16, paddingRight: 4,
-                alignItems: 'flex-end', borderWidth: 2, borderColor: dictation.listening ? p.danger : 'transparent' }}>
-                <TextInput value={text} onChangeText={setText} placeholder={dictation.listening ? c.listening : focusJobId ? c.placeholderJob : c.placeholder} placeholderTextColor={p.muted}
-                  multiline maxLength={2000} accessibilityLabel={c.placeholder} editable={!thinking && !dictation.listening}
-                  // keep the newest message in view as the keyboard comes up
-                  onFocus={() => setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 300)}
-                  // one line fills the box exactly: 22 line + 2 × 15 padding + 2 × 2 border = 56, the Send button's height
-                  style={{ flex: 1, fontSize: 16, lineHeight: 22, color: p.ink, paddingTop: 15, paddingBottom: 15, maxHeight: 140,
-                    includeFontPadding: false, textAlignVertical: 'center' }} />
-                <Pressable onPress={toggleMic} disabled={thinking || dictation.starting} accessibilityRole="button"
-                  accessibilityLabel={dictation.listening ? c.stopListening : c.speak} accessibilityState={{ selected: dictation.listening }} hitSlop={4}
-                  style={({ pressed }) => ({ width: tap.min, height: tap.min, marginBottom: 2, marginTop: 2, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: dictation.listening ? p.danger : 'transparent', opacity: pressed || thinking ? 0.6 : 1 })}>
-                  <Icon name={dictation.listening ? 'square' : 'mic'} size={dictation.listening ? 18 : 22} color={dictation.listening ? p.onDanger : p.muted} />
-                </Pressable>
-              </View>
-              <Button label={c.send} icon="arrow-up" variant="dark" disabled={!text.trim() || thinking} onPress={() => ask(text)}
-                style={{ height: boxHeight, borderRadius: radius.md }} />
+          // a rounded text box across the screen, with the mic and Send inside it on the right
+          <View style={{ paddingHorizontal: space.sm, paddingTop: 6, paddingBottom: Math.max(insets.bottom, space.sm), gap: 6, backgroundColor: p.ground }}>
+            {dictation.error ? <T v="small" color={p.danger} style={{ paddingHorizontal: 12 }}>{dictation.error}</T> : null}
+            {/* one line: 48 buttons + 2 × 4 padding + 2 × 2 border = 60, so a radius of 30 makes the ends fully round */}
+            <Row gap={4} style={{ alignItems: 'flex-end', backgroundColor: p.card, borderRadius: 30, padding: 4, paddingLeft: 18,
+              borderWidth: 2, borderColor: dictation.listening ? p.danger : 'transparent' }}>
+              <TextInput value={text} onChangeText={setText} placeholder={dictation.listening ? c.listening : focusJobId ? c.placeholderJob : c.placeholder} placeholderTextColor={p.muted}
+                multiline maxLength={2000} accessibilityLabel={c.placeholder} editable={!thinking && !dictation.listening}
+                // keep the newest message in view as the keyboard comes up
+                onFocus={() => setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 300)}
+                // one line is as tall as the buttons beside it: 22 line + 2 × 13 padding = 48
+                style={{ flex: 1, fontSize: 16, lineHeight: 22, color: p.ink, paddingTop: 13, paddingBottom: 13, maxHeight: 140,
+                  includeFontPadding: false, textAlignVertical: 'center' }} />
+              <Pressable onPress={toggleMic} disabled={thinking || dictation.starting} accessibilityRole="button"
+                accessibilityLabel={dictation.listening ? c.stopListening : c.speak} accessibilityState={{ selected: dictation.listening }} hitSlop={4}
+                style={({ pressed }) => ({ width: tap.min, height: tap.min, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: dictation.listening ? p.danger : 'transparent', opacity: pressed || thinking ? 0.6 : 1 })}>
+                <Icon name={dictation.listening ? 'square' : 'mic'} size={dictation.listening ? 18 : 22} color={dictation.listening ? p.onDanger : p.muted} />
+              </Pressable>
+              <Pressable onPress={() => ask(text)} disabled={!text.trim() || thinking} accessibilityRole="button" accessibilityLabel={c.send}
+                accessibilityState={{ disabled: !text.trim() || thinking }} hitSlop={4}
+                style={({ pressed }) => ({ width: tap.min, height: tap.min, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: !text.trim() || thinking ? p.line : p.inverse, opacity: pressed ? 0.7 : 1 })}>
+                <Icon name="arrow-up" size={22} color={!text.trim() || thinking ? p.muted : p.onInverse} />
+              </Pressable>
             </Row>
           </View>
         )}
       </Animated.View>
+      </View>
 
       {crew ? (
         <Sheet open={pick !== null} onClose={() => setPick(null)} title={c.whichJob}>

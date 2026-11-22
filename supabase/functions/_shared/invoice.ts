@@ -28,7 +28,7 @@ export const cors = {
 };
 
 export const reply = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+  new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export class Refused extends Error {
   constructor(readonly status: number, readonly code: string) {

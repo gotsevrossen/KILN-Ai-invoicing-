@@ -2,7 +2,7 @@ import { DeliveryStatus } from '@/components/delivery-status';
 import { OfflineStatus } from '@/components/offline-status';
 import { InvoiceSignature } from '@/components/invoice-payment-choices';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { FixList } from '@/components/fix-list';
 import { parseDollars } from '@/components/estimate-parts';
@@ -64,9 +64,11 @@ function InvoiceDraft() {
   const opened = state.opened[invoice.id];
   const waiting = sent && !paid && state.mode === 'connected';
   const acceptance = useInvoiceAcceptance(invoice.id, state.businessId, sent && state.mode === 'connected');
-  const methods = acceptance?.alternativeMethods ?? state.issuedInvoices[invoice.id]?.alternativeMethods ?? state.settings.alternativeMethods ?? {};
-  const definedMethods = alternativeMethods.filter((id) => methods[id] !== undefined);
-  const receivedMethods: readonly AlternativeMethod[] = definedMethods.length ? definedMethods : ['cash'];
+  const methods = acceptance?.alternativeMethods ?? state.issuedInvoices[invoice.id]?.alternativeMethods ?? state.settings.alternativeMethods;
+  const receivedMethods = useMemo<readonly AlternativeMethod[]>(() => {
+    const defined = alternativeMethods.filter((id) => methods?.[id] !== undefined);
+    return defined.length ? defined : ['cash'];
+  }, [methods]);
 
   // the customer opens and pays outside the app: check now, then every 15 seconds while it's open here
   const { refreshPay } = actions;

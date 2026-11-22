@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { Button, Card, Hair, ListCard, ListRow, Notice, PageHeader, Screen, T } from '@/components/ui';
+import { Button, Hair, ListCard, ListRow, Notice, PageHeader, Screen, T } from '@/components/ui';
 import { useAuth } from '@/data/auth';
 import type { Job } from '@/data/types';
 import { useLang } from '@/i18n';

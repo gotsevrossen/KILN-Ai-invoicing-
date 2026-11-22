@@ -36,6 +36,7 @@ export default function SignIn() {
   const [codeSent, setCodeSent] = useState(false);
   const [showCode, setShowCode] = useState(!passwordResetUrl);
   const [code, setCode] = useState('');
+  const [confirmingEmail, setConfirmingEmail] = useState(false);
   const [verified, setVerified] = useState(false);
   const [resendAt, setResendAt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -92,6 +93,7 @@ export default function SignIn() {
     setCodeSent(false);
     setShowCode(!passwordResetUrl);
     setCode('');
+    setConfirmingEmail(false);
     setVerified(false);
   };
 
@@ -99,7 +101,19 @@ export default function SignIn() {
     setBusy(true);
     setError(null);
     try {
-      const err = mode === 'in' ? await auth.signIn(email, password) : await auth.signUp(email, password);
+      let err;
+      if (mode === 'in') err = await auth.signIn(email, password);
+      else if (confirmingEmail) err = await auth.confirmSignUp(email, code);
+      else {
+        const result = await auth.signUp(email, password);
+        if (result.confirmEmail) {
+          setConfirmingEmail(true);
+          setPassword('');
+          setConfirm('');
+          return;
+        }
+        err = result.error;
+      }
       if (err) setError(userError(t, err));
       else router.replace(destination);
     } catch (e) {
@@ -222,7 +236,7 @@ export default function SignIn() {
     <Screen
       footer={
         <>
-          <Button label={busy ? t('auth.working') : mode === 'in' ? t('auth.signIn') : t('auth.signUp')} icon="log-in" big disabled={!ready || busy} onPress={submit} />
+          <Button label={busy ? t('auth.working') : confirmingEmail ? t('auth.verifyEmail') : mode === 'in' ? t('auth.signIn') : t('auth.signUp')} icon="log-in" big disabled={busy || (confirmingEmail ? !codeOk : !ready)} onPress={submit} />
           <Button label={mode === 'in' ? t('auth.toSignUp') : t('auth.toSignIn')} variant="outline" onPress={() => switchMode(mode === 'in' ? 'up' : 'in')} />
         </>
       }>
@@ -240,8 +254,12 @@ export default function SignIn() {
           { key: 'es', label: 'Español' },
         ]}
       />
-      <Field label={t('auth.email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" textContentType="emailAddress" />
-      {mode === 'up' ? newPassword(t('auth.password')) : (
+      <Field label={t('auth.email')} value={email} onChangeText={setEmail} editable={!confirmingEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" textContentType="emailAddress" />
+      {confirmingEmail ? <>
+        <Notice text={t('auth.confirmSignup')} tone="plain" icon="mail" />
+        <Field label={t('auth.code')} value={code} onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
+          keyboardType="number-pad" maxLength={6} autoComplete="one-time-code" textContentType="oneTimeCode" />
+      </> : mode === 'up' ? newPassword(t('auth.password')) : (
         <Field
           label={t('auth.password')}
           value={password}

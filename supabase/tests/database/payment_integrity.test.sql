@@ -17,7 +17,7 @@ insert into public.estimate_lines(business_id,estimate_id,description,unit,qty_h
 update public.estimates set sent_at=now(),tax_rate_bps=0,tax_labor=false,tax_materials=false where id='30000000-0000-0000-0000-000000000005';
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"30000000-0000-0000-0000-000000000001","role":"authenticated"}',true);
-select public.sign_estimate(job,'Customer','test') from payment_fixture;
+select public.sign_estimate(job,'Customer','test','[[[0,0],[1,1]]]') from payment_fixture;
 select public.create_job_payment_request('30000000-0000-0000-0000-000000000006',job,'milestone',20000,'Rough in') from payment_fixture;
 select public.create_job_payment_request('30000000-0000-0000-0000-000000000007',job,'milestone',80000,'Finish') from payment_fixture;
 reset role;
@@ -34,7 +34,7 @@ select throws_ok($$update public.job_payment_requests set intent_id='pi_other123
 select lives_ok($$select public.record_job_payment('30000000-0000-0000-0000-000000000006','pi_test123456',20000,'wallet','failed')$$,'a failed Stripe attempt is recorded');
 set local role authenticated;
 insert into public.change_orders(id,business_id,job_id,number,description,amount_cents,base_cents,sent_at) select '30000000-0000-0000-0000-000000000008',bid,job,1,'Removed fixture',-10000,100000,now() from payment_fixture;
-select public.sign_change_order('30000000-0000-0000-0000-000000000008','Customer','test');
+select public.sign_change_order('30000000-0000-0000-0000-000000000008','Customer','test','[[[0,0],[1,1]]]');
 reset role;
 select throws_ok($$select public.reserve_job_payment('30000000-0000-0000-0000-000000000007','wallet')$$,'P0001','Nothing due','another unresolved advance counts against reduced agreed total');
 set local role authenticated;
@@ -61,7 +61,7 @@ select throws_ok($$select public.record_stripe_payment((select bid from payment_
 select lives_ok($$select public.record_stripe_payment((select bid from payment_fixture),'30000000-0000-0000-0000-000000000009','pi_final123456',70000,'wallet','succeeded',100000)$$,'reserved final intent can settle');
 select lives_ok($$select public.record_stripe_payment((select bid from payment_fixture),'30000000-0000-0000-0000-000000000009','pi_final123456',70000,'wallet','processing',100000)$$,'late processing notice is accepted idempotently');
 select is((select status from public.payments where stripe_payment_intent='pi_final123456'),'succeeded','late notice never downgrades confirmed money');
-select is((select count(*)::int from public.payments),2,'one advance and one final payment only');
-select is((select sum(amount_cents)::int from public.payments where status='succeeded'),90000,'job fully reconciles without duplicate credits');
+select is((select count(*)::int from public.payments where business_id=(select bid from payment_fixture)),2,'one advance and one final payment only');
+select is((select sum(amount_cents)::int from public.payments where business_id=(select bid from payment_fixture) and status='succeeded'),90000,'job fully reconciles without duplicate credits');
 select * from finish();
 rollback;

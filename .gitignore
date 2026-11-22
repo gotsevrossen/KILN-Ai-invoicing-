@@ -3,3 +3,8 @@
 
 # Android test builds (APK files) live here, not in git
 builds/
+
+# Environment credentials and local overrides. Keep the public setup templates.
+.env
+.env.*
+!.env.example

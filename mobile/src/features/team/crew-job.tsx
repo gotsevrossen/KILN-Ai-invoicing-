@@ -22,7 +22,7 @@ import { userError } from '@/lib/user-errors';
 import { radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
 
-import { crewRead } from './crew-cache';
+import { cachedAssignment, crewRead } from './crew-cache';
 import { CrewSyncStatus, useCrewOutbox } from './crew-outbox';
 import { fill, teamText } from './text';
 
@@ -58,7 +58,8 @@ export function CrewJobScreen() {
   const auth = useAuth();
   const outbox = useCrewOutbox();
   const me = auth.session?.user.id;
-  const cacheScope = `${me}:${auth.businessId}:${auth.crewSeesPrices}`;
+  const memberScope = `${me}:${auth.businessId}`;
+  const cacheScope = `${memberScope}:${auth.crewSeesPrices}`;
   const [data, setData] = useState<api.CrewJobDetail | null>(null);
   const [loadError, setLoadError] = useState('');
   const loadRequest = useRef(0);
@@ -74,9 +75,9 @@ export function CrewJobScreen() {
 
   const reload = useCallback(() => {
     const request = ++loadRequest.current;
-    crewRead(cacheScope, `job:${id}`, () => api.loadCrewJob(id)).then((d) => { if (request === loadRequest.current) { setData(d); setLoadError(''); } },
+    crewRead(cacheScope, `job:${id}`, () => api.loadCrewJob(id), () => cachedAssignment(memberScope, id)).then((d) => { if (request === loadRequest.current) { setData(d); setLoadError(''); } },
       (e: unknown) => { if (request === loadRequest.current) { setData(null); setLoadError(userError(t, e)); } });
-  }, [cacheScope, id, t]);
+  }, [cacheScope, memberScope, id, t]);
   useFocusEffect(useCallback(() => {
     reload();
     const unsubscribe = onLiveRefresh(reload);

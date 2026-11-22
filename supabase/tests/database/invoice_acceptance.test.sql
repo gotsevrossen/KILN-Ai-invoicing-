@@ -21,11 +21,11 @@ insert into public.invoices(id,business_id,job_id,number) values
 insert into public.invoice_lines(business_id,invoice_id,description,kind,qty_hundredths,unit_cents) values
  ('81000000-0000-0000-0000-000000000001','84000000-0000-0000-0000-000000000001','Completed work','labor',100,5000);
 
-select throws_ok($$update public.invoices set sent_at=now(),tax_rate_bps=0,tax_labor=false,tax_materials=false,issued_on=current_date,due_days=0$$,
+select throws_ok($$update public.invoices set sent_at=now(),tax_rate_bps=0,tax_labor=false,tax_materials=false,issued_on=current_date,due_days=0 where id='84000000-0000-0000-0000-000000000001'$$,
  'PT422','alternative_methods_required','invoice issuance needs a configured alternative');
 select ok(not public.valid_alternative_methods('{"crypto":"unsupported"}'),'unsupported methods are rejected');
 update public.businesses set alternative_methods='{"zelle":"Use the business number","cash":""}' where id='81000000-0000-0000-0000-000000000001';
-update public.invoices set sent_at=now(),tax_rate_bps=0,tax_labor=false,tax_materials=false,issued_on=current_date,due_days=0;
+update public.invoices set sent_at=now(),tax_rate_bps=0,tax_labor=false,tax_materials=false,issued_on=current_date,due_days=0 where id='84000000-0000-0000-0000-000000000001';
 update public.businesses set alternative_methods='{"check":""}' where id='81000000-0000-0000-0000-000000000001';
 select is((select issued_alternative_methods from public.invoices where number='I-ACCEPT'),'{"cash":"","zelle":"Use the business number"}'::jsonb,'issuance freezes payment methods and instructions');
 insert into public.share_links(business_id,document_id,document_type,token_hash,expires_at) values
@@ -47,11 +47,11 @@ select lives_ok($$select public.accept_invoice_link(repeat('a',64),pg_temp.invoi
 select lives_ok($$select public.accept_invoice_link(repeat('a',64),pg_temp.invoice_hash(),'Customer','[[[0,0],[1,1]]]','zelle')$$,'same signature can be retried');
 select throws_ok($$select public.accept_invoice_link(repeat('a',64),pg_temp.invoice_hash(),'Another Signer','[[[0,0],[1,1]]]','zelle')$$,
  'P0001','invoice already accepted','acceptance cannot be overwritten');
-select is((select count(*)::int from public.payments),0,'signing creates no payment');
-select ok(not exists(select 1 from public.invoices where paid_at is not null),'signing does not mark invoice paid');
-select ok((select snapshot::text not like '%PRIVATE JOB NOTE%' from public.invoice_acceptances),'signed customer copy excludes private job notes');
+select is((select count(*)::int from public.payments where business_id='81000000-0000-0000-0000-000000000001'),0,'signing creates no payment');
+select ok(not exists(select 1 from public.invoices where business_id='81000000-0000-0000-0000-000000000001' and paid_at is not null),'signing does not mark invoice paid');
+select ok((select snapshot::text not like '%PRIVATE JOB NOTE%' from public.invoice_acceptances where business_id='81000000-0000-0000-0000-000000000001'),'signed customer copy excludes private job notes');
 select public.save_job_documents('83000000-0000-0000-0000-000000000001');
-select is((select snapshot #>> '{signatures,0,alternativeMethod}' from public.saved_documents where document_type='invoice'),'zelle','archived invoice keeps the returned signature');
+select is((select snapshot #>> '{signatures,0,alternativeMethod}' from public.saved_documents where business_id='81000000-0000-0000-0000-000000000001' and document_type='invoice'),'zelle','archived invoice keeps the returned signature');
 
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"80000000-0000-0000-0000-000000000002","role":"authenticated"}',true);

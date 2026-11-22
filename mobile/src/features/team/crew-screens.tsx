@@ -2,6 +2,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
 
+import { AppLockSetting } from '@/components/app-lock';
 import { Button, Card, Hair, IconButton, ListCard, ListRow, Notice, PageHeader, Screen, Segmented, T } from '@/components/ui';
 import { accountText } from '@/features/account/text';
 import { useAuth } from '@/data/auth';
@@ -96,6 +97,7 @@ export function CrewSettings() {
         <T v="eyebrow">{c.theme}</T>
         <Segmented label={c.theme} value={theme.mode} onChange={theme.setMode}
           options={[{ key: 'light', label: t('settings.themeLight') }, { key: 'dark', label: t('settings.themeDark') }, { key: 'system', label: t('settings.themeSystem') }]} />
+        <AppLockSetting />
       </Card>
       <Card style={{ gap: 10 }}>
         <T v="label">{auth.session?.user.email ?? ''}</T>

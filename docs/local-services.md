@@ -19,13 +19,26 @@ Your database containers and Docker volumes are preserved. These scripts do not 
 - Development email inbox: <http://localhost:54324>
 - The launcher prints the public ngrok tunnel address for Expo Go on your phone.
 
+## Local backend port bindings
+
+The laptop launcher checks Docker's published ports before starting the backend. The database, development inbox, and dashboard should only accept connections on this computer. The phone connects through the existing gateway.
+
+For a new installation, run these commands from the repository. Create the network once and reuse it for subsequent starts.
+
+```powershell
+docker network create -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 kiln-loopback
+npx supabase start --network-id kiln-loopback
+```
+
+For an existing installation, back up the database and local storage before rebuilding containers. A normal `npx supabase stop` preserves project volumes. Use the loopback network for the next start and verify the Docker port mappings before resuming laptop testing. [Supabase local development guide](https://supabase.com/docs/guides/local-development)
+
 ## The phone address (laptop server)
 
 Phones reach the laptop's server at a permanent address, `https://<computer>.<tailnet>.ts.net`, through **Tailscale Funnel**. It's the same after every restart, so Android test builds keep working. The address is only reachable while KILN is on: Stop closes it.
 
 The address is public, so phones never reach Supabase directly. They go through a gatekeeper, `scripts/kiln-gate.mjs` (Node, port 54330, tests in `scripts/kiln-gate.test.mjs`; run with `node --test scripts/kiln-gate.test.mjs`). It lets through only sign-in, data, photo storage and the AI helper (`/auth/v1`, `/rest/v1`, `/storage/v1`, `/functions/v1`). It refuses everything else, including Supabase's developer tools (`/mcp` can run any SQL and `/pg` is the dashboard's backend; both have no login), live updates (unused), and any request carrying an admin key or admin login. Start checks from the internet side that `/mcp` is refused and closes the address again if it isn't.
 
-Supabase's built-in local keys are published in its docs, so KILN uses its own: `KILN_JWT_SECRET` and `KILN_SECRET_KEY` in `supabase/.env` (see `supabase/.env.example`), used by `supabase/config.toml`. Start refuses to open the phone address if they're missing or if the running server still uses the public ones. After changing them, run `npx supabase stop` then `npx supabase start` once. Everyone signs in again.
+Supabase's built-in local keys are published in its docs, so KILN uses its own: `KILN_JWT_SECRET` and `KILN_SECRET_KEY` in `supabase/.env` (see `supabase/.env.example`), used by `supabase/config.toml`. Start refuses to open the phone address if they're missing or if the running server still uses the public ones. After changing the keys, restart the local stack on the loopback network. Everyone signs in again.
 
 Start writes the address, the local publishable key and `KILN_SERVER=Laptop` to `mobile/.env.local`; other settings are kept.
 
@@ -42,7 +55,7 @@ EXPO_PUBLIC_SUPABASE_URL=https://<project-id>.supabase.co
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```
 
-KILN's hosted project is `ssjshfjkkgcqjvvsjsnk` and this file already exists. To update the hosted project after a change: `npx supabase db push --linked` for database changes, `npx supabase functions deploy ai` for the AI helper. Send sign-in settings with `npx supabase config push` only after reading its preview: it also sends local test values, and the free plan refuses the email template.
+KILN's hosted project is `ssjshfjkkgcqjvvsjsnk` and this file already exists. To update the hosted project after a change: `npx supabase db push --linked` for database changes, `npx supabase functions deploy ai` for the AI helper. Hosted signup requires the standard Supabase email confirmation link during team testing. Password changes require recent authentication. Apply individual hosted Auth changes through the dashboard or Management API to preserve the production site URL and recovery redirect.
 
 Then start once with `-Server Hosted` (see below). The choice is remembered as `KILN_SERVER` in `mobile/.env.local` until you start with `-Server Laptop`. With the hosted server, Start runs only Expo: no Docker, no phone connection. An Android build uses whichever server `mobile/.env.local` points at when it's built.
 
@@ -77,7 +90,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\kiln-services.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-services.ps1
 ```
 
-The execution-policy override applies only to that PowerShell process; it does not change your machine's permanent execution policy. Docker Desktop, Node, Tailscale (signed in), and the installed mobile dependencies must already be available. The scripts resume the existing containers for `project_id = "kiln"`; they do not download or install new dependencies. If those containers were manually removed, initialize the backend once with `npx supabase start` from the repository before using the launcher again.
+The execution-policy override applies only to that PowerShell process; it does not change your machine's permanent execution policy. Docker Desktop, Node, Tailscale (signed in), and the installed mobile dependencies must already be available. The scripts resume the existing containers for `project_id = "kiln"`; they do not download or install new dependencies. If those containers were manually removed, initialize the backend on the loopback network described above before using the launcher again.
 
 If port 8081 belongs to another program, Start reports the conflict rather than stopping it. If a KILN tunnel or preview is already running, Start reports that rather than launching duplicates; use Stop followed by Start for a clean restart. A failed startup attempts to stop only processes and containers it started, leaving already-running backend containers alone.
 
