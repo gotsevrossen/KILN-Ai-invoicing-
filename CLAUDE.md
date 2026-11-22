@@ -165,12 +165,11 @@ Rossen is a cybersecurity student with Security+. Security is part of KILN's pit
 - Sending: texts from the owner's phone, emails from KILN. Automatic reminders go by email; text reminders are one tap for the owner.
 - KILN's emails come from KILN's own automated address, never the owner's or customer's email. "From" shows the business name (e.g. "Mike's Plumbing (via KILN)"), and Reply-To is the owner's email so customer replies reach them. Not a true "noreply" address. Set up later in development: a KILN domain with a separate sending sub-address, SPF/DKIM/DMARC records, and a sending service called only from an Edge Function. The same service also sends sign-in emails (password reset). Until then, local Supabase catches all emails at http://127.0.0.1:54324.
 - Sales tax for the first version: the owner sets one rate and switches tax on or off for labor and materials.
-- KILN's own pricing: leaning toward a monthly subscription. No billing needed in the first version.
+- KILN's own pricing (Nov 22): monthly subscription per business, priced by team size (owner, managers and crew): 1–3 people $5.99, 4–6 $7.99, 7+ $9.99 a month (yearly $59.99 / $79.99 / $99.99). 14-day free trial with a card added up front. Paid through Apple and Google in-app billing via RevenueCat (`react-native-purchases`); the server enforces access (`business_subscriptions`, migration `20261122130000_subscriptions.sql`, function `subscriptions`). Testers are free until launch. Built on branch `subscription-paywall` but switched off (`subscriptions_enforced()` returns false) until the stores are set up; plan and remaining steps: `docs/subscription-paywall-plan-2026-11-22.md`.
 
 ## Open decisions
 
 - What the Home screen shows first
-- KILN's exact price
 - Automatic sales tax by state
 - When to build the contractor web dashboard
 - KILN's domain and email sending service (leaning Resend to start; Postmark is the backup)

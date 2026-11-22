@@ -8,7 +8,9 @@ import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { Easing, interpolateColor, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { useSubscription } from '@/data/subscription';
 import { useLang } from '@/i18n';
+import { blocked } from '@/lib/subscription';
 import { assistantCopy } from '@/i18n/assistant';
 import { font, radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -203,6 +205,7 @@ function CaptureMenu({ capture, assistant, active, bottomInset }: { capture: Cap
   const { lang } = useLang();
   const c = assistantCopy[lang];
   const [open, setOpen] = useState(false);
+  const subscription = useSubscription();
   const bottom = Math.max(bottomInset, 12);
   // 0 closed, 1 open: drives the turn, the dimming and the choices together
   const progress = useSharedValue(0);
@@ -228,7 +231,8 @@ function CaptureMenu({ capture, assistant, active, bottomInset }: { capture: Cap
     void Haptics.selectionAsync().catch(() => {});
     progress.set(0);
     setOpen(false);
-    router.navigate(href);
+    // no subscription (or beyond the plan's team size): the subscribe screen explains instead
+    router.navigate(blocked(subscription.sub) ? '/subscribe' as Href : href);
   };
   const from = active ? p.accent : p.inverse;
   const turn = useAnimatedStyle(() => ({

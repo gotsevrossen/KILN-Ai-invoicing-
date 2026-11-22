@@ -17,6 +17,8 @@ import { ErrorScreen } from '@/components/error-screen';
 import { AuthProvider, useAuth } from '@/data/auth';
 import { LiveUpdates } from '@/data/live-updates';
 import { StoreProvider } from '@/data/store';
+import { SubscriptionProvider, useSubscription } from '@/data/subscription';
+import { neverSubscribed } from '@/lib/subscription';
 import { LanguageProvider, useLang } from '@/i18n';
 import { ThemeModeProvider, useScheme } from '@/theme/theme-mode';
 import { dark, light } from '@/theme/tokens';
@@ -50,7 +52,9 @@ export default function RootLayout() {
             <AuthProvider>
               <LiveUpdates />
               <AppLock>
-                <Screens />
+                <SubscriptionProvider>
+                  <Screens />
+                </SubscriptionProvider>
               </AppLock>
             </AuthProvider>
           </StoreProvider>
@@ -63,6 +67,7 @@ export default function RootLayout() {
 
 function AccessGate({ route, children }: { route: string; children: ReactNode }) {
   const auth = useAuth();
+  const { sub } = useSubscription();
   const { t } = useLang();
   const open = ['sign-in', 'reset-password', 'stripe-done', 'waiting', 'join/index', '+not-found'].includes(route)
     || ['pay/', 'quote/', 'collect/', 'change/', 'join/'].some((prefix) => route.startsWith(prefix));
@@ -75,6 +80,10 @@ function AccessGate({ route, children }: { route: string; children: ReactNode })
     </Screen>;
     if (!auth.session) return <Redirect href="/sign-in" />;
     if (auth.pending) return <Redirect href="/waiting" />;
+  }
+  // a new business that hasn't started its free trial yet: the owner subscribes first (switched off until launch)
+  if (auth.role === 'owner' && neverSubscribed(sub) && !['subscribe', 'setup'].includes(route) && !route.startsWith('settings')) {
+    return <Redirect href="/subscribe" />;
   }
   const crew = route === 'crew' || route.startsWith('crew/');
   if (auth.role === 'crew' && !crew) return <Redirect href="/crew" />;

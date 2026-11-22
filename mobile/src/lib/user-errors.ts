@@ -22,6 +22,9 @@ export function userErrorKey(error: unknown): TKey {
   const { code = '', status, message, type } = errorDetails(error);
   const text = message.toLowerCase();
   if (status === 429 || /rate_limit|too_many/.test(code)) return 'errors.tooMany';
+  // KILN's own subscription (database codes KL402 / KL403 from migration 20261122130000)
+  if (code === 'KL402' || code === 'subscription_needed' || /subscription_needed/.test(text)) return 'errors.subscription';
+  if (code === 'KL403' || code === 'plan_full' || /plan_full/.test(text)) return 'errors.planFull';
   if (code === 'invalid_credentials' || /invalid login credentials/.test(text)) return 'errors.credentials';
   if (code === 'email_not_confirmed' || /email not confirmed/.test(text)) return 'errors.confirmEmail';
   if (code === 'user_already_exists' || code === 'email_exists' || /already registered/.test(text)) return 'errors.accountExists';

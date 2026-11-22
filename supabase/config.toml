@@ -428,6 +428,11 @@ verify_jwt = false
 [functions.job-cleanup]
 verify_jwt = false
 
+# KILN subscriptions: RevenueCat's notices (secret header checked inside) and the app's
+# "check my purchase" (sign-in checked inside).
+[functions.subscriptions]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

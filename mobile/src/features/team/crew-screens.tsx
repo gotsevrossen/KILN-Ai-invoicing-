@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { AppLockSetting } from '@/components/app-lock';
+import { SubscriptionBanner } from '@/components/subscription-banner';
 import { Button, Card, Hair, IconButton, ListCard, ListRow, Notice, PageHeader, Screen, Segmented, T } from '@/components/ui';
 import { accountText } from '@/features/account/text';
 import { useAuth } from '@/data/auth';
@@ -68,6 +69,7 @@ export function CrewJobs() {
     <Screen floatingBar header={<PageHeader title={c.jobs} sub={businessName}
       right={<IconButton icon="settings" label={c.settings} onPress={() => router.push('/crew/settings')} />} />}>
       <CrewSyncStatus />
+      <SubscriptionBanner />
       {error ? <><Notice text={error} tone="danger" icon="alert-circle" /><Button label={c.retry} variant="outline" onPress={retry} /></> : null}
       {!jobs && !error ? <T muted>{c.loading}</T> : null}
       {jobs && !jobs.length ? <Notice text={c.noJobs} tone="soft" icon="info" /> : null}

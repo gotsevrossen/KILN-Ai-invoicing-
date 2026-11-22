@@ -10,6 +10,7 @@ import { useLang } from '@/i18n';
 import { userError } from '@/lib/user-errors';
 import { LeavingJobs } from '@/features/cleanup/leaving-card';
 import { TeamInbox } from '@/features/team/job-team';
+import { SubscriptionBanner } from '@/components/subscription-banner';
 import { useFormat } from '@/lib/format';
 import { font, radius } from '@/theme/tokens';
 import { usePalette } from '@/theme/use-palette';
@@ -46,6 +47,7 @@ export default function Home() {
           </Row>
         </Row>
       }>
+      <SubscriptionBanner />
 
       <OfflineStatus />
       <TeamInbox />

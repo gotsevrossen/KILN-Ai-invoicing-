@@ -1,8 +1,9 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { AppLockSetting } from '@/components/app-lock';
 import { Button, Card, Hair, ListCard, ListRow, Notice, PageHeader, Screen, Segmented, SwitchRow, T } from '@/components/ui';
+import { useSubscription } from '@/data/subscription';
 import { aiReady } from '@/data/ai';
 import { useAuth } from '@/data/auth';
 import { loadAutoSave, saveAutoSave } from '@/data/job-cleanup';
@@ -23,6 +24,7 @@ export default function Settings() {
   const { t, lang, setLang } = useLang();
   const { state, actions } = useStore();
   const auth = useAuth();
+  const subscription = useSubscription();
   const theme = useThemeMode();
   const s = state.settings;
   const [voiceLang, setVoiceLang] = useState<VoiceLang>(loadVoiceLang);
@@ -67,6 +69,7 @@ export default function Settings() {
         {state.profile.phone || state.profile.email ? <T v="small" muted>{[state.profile.phone, state.profile.email].filter(Boolean).join(' · ')}</T> : null}
         {owner ? <ListRow icon="briefcase" title={a.editBusiness} chevron onPress={() => router.push('/settings/business')} /> : null}
         {auth.configured && auth.session ? <ListRow icon="user" title={a.accountTitle} sub={auth.session.user.email} chevron onPress={() => router.push('/settings/account')} /> : null}
+        {subscription.sub ? <ListRow icon="award" title={t('sub.title')} chevron onPress={() => router.push('/settings/subscription' as Href)} /> : null}
       </Card>
 
       <ListCard>

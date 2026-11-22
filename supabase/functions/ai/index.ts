@@ -47,6 +47,8 @@ Deno.serve(async (req) => {
       if (quota.error.code === 'KL429') throw new AiError(429, 'limit');
       // this person's own daily limit for this helper (the chat has the tightest one)
       if (quota.error.code === 'KL430') throw new AiError(429, 'person_limit');
+      // no KILN subscription (or this person is beyond the plan's team size)
+      if (quota.error.code === 'KL402') throw new AiError(402, 'subscription_needed');
       if (quota.error.code === '42501') throw new AiError(403, 'owner_only');
       throw new AiError(401, 'signed_out');
     }

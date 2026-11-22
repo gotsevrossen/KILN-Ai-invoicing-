@@ -8,6 +8,7 @@ import { Card, Field, Hair, IconButton, Notice, PageHeader, Pill, Row, Screen, S
 import * as sample from '@/data/sample';
 import { customerOf, hoursFor, jobAmount, jobGroup, jobOverdueDays, jobStatus, type JobStatus } from '@/data/selectors';
 import { useStore } from '@/data/store';
+import { useRequireAccess } from '@/data/subscription';
 import type { Job, JobGroup } from '@/data/types';
 import { filtersOn, JobsMenu, NO_FILTERS, useJobFilter, type JobFilters } from '@/features/cleanup/jobs-menu';
 import { cleanupText } from '@/features/cleanup/text';
@@ -30,6 +31,7 @@ const statusTone: Record<JobStatus, Tone | 'outline'> = {
 
 export default function Jobs() {
   const { t, lang } = useLang();
+  const requireAccess = useRequireAccess();
   const f = useFormat();
   const { state } = useStore();
   const [group, setGroup] = useState<JobGroup>('active');
@@ -77,7 +79,7 @@ export default function Jobs() {
             <IconButton icon="sliders" label={cleanupText(lang).menu} tone={filtersOn(filters) ? 'dark' : 'plain'} onPress={() => setMenuOpen(true)} />
           </View>
           <View ref={addButton} collapsable={false}>
-            <IconButton icon="plus" label={t('common.newJob')} tone="accent" onPress={() => router.push('/new-job')} />
+            <IconButton icon="plus" label={t('common.newJob')} tone="accent" onPress={() => requireAccess(() => router.push('/new-job'))} />
           </View>
         </Row>} />
       } tabs>
